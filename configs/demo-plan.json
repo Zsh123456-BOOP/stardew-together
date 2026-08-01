@@ -1,0 +1,8 @@
+{
+  "goal": "给测试地块浇水，收获成熟作物，然后回到起点",
+  "steps": [
+    {"skill": "water_area", "actor_id": "bot-1", "area": [48, 18, 51, 22]},
+    {"skill": "harvest_area", "actor_id": "bot-1", "area": [48, 18, 51, 22]},
+    {"skill": "move_to", "actor_id": "bot-1", "target": [43, 18]}
+  ]
+}

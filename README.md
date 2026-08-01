@@ -4,6 +4,8 @@
 
 完整设计见 [开发方案](星露谷Agent开发方案.md)。开发进度和实测结果记录于 `docs/`。
 
+**已实测跑通**：读取地图/作物/背包 → A* 寻路 → 整片浇水 → 收获入包 → 返回；支持暂停继续、执行途中绕开新障碍。当前由 Codex 充当上层规划者，尚未接独立模型服务。
+
 ## 开发约定
 
 - 阶段通过验证后提交本地 Git；提交不代表已发布。
@@ -33,3 +35,26 @@ python3 evals/stage0_smoke.py
 ```
 
 `--lab` 开启专用测试初始化接口；接口还会检查角色名。正常模式不开放初始化接口。构建只写项目 `work/Mods`，不覆盖游戏的原有 Mods。启动脚本生成 `.local.json` 本地访问令牌，请勿提交或公开。
+
+## 执行完整任务
+
+```bash
+python3 -m agent state
+python3 -m agent reset-lab
+python3 -m agent submit configs/demo-plan.json --run
+```
+
+计划依次完成 12 株作物浇水、6 株成熟作物收获和返回。坐标针对 AgentLab-v1 测试场景；其他地块需要按实时状态调整。
+
+暂停与继续、失败处理见 [Codex 调用指南](docs/Codex调用指南.md)，接口细节见 [协议说明](contracts/协议说明.md)。
+
+## 验证
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 evals/stage0_smoke.py
+python3 evals/stage1_tasks.py
+python3 evals/dynamic_obstacle.py
+```
+
+后三项是游戏内集成测试，会重置 AgentLab 专用场景，不用于个人正常存档。实测报告见 [阶段 1 验收](docs/阶段1验收报告.md)。

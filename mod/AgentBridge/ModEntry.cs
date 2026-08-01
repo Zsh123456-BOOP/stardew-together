@@ -8,7 +8,7 @@ using StardewValley;
 
 namespace StardewAgent;
 
-public interface IFarmtronicsControl {
+public interface IGameControl {
     string GetState();
     string GetMap(string actorId);
     string StartAction(string request);
@@ -22,11 +22,12 @@ public sealed class Config {
     public int Port { get; set; } = 18765;
     public string Token { get; set; } = "";
     public bool EnableLab { get; set; } = false;
+    public string Backend { get; set; } = "farmtronics";
 }
 
 public sealed class ModEntry : Mod {
     private Config config = new();
-    private IFarmtronicsControl? api;
+    private IGameControl? api;
     private readonly ConcurrentQueue<Request> pending = new();
     private readonly Dictionary<string, string> commands = new();
     private readonly Dictionary<string, string> running = new();
@@ -39,9 +40,10 @@ public sealed class ModEntry : Mod {
         config = helper.ReadConfig<Config>();
         if (config.Token.Length < 24) { Monitor.Log("Missing local bridge token; run scripts/launch.py.", LogLevel.Error); return; }
         helper.Events.GameLoop.GameLaunched += (_, _) => {
-            api = helper.ModRegistry.GetApi<IFarmtronicsControl>("strout.farmtronics");
+            string modId = config.Backend == "squad" ? "ThaliaFawnheart.TheStardewSquad" : "strout.farmtronics";
+            api = helper.ModRegistry.GetApi<IGameControl>(modId);
             if (config.EnableLab) Game1.options.pauseWhenOutOfFocus = false;
-            Monitor.Log(api == null ? "Farmtronics control API missing." : "Farmtronics control API connected.", api == null ? LogLevel.Error : LogLevel.Info);
+            Monitor.Log(api == null ? "Game control API missing: " + config.Backend : "Game control API connected: " + config.Backend, api == null ? LogLevel.Error : LogLevel.Info);
         };
         helper.Events.GameLoop.SaveLoaded += (_, _) => ResetSession();
         helper.Events.GameLoop.SaveCreated += (_, _) => ResetSession();
@@ -64,6 +66,14 @@ public sealed class ModEntry : Mod {
         });
         helper.ConsoleCommands.Add("agent_quit", "Exit this development session (AgentLab or title only).", (_, _) => {
             if (!Context.IsWorldReady || Game1.player.Name == "AgentLab") Game1.game1.Exit();
+        });
+        helper.ConsoleCommands.Add("agent_load", "Load an existing AgentLab_<digits> test save from title only.", (_, args) => {
+            if (!config.EnableLab || Context.IsWorldReady || args.Length != 1
+                || !System.Text.RegularExpressions.Regex.IsMatch(args[0], "^AgentLab_[0-9]+$")) {
+                Monitor.Log("agent_load requires lab mode, title, and an AgentLab save name.", LogLevel.Error); return;
+            }
+            SaveGame.Load(args[0]);
+            Game1.exitActiveMenu();
         });
         listener = new HttpListener();
         listener.Prefixes.Add($"http://127.0.0.1:{config.Port}/");
@@ -138,7 +148,7 @@ public sealed class ModEntry : Mod {
     }
 
     private Response Process(Request r) {
-        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1});
+        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1, backend = config.Backend});
         if (api == null || !Context.IsWorldReady) return new(503, "{\"error\":\"world_not_ready\"}");
         if (r.Method == "GET" && r.Path == "/state") {
             var state = JsonSerializer.Deserialize<Dictionary<string, object>>(api.GetState())!;

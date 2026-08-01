@@ -1,12 +1,16 @@
 # 星露谷状态驱动 Agent
 
-当前产品方向为**有自定义人设、关系记忆与自主决策的 NPC 陪玩队友**。三个候选仓库已克隆并完成源码审查，衔接设计见 [三仓库衔接方案](docs/三仓库衔接方案.md)。这一集成尚未实测；下面是已完成的 Farmtronics 技术验证底座。
+当前产品方向为**有自定义人设、关系记忆与自主决策的 NPC 陪玩队友**。已实测接通 **DeepSeek Flash → 人设决策 → 指定 Squad NPC → 挖矿结果回执**，支持拒绝、显式强制和空闲自主行动。[陪伴版运行与验收](docs/陪伴阶段B验收与运行.md) · [NPC 控制验收](docs/陪伴阶段A验收.md) · [源码衔接设计](docs/三仓库衔接方案.md)。
+
+陪伴版：`python3 scripts/build_companion.py` → `python3 scripts/launch.py --companion --lab`，进入测试存档后运行 `python3 -m agent.companion '帮我挖一块石头。' --persona adventurer`。正常游玩省略 `--lab` 并通过 Squad 招募 NPC。配置示例见 `.env.example`，实际 Key 只放被忽略的 `.env`。
+
+下面保留 Farmtronics 技术验证底座的使用说明。
 
 无需视觉模型，通过 SMAPI 读取真实地图和作物状态，用 Farmtronics 机器人执行任务。
 
 完整设计见 [开发方案](星露谷Agent开发方案.md)。开发进度和实测结果记录于 `docs/`。
 
-**已实测跑通**：读取地图/作物/背包 → A* 寻路 → 整片浇水 → 收获入包 → 返回；支持暂停继续、执行途中绕开新障碍。当前由 Codex 充当上层规划者，尚未接独立模型服务。
+**Farmtronics 已实测跑通**：读取地图/作物/背包 → A* 寻路 → 整片浇水 → 收获入包 → 返回；支持暂停继续、执行途中绕开新障碍。该底座验收时由 Codex 充当上层规划者；上面的 NPC 陪伴版另接 DeepSeek。
 
 ## 开发约定
 

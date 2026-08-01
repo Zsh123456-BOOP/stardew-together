@@ -1,0 +1,12 @@
+.DS_Store
+work/
+outputs/
+.env
+.venv/
+__pycache__/
+*.pyc
+**/bin/
+**/obj/
+*.sqlite*
+*.log
+.local.json

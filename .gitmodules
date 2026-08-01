@@ -1,0 +1,3 @@
+[submodule "vendor/Farmtronics"]
+	path = vendor/Farmtronics
+	url = https://github.com/JoeStrout/Farmtronics.git

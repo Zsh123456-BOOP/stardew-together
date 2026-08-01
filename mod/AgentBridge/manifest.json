@@ -1,0 +1,10 @@
+{
+  "Name": "Stardew Agent Bridge",
+  "Author": "Stardew Agent Project",
+  "Version": "0.1.0",
+  "Description": "Local authenticated state and action bridge for Farmtronics.",
+  "UniqueID": "StardewAgent.Bridge",
+  "EntryDll": "AgentBridge.dll",
+  "MinimumApiVersion": "4.5.2",
+  "Dependencies": [{"UniqueID": "strout.farmtronics", "IsRequired": true}]
+}

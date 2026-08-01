@@ -1,5 +1,7 @@
 .DS_Store
 work/
+# Local upstream clones; pinned origins and preparation are tracked in configs/ and scripts/.
+external/
 outputs/
 .env
 .venv/

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "repositories": [
+    {
+      "directory": "the-stardew-squad",
+      "url": "https://github.com/Isalda/the-stardew-squad.git",
+      "commit": "a9084ef4f258325e9a7d589685cec6c3f6cdbad9"
+    },
+    {
+      "directory": "StardewValley-MCP",
+      "url": "https://github.com/amarisaster/StardewValley-MCP.git",
+      "commit": "6cb2ffa7160e6202ea8a7da4f827b1869f4a1daf"
+    },
+    {
+      "directory": "StardewValleyAIDialogueMod",
+      "url": "https://github.com/phenyisole/StardewValleyAIDialogueMod.git",
+      "commit": "bb1a46b003cede313aa588413d71cea7f954830a"
+    }
+  ],
+  "squad_test_pruning": {
+    "directory": "TheStardewSquad.Tests",
+    "solution": "TheStardewSquad/TheStardewSquad.sln",
+    "project_guid": "{E4D7AEA9-5A18-4FED-A7DE-B5E40957491C}",
+    "csharp_files": 25,
+    "physical_lines": 10930,
+    "nonblank_lines": 9072
+  }
+}

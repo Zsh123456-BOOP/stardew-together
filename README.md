@@ -1,5 +1,7 @@
 # 星露谷状态驱动 Agent
 
+当前产品方向为**有自定义人设、关系记忆与自主决策的 NPC 陪玩队友**。三个候选仓库已克隆并完成源码审查，衔接设计见 [三仓库衔接方案](docs/三仓库衔接方案.md)。这一集成尚未实测；下面是已完成的 Farmtronics 技术验证底座。
+
 无需视觉模型，通过 SMAPI 读取真实地图和作物状态，用 Farmtronics 机器人执行任务。
 
 完整设计见 [开发方案](星露谷Agent开发方案.md)。开发进度和实测结果记录于 `docs/`。
@@ -15,6 +17,8 @@
 - 命令被接收不等于执行成功，完成必须检查真实状态。
 
 ## 上游
+
+陪伴方向的三个固定版本在 `configs/companion-upstreams.json`，本地源码放在忽略提交的 `external/`。运行 `python3 scripts/prepare_companion_sources.py --remove-squad-tests` 可准备源码并移除用户指定的 Squad 测试及解决方案引用。该脚本不会安装 Mod。
 
 [Farmtronics](https://github.com/JoeStrout/Farmtronics)，MIT，固定提交由 Git 子模块记录。本项目新增控制 API、SMAPI 桥接、任务调度和评估，不将上游能力冒充自研。
 

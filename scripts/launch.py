@@ -1,6 +1,7 @@
 """Launch only this project's Mods. Existing Mods and saves remain untouched."""
 from pathlib import Path
 import argparse
+import fcntl
 import json
 import os
 import secrets
@@ -11,7 +12,14 @@ p = argparse.ArgumentParser()
 p.add_argument('--lab', action='store_true', help='Enable fixture commands restricted to AgentLab save')
 p.add_argument('--companion', action='store_true', help='Use the isolated Squad companion build')
 args = p.parse_args()
-mods = ROOT / ('work/CompanionMods' if args.companion else 'work/Mods')
+runtime_lock = None
+if args.companion:
+    runtime_lock = (ROOT / 'work/companion-runtime.lock').open('a')
+    try:
+        fcntl.flock(runtime_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit('The companion runtime is already running or being built.')
+mods = ROOT / ('work/CompanionMods'  if args.companion else 'work/Mods')
 if not (mods / 'AgentBridge/AgentBridge.dll').exists():
     raise SystemExit('Run python3 scripts/build.py first')
 token = secrets.token_urlsafe(32)

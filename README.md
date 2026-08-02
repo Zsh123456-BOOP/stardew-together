@@ -1,4 +1,19 @@
-# 星露谷状态驱动 Agent
+# 同行 · Together：星露谷陪伴 Agent
+
+**当前可玩版本是 C# Mod「同行 · Together」**：游戏内 F8 聊天、自定义人设、DeepSeek Flash 决策、主动提议、小约定、关系与记忆，以及 Squad 执行动作。不使用视觉模型，正式游玩不依赖 Python 服务。
+
+[使用指南](docs/同行使用指南.md) · [完整验收](docs/同行0.1验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
+
+```bash
+python3 scripts/build_companion.py
+python3 scripts/package_together.py
+```
+
+双击生成目录 `outputs/同行体验版/启动同行.command`。模型 Key 读取项目 `.env`，不进入 Git 或安装 ZIP。`Together-0.1.0-own-code.zip` 仅含新 Mod，需要单独准备 Squad 适配依赖；本机体验目录已配好。
+
+开发测试仍可用 `python3 scripts/launch.py --companion --lab`，仅在 AgentLab 专用存档操作。C# 检查：`work/dotnet/dotnet run --project tests/Together.DomainChecks.csproj`；真实游戏检查：`python3 evals/companion_control.py`、`python3 evals/together_control.py`（关闭面板并停止任务后运行）。
+
+以下保留早期 Python 决策原型与 Farmtronics 验证底座说明，其限制不代表当前 Together 版本。
 
 当前产品方向为**有自定义人设、关系记忆与自主决策的 NPC 陪玩队友**。已实测接通 **DeepSeek Flash → 人设决策 → 指定 Squad NPC → 挖矿结果回执**，支持拒绝、显式强制和空闲自主行动。[陪伴版运行与验收](docs/陪伴阶段B验收与运行.md) · [NPC 控制验收](docs/陪伴阶段A验收.md) · [源码衔接设计](docs/三仓库衔接方案.md)。
 

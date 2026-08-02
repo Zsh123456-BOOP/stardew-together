@@ -1,0 +1,10 @@
+{
+  "Name": "同行 · Together",
+  "Author": "Stardew Agent Project",
+  "Version": "0.1.0",
+  "Description": "A companion with preferences, shared memories and promises. Press F8 to talk.",
+  "UniqueID": "StardewAgent.Together",
+  "EntryDll": "Together.dll",
+  "MinimumApiVersion": "4.5.2",
+  "Dependencies": [{"UniqueID": "ThaliaFawnheart.TheStardewSquad", "IsRequired": true}]
+}

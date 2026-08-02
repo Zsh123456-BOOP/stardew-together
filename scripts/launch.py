@@ -20,5 +20,10 @@ for path, value in [(mods / 'AgentBridge/config.json', config), (ROOT / '.local.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as f:
         json.dump(value, f)
+if args.companion and (mods / 'Together').exists():
+    path=mods/'Together/config.json'
+    settings=json.loads(path.read_text()) if path.exists() else {}
+    settings.update(ApiKeyFile=str(ROOT/'.env'),EnableLab=args.lab)
+    path.write_text(json.dumps(settings,ensure_ascii=False,indent=2))
 print('Launching isolated ' + config['Backend'] + ' + AgentBridge. Use AgentLab for tests.', flush=True)
 subprocess.run([str(GAME / 'StardewModdingAPI'), '--mods-path', str(mods)], cwd=GAME, check=True)

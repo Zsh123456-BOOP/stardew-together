@@ -33,9 +33,23 @@ def build():
     unified = stage / 'Framework/Tasks/UnifiedTaskManager.cs'
     replace_once(unified, '// Get the set of spots claimed by *other* NPCs\n',
         'if (CompanionControl.IsManaged(mate)) return null;\n            // Get the set of spots claimed by *other* NPCs\n')
+    replace_once(unified, 'TaskMode attackingMode = TaskPriorityManager.GetTaskMode(_config, TaskType.Attacking);',
+        'TaskMode attackingMode = CompanionControl.IsManaged(mate) ? TaskMode.Autonomous : TaskPriorityManager.GetTaskMode(_config, TaskType.Attacking);')
+    # Independent fishing owns its own catch cadence; player fishing cannot reward or stop it.
+    text=follower.read_text()
+    text=text.replace('if (mate.RecruiterUniqueId != who.UniqueMultiplayerID)',
+        'if (CompanionControl.IsIndependentFishing(mate) || mate.RecruiterUniqueId != who.UniqueMultiplayerID)')
+    text=text.replace('if (mate.HasTask() && IsMimickingTask(mate.Task.Type)',
+        'if (!CompanionControl.IsIndependentFishing(mate) && mate.HasTask() && IsMimickingTask(mate.Task.Type)')
+    follower.write_text(text)
+    behavior=stage/'Framework/Behaviors/NpcTaskBehavior.cs'
+    replace_once(behavior,'public bool ExecuteTask(ISquadMate mate)',
+        'public bool ExecuteTask(ISquadMate mate) { bool pending = CompanionControl.BeforeTask(mate); bool result = ExecuteTaskCore(mate); CompanionControl.AfterTask(mate, pending); return result; }\n\n        private bool ExecuteTaskCore(ISquadMate mate)')
     task = stage / 'Framework/TaskManager.cs'
     replace_once(task, 'if (Game1.random.Next(10) == 0)\n                {\n                    mate.Communicate(TaskType.Mining.ToString());',
         'CompanionControl.ObserveMine(mate, tile, rock, location);\n\n                if (Game1.random.Next(10) == 0)\n                {\n                    mate.Communicate(TaskType.Mining.ToString());')
+    replace_once(task,'// Play sound and show fish icon',
+        'CompanionControl.ObserveFish(mate, fishCopy);\n\n            // Play sound and show fish icon')
     shutil.copyfile(ROOT / 'mod/SquadAdapter/CompanionControl.cs',stage / 'CompanionControl.cs')
     # Drop the separate upstream AfterBuild deployment target in the staging copy.
     # EnableModDeploy=false alone does not control this custom target.
@@ -45,7 +59,7 @@ def build():
     end = xml.index('</Target>',start) + len('</Target>')
     project.write_text(xml[:start] + xml[end:])
     mods = ROOT / 'work/CompanionMods'
-    for path, name in [(project,'TheStardewSquad'),(ROOT/'mod/AgentBridge/AgentBridge.csproj','AgentBridge')]:
+    for path, name in [(project,'TheStardewSquad'),(ROOT/'mod/AgentBridge/AgentBridge.csproj','AgentBridge'),(ROOT/'mod/Together/Together.csproj','Together')]:
         subprocess.run([DOTNET,'build',str(path),'-c','Release','--nologo',f'-p:GamePath={GAME}',
                         '-p:EnableModDeploy=false','-p:EnableModZip=false'],check=True,cwd=ROOT)
         dest = mods / name; dest.mkdir(parents=True,exist_ok=True)

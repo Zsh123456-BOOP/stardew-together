@@ -18,9 +18,12 @@ public sealed class Profile {
 public sealed class Step {
     public string skill {get;set;}="follow";
     public int count {get;set;}=1;
+    public string? location {get;set;}
 }
 public sealed class Decision {
     public string decision {get;set;}="chat";
+    public string? option_id {get;set;}
+    public string project {get;set;}="none";
     public string speech {get;set;}="";
     public string title {get;set;}="一起做点事";
     public List<Step> steps {get;set;}=new();
@@ -28,13 +31,14 @@ public sealed class Decision {
         var d=JsonSerializer.Deserialize<Decision>(json) ?? throw new InvalidOperationException("空决策");
         if(!new[]{"accept","refuse","negotiate","chat"}.Contains(d.decision) || string.IsNullOrWhiteSpace(d.speech) || d.speech.Length>400
             || d.title==null || d.title.Length>80 || d.steps==null || d.steps.Count>3) throw new InvalidOperationException("决策格式不合法");
+        if(!new[]{"none","farm","bundle"}.Contains(d.project))throw new InvalidOperationException("共同项目类型不支持");
         foreach(var step in d.steps) if(step==null || !Labels.ContainsKey(step.skill) || step.count<1 || step.count>5
-            || (!new[]{"mine","water","harvest"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
+            || (!new[]{"mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
         if(d.decision=="accept" && d.steps.Count==0) throw new InvalidOperationException("接受任务却没有步骤");
         if(d.decision=="chat" && d.steps.Count>0) throw new InvalidOperationException("聊天不应派工");
         return d;
     }
-    public static readonly Dictionary<string,string> Labels=new(){["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
+    public static readonly Dictionary<string,string> Labels=new(){["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
     public string PlanText()=>string.Join(" → ",steps.Select(s=>Labels[s.skill]+(s.count>1?$" ×{s.count}":"")));
 }
 public sealed class Line {
@@ -45,12 +49,17 @@ public sealed class Line {
 public sealed class Job {
     public string Id {get;set;}=Guid.NewGuid().ToString("N");
     public string Title {get;set;}="";
+    public string Origin {get;set;}="player";
+    public string OptionId {get;set;}="";
+    public string Reason {get;set;}="";
+    public string? TravelCommand {get;set;}
     public List<Step> Steps {get;set;}=new();
     public string Status {get;set;}="active";
     public int Index {get;set;}
     public int DoneInStep {get;set;}
     public int Completed {get;set;}
     public string? Command {get;set;}
+    public bool FollowMode {get;set;}
     public bool Forced {get;set;}
     public int Resumes {get;set;}
     public bool Rewarded {get;set;}
@@ -67,19 +76,22 @@ public sealed class Job {
 }
 public sealed class Companion {
     public Profile Profile {get;set;}=new();
+    public LifeState Life {get;set;}=new();
     public int Energy {get;set;}=80;
     public int EnergyDay {get;set;}=-1;
     public int Bond {get;set;}=20;
     public List<Line> Chat {get;set;}=new();
     public List<Line> Memories {get;set;}=new();
     public Decision? Proposal {get;set;}
+    public bool ProposalAutonomous {get;set;}
+    public int ProposalExpires {get;set;}
     public Job? Job {get;set;}
     public int RewardDay {get;set;}=-1;
     public int FriendshipReward {get;set;}
     public string Mood=>Energy<25?"累了，想被照顾一下":Energy<50?"有点累，想换个轻松的活动":Bond>=50?"和你在一起很放松":"心情不错，也有自己的主意";
     public void Outcome(string skill,bool forced) {
         Energy=Math.Clamp(Energy+(skill is "fish" or "rest"?12:skill=="follow"?0:-7),0,100);
-        if(forced) Bond=Math.Clamp(Bond-1,0,100);
+
     }
     public void NewDay(int day) {
         if(EnergyDay==day)return;
@@ -88,6 +100,12 @@ public sealed class Companion {
     }
 }
 public sealed class SaveData {
+    public int SchemaVersion {get;set;}=2;
+    public string Pace {get;set;}="balanced";
+    public bool FarmHelp {get;set;}=true;
+    public List<SharedProject> Projects {get;set;}=new();
+    public Dictionary<string,int> ObservedProgress {get;set;}=new();
+    public Dictionary<string,int> Reservations {get;set;}=new();
     public Dictionary<string,Companion> People {get;set;}=new();
     public int BudgetDay {get;set;}=-1;
     public int Calls {get;set;}

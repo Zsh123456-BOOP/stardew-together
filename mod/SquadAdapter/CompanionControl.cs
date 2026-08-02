@@ -27,6 +27,7 @@ public sealed partial class CompanionControl {
     private IEnumerable<ISquadMate> Members => mod.SquadManager.Members.Where(m => m.RecruiterUniqueId == Game1.player.UniqueMultiplayerID);
     private ISquadMate Mate(string id) => Members.FirstOrDefault(m => Id(m) == id) ?? throw new InvalidOperationException("actor_not_recruited");
     public static bool IsManaged(ISquadMate mate) => instance?.managed.Contains(Id(mate)) == true;
+    public static bool IsManagedNpc(NPC npc) => instance?.Members.Any(m=>ReferenceEquals(m.Npc,npc) && IsManaged(m))==true;
     public static bool IsIndependentFishing(ISquadMate mate) => instance?.records.Values.Any(r => r.Actor == Id(mate) && r.Skill == "fish" && r.Status == "running") == true;
     public static void ObserveFish(ISquadMate mate, Item fish) {
         if (instance == null) return;
@@ -86,23 +87,42 @@ public sealed partial class CompanionControl {
             if (dirt.readyForHarvest() && mate.CanPerformTask(TaskType.Harvesting)) entries.Add((pair.Key,dirt,"harvest"));
             else if (dirt.state.Value == HoeDirt.dry && mate.CanPerformTask(TaskType.Watering)) entries.Add((pair.Key,dirt,"water"));
         }
-        foreach (var entry in entries.Where(p => Vector2.Distance(p.Tile,mate.Npc.Tile)<=32).OrderBy(p=>Vector2.DistanceSquared(p.Tile,mate.Npc.Tile)).Take(24)) {
+        foreach (var entry in entries.OrderBy(p=>Vector2.DistanceSquared(p.Tile,mate.Npc.Tile)).Take(24)) {
             var spot=StandingSpot(mate,entry.Tile.ToPoint());
             if (spot.HasValue) yield return new Candidate(TargetId(entry.Source)+(entry.Skill=="mine"?"":":"+entry.Skill),entry.Skill,entry.Tile.ToPoint(),entry.Source,spot.Value);
         }
     }
     private object[] Candidates(ISquadMate mate) => FindCandidates(mate).Select(c=>(object)new {
         target_id=c.Id, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId }).ToArray();
-    private SquadTask? FishingTask(ISquadMate mate) => mate.CanPerformTask(TaskType.Fishing)
-        ? TaskManager.CreateFishingTask(new LocationInfoWrapper(mate.Npc.currentLocation,mate.Npc),mate.Npc.TilePoint,
-            mate.Npc.TilePoint,new HashSet<Vector2>(),new HashSet<Point>(),mod.Monitor) : null;
+    private readonly Dictionary<string,(string Location,DateTime Until,bool Available)> fishingAvailability=new();
+    private bool FishingAvailable(ISquadMate mate) {
+        string id=Id(mate),location=mate.Npc.currentLocation.NameOrUniqueName;
+        if(fishingAvailability.TryGetValue(id,out var cached) && cached.Location==location && cached.Until>DateTime.UtcNow)return cached.Available;
+        bool available=FishingTask(mate)!=null;fishingAvailability[id]=(location,DateTime.UtcNow.AddSeconds(2),available);return available;
+    }
+    private SquadTask? FishingTask(ISquadMate mate) {
+        if(!mate.CanPerformTask(TaskType.Fishing))return null;
+        var info=new LocationInfoWrapper(mate.Npc.currentLocation,mate.Npc);
+        var spots=records.Values.Where(r=>r.Status=="running" && r.Skill=="fish" && r.Actor!=Id(mate) && r.Location==mate.Npc.currentLocation && r.Assigned!=null)
+            .Select(r=>r.Assigned!.InteractionTile.ToVector2()).ToHashSet();
+        var nearby=TaskManager.CreateFishingTask(info,mate.Npc.TilePoint,mate.Npc.TilePoint,spots,new HashSet<Point>(),mod.Monitor);
+        if(nearby!=null)return nearby;
+        // Map entrances can be farther from water than Squad's 12-tile following radius.
+        var offsets=new[]{new Point(1,0),new Point(-1,0),new Point(0,1),new Point(0,-1)};
+        foreach(var water in TaskManager.FindNearbyWaterTiles(info,mate.Npc.TilePoint,32)
+            .Where(w=>offsets.Any(d=>info.IsTilePassable(new Point(w.X+d.X,w.Y+d.Y)) || info.IsTilePassable(new Point(w.X+d.X*2,w.Y+d.Y*2)))).Take(80)) {
+            var stand=TaskManager.FindFishingSpot(info,water,mate.Npc.TilePoint,mate.Npc.TilePoint,spots,mod.Monitor);
+            if(stand.HasValue)return new SquadTask(TaskType.Fishing,water,stand.Value,isManual:true);
+        }
+        return null;
+    }
     private object Actor(ISquadMate mate) {
         Game1.player.friendshipData.TryGetValue(mate.Npc.Name, out var friendship);
         return new { id = Id(mate), name = mate.Npc.Name, display_name = mate.Npc.displayName,
             location = mate.Npc.currentLocation?.NameOrUniqueName, tile = Tile(mate.Npc.TilePoint),
             task = mate.Task?.Type.ToString(), moving = mate.Npc.isMoving(), cooldown = mate.ActionCooldown,
-            managed = managed.Contains(Id(mate)), can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
-            fishing_available = FishingTask(mate) != null,
+            managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
+            fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
             in_combat = mate.Task?.Type == TaskType.Attacking,
             relationship = new { points = friendship?.Points ?? 0, dating = friendship?.IsDating() ?? false, married = friendship?.IsMarried() ?? false } };
@@ -270,7 +290,7 @@ public sealed partial class CompanionControl {
             follow_mode_enabled = r.Skill == "follow" && r.Status == "succeeded" } };
     public void Reset() {
         foreach (var r in records.Values.Where(r => r.Status == "running").ToArray()) Finish(r, "cancelled", "session_reset");
-        records.Clear(); managed.Clear();stay.Clear();
+        records.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();
     }
     public string PrepareLab() {
         if (Context.IsMultiplayer || Game1.player.Name != "AgentLab") throw new InvalidOperationException("lab_save_required");

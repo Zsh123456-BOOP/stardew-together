@@ -51,6 +51,16 @@ def build():
         '        private void ExecutePathMovement(ISquadMate mate)')
     replace_once(follower, '            npc.Position += velocity;',
         '            if (CompanionControl.IsManaged(mate) && ((npc.getStandingPosition() + velocity) / 64f).ToPoint() != npc.TilePoint && !AStarPathfinder.IsTilePassableForFollower(npc.currentLocation, ((npc.getStandingPosition() + velocity) / 64f).ToPoint(), npc)) { mate.Path.Clear(); mate.Halt(); return; }\n            npc.Position += velocity;')
+    map_wrapper = stage / 'Framework/Wrappers/MapInfoWrapper.cs'
+    replace_once(map_wrapper, '        public bool IsTilePassable(Point tile)\n        {',
+        '        public bool IsTilePassable(Point tile)\n        {\n'
+        '            if (tile.X < 0 || tile.Y < 0 || tile.X >= _location.Map.Layers[0].LayerWidth || tile.Y >= _location.Map.Layers[0].LayerHeight) return false;\n'
+        '            if (_location.isWaterTile(tile.X, tile.Y) && _location.doesTileHaveProperty(tile.X, tile.Y, "Passable", "Buildings") != "T") return false;')
+    astar = stage / 'Pathfinding/AStarPathfinder.cs'
+    replace_once(astar, '        public static bool IsTilePassableForFollower(GameLocation location, Point tile, Character character)\n        {',
+        '        public static bool IsTilePassableForFollower(GameLocation location, Point tile, Character character)\n        {\n'
+        '            if (tile.X < 0 || tile.Y < 0 || tile.X >= location.Map.Layers[0].LayerWidth || tile.Y >= location.Map.Layers[0].LayerHeight) return false;\n'
+        '            if (location.isWaterTile(tile.X, tile.Y) && location.doesTileHaveProperty(tile.X, tile.Y, "Passable", "Buildings") != "T") return false;')
     unified = stage / 'Framework/Tasks/UnifiedTaskManager.cs' 
     replace_once(unified, '// Get the set of spots claimed by *other* NPCs\n',
         'if (CompanionControl.IsManaged(mate)) return null;\n            // Get the set of spots claimed by *other* NPCs\n')
@@ -67,6 +77,10 @@ def build():
     replace_once(behavior,'public bool ExecuteTask(ISquadMate mate)',
         'public bool ExecuteTask(ISquadMate mate) { if (CompanionControl.WaitForImpact(mate)) return false; bool pending = CompanionControl.BeforeTask(mate); bool result = ExecuteTaskCore(mate); CompanionControl.AfterTask(mate, pending); return result; }\n\n        private bool ExecuteTaskCore(ISquadMate mate)')
     task = stage / 'Framework/TaskManager.cs'
+    replace_once(task, 'fish = location.getFish(',
+        'fish = CompanionControl.IsManagedNpc(npc) && location.Name is ("Beach" or "Farm" or "Town" or "Forest" or "Mountain" or "Woods")\n'
+        '                        ? GameLocation.GetFishFromLocationData(location.Name, waterTile.ToVector2(), FishingConstants.WaterDepth, player, isTutorialCatch: false, isInherited: false, location: location) ?? ItemRegistry.Create("(O)168")\n'
+        '                        : location.getFish(')
     replace_once(task, '                AnimateMining(npc);', '                if (!CompanionControl.IsManaged(mate)) AnimateMining(npc);')
     replace_once(task, '                AnimateWatering(npc);', '                if (!CompanionControl.IsManaged(mate)) AnimateWatering(npc);')
     replace_once(task, '.FirstOrDefault(a => a.TilePoint == tile);',

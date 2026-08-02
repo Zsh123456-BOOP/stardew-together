@@ -31,7 +31,7 @@ public sealed class CompanionMenu:IClickableMenu {
         });
         Button(166,112,130,36,"邀请同行",()=>mod.Recruit());
         Button(310,112,130,36,"各忙各的",()=>mod.Dismiss());
-        for(int i=0;i<3;i++){int next=i;Button(width-382+i*116,112,106,36,new[]{"聊聊天","人设","共同经历"}[i],()=>{tab=next;scroll=0;Rebuild();});}
+        for(int i=0;i<5;i++){int next=i;Button(width-500+i*95,112,89,36,new[]{"聊天","人设","经历","心事","农场"}[i],()=>{tab=next;scroll=0;Rebuild();});}
         if(tab==0) {
             chat=Input(32,height-112,width-178,"",400);
             chat.OnEnterPressed+=_=>Send();
@@ -43,7 +43,7 @@ public sealed class CompanionMenu:IClickableMenu {
             Button(448,height-205,90,36,"继续",()=>mod.Resume());
             var shortcuts=new[]{("mine","挖矿"),("water","浇水"),("fish","钓鱼"),("guard","保护我"),("rest","休息")};
             for(int i=0;i<shortcuts.Length;i++){var item=shortcuts[i];Button(28+i*108,height-158,98,30,item.Item2,()=>mod.Quick(item.Item1));}
-            Button(width-204,height-158,172,30,mod.Settings.Autonomy?"主动提议：开":"主动提议：关",()=>{mod.ToggleAuto();Rebuild();});
+            Button(width-204,height-158,172,30,mod.Settings.Autonomy?"自主生活：开":"自主生活：关",()=>{mod.ToggleAuto();Rebuild();});
         } else if(tab==1) {
             var names=new[]{"冒险搭子","钓鱼搭子","贴心恋人","农场伙伴"};
             for(int i=0;i<4;i++){string name=names[i];Button(28+i*166,178,152,36,name,()=>{mod.SetPreset(name);Rebuild();});}
@@ -56,6 +56,16 @@ public sealed class CompanionMenu:IClickableMenu {
                 profile.Likes=fields[2].Text;profile.Dislikes=fields[3].Text;profile.Style=fields[4].Text;
                 mod.Persist();Game1.playSound("coin");
             });
+        } else if(tab==4) {
+            Button(28,176,140,36,"一起管农场",()=>{mod.AddFarmProject();Rebuild();});
+            Button(182,176,164,36,"准备一项献祭",()=>{mod.AddBundleProject();Rebuild();});
+            Button(360,176,132,36,mod.Data.FarmHelp?"农活自主：开":"农活自主：关",()=>{mod.Data.FarmHelp=!mod.Data.FarmHelp;Rebuild();});
+            int projectRow=0;
+            foreach(var project in mod.Data.Projects.Where(p=>p.Status is "active" or "paused").Take(3)) {
+                string id=project.Id;Button(width-122,338+72*projectRow++,98,28,project.Status=="active"?"暂停计划":"继续计划",()=>{mod.PauseProject(id);Rebuild();});
+            }
+            var paces=new[]{("relaxed","慢慢生活"),("balanced","劳逸结合"),("focused","推进目标")};
+            for(int i=0;i<paces.Length;i++){var pace=paces[i];Button(28+i*160,height-102,150,36,(mod.Data.Pace==pace.Item1?"● ":"")+pace.Item2,()=>{mod.SetPace(pace.Item1);Rebuild();});}
         }
     }
     private void Send() {
@@ -98,6 +108,21 @@ public sealed class CompanionMenu:IClickableMenu {
             var labels=new[]{"关系称呼","性格","喜欢什么","不喜欢什么","说话方式"};
             for(int i=0;i<labels.Length;i++)Text(b,labels[i],30,240+i*Math.Clamp((height-350)/5,38,54));
             Text(b,"称呼由你自定义；游戏原生好感与婚姻仍按存档读取。",220,height-98,Gold,.78f);
+        } else if(tab==3) {
+            Text(b,Wrap(mod.LifeSummary(),width-80),32,186,Ink,.9f);
+            Text(b,"自己的安排可以被你的请求打断；处理完后会尝试接着做。",32,height-122,Green,.78f);
+        } else if(tab==4) {
+            var f=mod.Facts;
+            string season=f.Season switch {"spring"=>"春","summer"=>"夏","fall"=>"秋","winter"=>"冬",_=>f.Season};
+            string route=f.Route switch {"joja"=>"Joja 路线","community_complete"=>"社区中心已完成",_=>"尚未加入 Joja"};
+            Text(b,$"{season} · {f.Time/100}:{f.Time%100:00}  |  资金 {f.Money} 金  |  {route}",28,232,Green,.82f);
+            Text(b,Wrap(string.Join("；",f.Alerts),width-80),28,268,Ink,.8f);
+            int y=342;
+            foreach(var project in mod.Data.Projects.Where(x=>x.Status is "active" or "paused").Take(3)) {
+                if(y>height-170)break;
+                Text(b,Wrap((project.Status=="paused"?"已暂停 · ":"")+project.Title+"："+project.Detail+(project.Needs.Count>0?"\n"+string.Join(" / ",project.Needs.Take(3).Select(n=>n.Name+"缺"+n.Missing)):""),width-200),28,y,Ink,.78f);y+=72;
+            }
+            if(!mod.Data.Projects.Any(p=>p.Status=="active"))Text(b,"先选一个共同安排。大事由你决定，小事我们分担。",28,344,Gold,.8f);
         } else {
             Text(b,"我们一起做过的事",28,178,Green);
             var entries=mod.Current.Memories.AsEnumerable().Reverse().Skip(scroll).Take(5).ToArray();int y=220;

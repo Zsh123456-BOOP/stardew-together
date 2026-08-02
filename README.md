@@ -1,8 +1,8 @@
 # 同行 · Together：星露谷陪伴 Agent
 
-**当前可玩版本是 C# Mod「同行 · Together」**：游戏内 F8 聊天、自定义人设、DeepSeek Flash 决策、主动提议、小约定、关系与记忆，以及 Squad 执行动作。不使用视觉模型，正式游玩不依赖 Python 服务。
+**当前可运行原型为 C# Mod「同行 · Together 0.1」**：游戏内 F8 聊天、自定义人设、DeepSeek Flash 决策、主动提议、小约定、关系与记忆，以及 Squad 执行动作。不使用视觉模型，正式游玩不依赖 Python 服务。
 
-[使用指南](docs/同行使用指南.md) · [完整验收](docs/同行0.1验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
+[完整产品设计方案（待实现）](docs/同行完整设计方案.md) · [原型使用指南](docs/同行使用指南.md) · [0.1 实测记录](docs/同行0.1验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
 
 ```bash
 python3 scripts/build_companion.py

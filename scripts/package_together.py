@@ -47,7 +47,8 @@ def package(destination: Path):
     credits = ROOT / 'docs/同行来源说明.md'
     if credits.exists():
         shutil.copyfile(credits, playable / '来源说明.md')
-    archive = destination / 'Together-0.1.0-own-code.zip'
+    version = json.loads((source/'Together/manifest.json').read_text())['Version']
+    archive = destination / f'Together-{version}-own-code.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for name in ('Together.dll', 'manifest.json'):
             z.write(source / 'Together' / name, 'Together/' + name)

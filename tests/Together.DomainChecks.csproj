@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net6.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
-  <ItemGroup><Compile Include="../mod/Together/Domain.cs"/><Compile Include="../mod/Together/Life.cs"/><Compile Include="TogetherDomainChecks.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="../mod/Together/Domain.cs"/><Compile Include="../mod/Together/Life.cs"/><Compile Include="../mod/Together/MemoryRecall.cs"/><Compile Include="TogetherDomainChecks.cs"/></ItemGroup>
 </Project>

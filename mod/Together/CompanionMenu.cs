@@ -60,6 +60,7 @@ public sealed class CompanionMenu:IClickableMenu {
             Button(28,176,140,36,"一起管农场",()=>{mod.AddFarmProject();Rebuild();});
             Button(182,176,164,36,"准备一项献祭",()=>{mod.AddBundleProject();Rebuild();});
             Button(360,176,132,36,mod.Data.FarmHelp?"农活自主：开":"农活自主：关",()=>{mod.Data.FarmHelp=!mod.Data.FarmHelp;Rebuild();});
+            Button(506,176,186,36,"切换附近箱子用途",()=>mod.CycleNearbyChest());
             int projectRow=0;
             foreach(var project in mod.Data.Projects.Where(p=>p.Status is "active" or "paused").Take(3)) {
                 string id=project.Id;Button(width-122,338+72*projectRow++,98,28,project.Status=="active"?"暂停计划":"继续计划",()=>{mod.PauseProject(id);Rebuild();});

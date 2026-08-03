@@ -14,7 +14,7 @@ public sealed partial class ModEntry {
     private static int Minute=>Game1.timeOfDay/100*60+Game1.timeOfDay%100;
     private void RefreshFacts(bool force=false) {
         if(!force && factsMinute==Minute && Facts.Day==Game1.Date.TotalDays && DateTime.UtcNow<factsAt)return;
-        try {Facts=WorldReader.Read();factsMinute=Minute;factsAt=DateTime.UtcNow.AddSeconds(10);UpdateProjects();}
+        try {Facts=WorldReader.Read(Data.People.Keys.ToArray());factsMinute=Minute;factsAt=DateTime.UtcNow.AddSeconds(10);UpdateProjects();}
         catch(Exception e){Monitor.Log("World snapshot unavailable: "+e.GetType().Name,LogLevel.Warn);}
     }
     public void AddFarmProject() {
@@ -32,6 +32,18 @@ public sealed partial class ModEntry {
         UpdateProjects();Say(Selected,"先把材料缺口记下来。提交献祭由你来，我不会擅自替你完成。");
     }
     public void SetPace(string pace) {if(new[]{"relaxed","balanced","focused"}.Contains(pace)){Data.Pace=pace;Notice="共同生活的节奏已调整。";}}
+    public void CycleNearbyChest() {
+        var chest=Game1.currentLocation.objects.Values.OfType<StardewValley.Objects.Chest>()
+            .Where(c=>Vector2.Distance(c.TileLocation,Game1.player.Tile)<=2.5f && c.SpecialChestType==StardewValley.Objects.Chest.SpecialChestTypes.None)
+            .OrderBy(c=>Vector2.DistanceSquared(c.TileLocation,Game1.player.Tile)).FirstOrDefault();
+        if(chest==null){Notice="先走到普通箱子旁边，再设置它的用途。";return;}
+        const string key="stardewagent.together/chest-role";
+        string role=chest.modData.TryGetValue(key,out var current)?current:"none";
+        role=role=="none"?"supplies":role=="supplies"?"output":"none";
+        chest.modData[key]=role;
+        Notice=role=="supplies"?"这个箱子现在是原料箱：允许取用未预留的物品给机器补料。":role=="output"?"这个箱子现在是收货箱：允许伙伴把随身物资存进来。":"已取消这个箱子的同行用途。";
+        RefreshFacts(true);
+    }
     public void PauseProject(string id) {var p=Data.Projects.FirstOrDefault(x=>x.Id==id);if(p!=null)p.Status=p.Status=="paused"?"active":"paused";UpdateProjects();}
     private void UpdateProjects() {
         Data.Reservations.Clear();
@@ -53,6 +65,7 @@ public sealed partial class ModEntry {
             }
         }
         if(Data.Projects.Count>40)Data.Projects=Data.Projects.TakeLast(40).ToList();
+        api?.ConfigureFarm(JsonSerializer.Serialize(Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).Select(n=>new{n.Item,n.Quality,n.Count})));
     }
     private Situation SituationFor(string name,JsonElement actor,JsonElement world) {
         string location=actor.GetProperty("location").GetString()!;
@@ -67,6 +80,8 @@ public sealed partial class ModEntry {
             Harvest=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="harvest"):0,
             Pet=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="pet"):0,
             Collect=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="collect"):0,
+            Refill=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="refill"):0,
+            Deposit=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="deposit"):0,
             Mine=candidates.Count(c=>c.GetProperty("skill").GetString()=="mine"),Pace=Data.Pace,
             FarmProject=Data.Projects.Any(p=>p.Kind=="farm" && p.Status=="active" && (p.Owner==name || p.Owner=="together"))};
     }
@@ -109,8 +124,8 @@ public sealed partial class ModEntry {
             string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
             if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100) || !File.Exists(file)) {p.Life.DecisionSource="local-budget-or-offline";StartOption(pair.Key,options[0]);return;}
             pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
-            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life,energy=p.Energy,
-                options,projects=Data.Projects.Where(x=>x.Status=="active"),recent=p.Life.Experiences.TakeLast(4),
+            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,
+                options,projects=Data.Projects.Where(x=>x.Status=="active"),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};
             Data.Calls++;RecordUsage();pending=ModelClient.Ask(file,Settings.Model,context,true);return;
         }
@@ -184,5 +199,5 @@ public sealed partial class ModEntry {
             if(job.Status!="fulfilled"){job.Status="paused";job.Detail="过夜前暂停，醒来重新核对目标";}
         }
     }
-    public string LifeSummary()=> $"现在想：{Current.Life.Intent}\n因为：{Current.Life.Reason}\n自己的心愿：{Current.Life.Wish}（{Current.Life.WishProgress}/{Current.Life.WishTarget}）\n兴趣需求 {(int)Current.Life.Interest} · 想找你 {(int)Current.Life.Company} · 想换换花样 {(int)Current.Life.Variety}\n被打断的安排 {Current.Life.Suspended.Count} 个";
+    public string LifeSummary()=> $"现在想：{Current.Life.Intent}\n因为：{Current.Life.Reason}\n自己的心愿：{Current.Life.Wish}（{Current.Life.WishProgress}/{Current.Life.WishTarget}）\n兴趣需求 {(int)Current.Life.Interest} · 想找你 {(int)Current.Life.Company} · 想换换花样 {(int)Current.Life.Variety}\n被打断的安排 {Current.Life.Suspended.Count} 个\n随身物资："+string.Join(" / ",Facts.Stock.Where(s=>s.Location=="npc_pouch:"+Selected).Select(s=>s.Name+" ×"+s.Count));
 }

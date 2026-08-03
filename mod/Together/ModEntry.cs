@@ -10,6 +10,7 @@ namespace Together;
 public interface ICompanionControl {
     string GetState(); string GetMap(string actorId); string StartAction(string request);
     string PollAction(string id); string CancelAction(string id); string PrepareLab(); void Reset();
+    string ConfigureFarm(string json);
 }
 public sealed class Config {
     public SButton OpenKey {get;set;}=SButton.F8;
@@ -115,6 +116,20 @@ public sealed partial class ModEntry:Mod {
         helper.ConsoleCommands.Add("together_lab_cleanup","Remove the dedicated homeless animal fixture before overnight checks.",(_,_)=>{
             if(Settings.EnableLab && Context.IsWorldReady && Game1.player.Name=="AgentLab")Game1.getFarm().animals.Remove(-449404282);
         });
+        helper.ConsoleCommands.Add("together_lab_resource","AgentLab-only resource failure fixtures: reserve/unreserve/full/empty/unmark/restore.",(_,args)=>{
+            if(!Settings.EnableLab || !Context.IsWorldReady || Game1.player.Name!="AgentLab")return;
+            string mode=args.FirstOrDefault()??"";
+            var objects=Game1.getFarm().objects;
+            if(mode=="reserve")Data.Projects.Add(new(){Kind="lab-reserve",Needs=new(){new(){Item="(O)378",Count=10,Quality=0}}});
+            if(mode=="unreserve")Data.Projects.RemoveAll(p=>p.Kind=="lab-reserve");
+            if(objects.TryGetValue(new Vector2(50,26),out var o) && o is StardewValley.Objects.Chest output) {
+                if(mode=="empty")output.Items.Clear();
+                if(mode=="full"){output.Items.Clear();for(int i=0;i<36;i++)output.Items.Add(ItemRegistry.Create("(O)390",999));}
+            }
+            if(objects.TryGetValue(new Vector2(44,26),out var s) && s is StardewValley.Objects.Chest supply && mode is "unmark" or "restore")
+                supply.modData["stardewagent.together/chest-role"]=mode=="unmark"?"none":"supplies";
+            RefreshFacts(true);
+        });
         helper.ConsoleCommands.Add("together_life_tick","AgentLab-only trigger a fresh autonomous decision.",(_,_)=>{
             if(Settings.EnableLab && Context.IsWorldReady && Game1.player.Name=="AgentLab") {autoAt=DateTime.MinValue;Current.Life.LastDecisionMinute=-1000;TickLife();}
         });
@@ -171,7 +186,7 @@ public sealed partial class ModEntry:Mod {
         if(!Context.IsWorldReady || !Names().Contains(name))return;
         generation++;Data.Selected=name;Persist();
     }
-    public void Open(){if(Context.IsWorldReady && Game1.activeClickableMenu==null)Game1.activeClickableMenu=new CompanionMenu(this);}
+    public void Open(){if(Context.IsWorldReady && Game1.activeClickableMenu==null){RefreshFacts(true);Game1.activeClickableMenu=new CompanionMenu(this);}}
     public void SetPreset(string name){if(!Context.IsWorldReady)return;Current.Profile=Profile.Preset(name);Current.Life.WishDay=-1;Current.Life.Tick(Game1.Date.TotalDays,Minute,true,Current.Profile);Notice="人设已更新，下一句话就会生效。";Persist();}
     public void ToggleAuto(){Settings.Autonomy=!Settings.Autonomy;Helper.WriteConfig(Settings);Notice=Settings.Autonomy?"队友可以自己安排活动。":"暂停选择新的自主活动；已有安排可继续或停止。";}
     private void EnsureBudget(){if(Data.BudgetDay!=Game1.Date.TotalDays){Data.BudgetDay=Game1.Date.TotalDays;Data.Calls=0;}LoadUsage();}
@@ -206,7 +221,8 @@ public sealed partial class ModEntry:Mod {
         var context=new {event_type=autonomous?"idle":"player_message",player_message=message,npc=Selected,profile=person.Profile,
             mood=person.Mood,energy=person.Energy,bond=person.Bond,actor,world=new{location=world.GetProperty("location").GetString(),time=Game1.timeOfDay,
                 health=Game1.player.health,season=Game1.currentSeason,raining=Game1.isRaining,threats=world.GetProperty("threats")},
-            farm=Facts,projects=Data.Projects,needs=person.Life,pace=Data.Pace,
+            farm=Facts,projects=Data.Projects,needs=person.Life.ModelState(),pace=Data.Pace,
+            recalled_experiences=MemoryRecall.Select(person.Life.Experiences,message,Game1.Date.TotalDays),
             memories=person.Memories.TakeLast(5).ToArray(),conversation=person.Chat.TakeLast(5).ToArray(),current_promise=person.Job,
             note="bond是本Mod亲近感，actor.relationship是真实好感。没有招募时可以聊天，行动需先邀请。"};
         Data.Calls++;RecordUsage();pendingName=Selected;pendingGeneration=generation;
@@ -287,7 +303,7 @@ public sealed partial class ModEntry:Mod {
         var job=person.Job!;if(job.Index>=job.Steps.Count)return;
         var step=job.Steps[job.Index];
         if(job.FollowMode)return;
-        if(job.Origin=="autonomous" && person.Energy<20 && job.TravelCommand==null && person.Life.Suspended.Count<3 && step.skill is "mine" or "water" or "harvest" or "pet" or "collect") {
+        if(job.Origin=="autonomous" && person.Energy<20 && job.TravelCommand==null && person.Life.Suspended.Count<3 && step.skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
             if(person.Life.Suspended.Count<3)person.Life.Suspended.Add(job);
             job.Status="paused";person.Job=null;
             StartOption(name,new(){Id="rest",Title="先歇会儿，再接着做",Reason="我需要恢复些精力",Steps=new(){new(){skill="rest"}}});return;
@@ -307,7 +323,7 @@ public sealed partial class ModEntry:Mod {
                 using var travel=JsonDocument.Parse(api!.StartAction(JsonSerializer.Serialize(new{command_id=Guid.NewGuid().ToString("N"),actor_id=a.GetProperty("id").GetString(),skill="travel",destination=step.location})));
                 job.TravelCommand=travel.RootElement.GetProperty("command_id").GetString();return;
             }
-            if(step.skill is "mine" or "water" or "harvest" or "pet" or "collect") {
+            if(step.skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
                 var targets=a.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==step.skill && !job.SkippedTargets.Contains(c.GetProperty("target_id").GetString()!)).ToArray();
                 if(targets.Length==0){
                     if(job.Origin=="autonomous") {job.Status="exhausted";job.Detail="当前可达范围已没有待处理目标；实际完成 "+job.Completed+" 个";person.Life.RetryAfter[job.OptionId]=Minute+60;RefreshFacts(true);return;}
@@ -372,7 +388,7 @@ public sealed partial class ModEntry:Mod {
             if(step.skill!="follow")person.Life.Complete(step.skill,Game1.Date.TotalDays,Minute,$"做了“{job.Title}”（{detail}；累计 {job.Completed} 个动作）",job.Origin=="autonomous" && (job.OptionId is "fish" or "mine" or "beach_trip" || person.Profile.Likes.Contains(Decision.Labels[step.skill])));
             else job.Detail="已进入跟随模式；是否来到身边仍取决于实际路径。";
             person.Life.LastDecisionMinute=Minute;RefreshFacts(true);
-            if(job.Origin=="player")Say(name,job.Forced?"做完啦。下一个活动，让我来选一次吧？":"约定完成！这下我们又多了一件一起做过的事。");
+            if(job.Origin=="player")Say(name,job.Forced?"做完啦。下一个活动，让我来选一次吧？":step.skill=="refill"?"原料补好了，接下来等机器慢慢加工。你那边怎么样？":"答应你的事做好了，你那边还顺利吗？");
             Notice="约定完成 · "+job.Title;
         } else if(job.Origin=="player" && job.DoneInStep==0)Say(name,$"{detail}好了。接下来是{Decision.Labels[job.Steps[job.Index].skill]}，我记着呢。");
         Persist();

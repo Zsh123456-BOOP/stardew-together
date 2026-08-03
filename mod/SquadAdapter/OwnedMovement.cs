@@ -62,6 +62,7 @@ public sealed partial class CompanionControl {
             } else self.mod.FollowerManager.DriveAgentTask(mate,slow,player);
             return true;
         }
+        if(active?.Skill is "refill" or "deposit" && !active.EffectByActor) {self.DriveResources(active,slow,player);return true;}
         if(active?.Skill=="collect" && !active.EffectByActor) {
             if(npc.TilePoint!=active.Stand)self.mod.FollowerManager.WalkAgent(mate,active.Stand,slow,player);
             else {

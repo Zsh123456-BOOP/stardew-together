@@ -46,3 +46,13 @@ var travelSituation=new Situation{Day=1,Minute=900,Location="Farm",CanReachBeach
 var trip=LifePlanner.Select(traveller,travelSituation)!;
 Check(trip.Id=="beach_trip" && trip.Steps[0].location=="Beach","personal preference can form an independent cross-map goal");
 travelSituation.CanReachBeach=false;Check(!LifePlanner.Options(traveller,travelSituation).Any(o=>o.Id=="beach_trip"),"cross-map wish requires a real route");
+
+var worker=new Companion{Profile=Profile.Preset("农场伙伴"),Energy=80};
+var farmSituation=new Situation{Day=1,Minute=600,Location="Farm",Refill=1,FarmProject=true,NearPlayer=true};
+Check(LifePlanner.Select(worker,farmSituation)!.Id=="refill","available authorised machine supplies produce shared work");
+farmSituation.Refill=0;farmSituation.Deposit=1;
+Check(LifePlanner.Select(worker,farmSituation)!.Id=="deposit","leftover physical cargo has an executable storage goal");
+
+var episodes=new List<Experience>{new(){Day=1,Minute=900,Summary="在海边钓鱼，收获0件"},new(){Day=20,Minute=800,Summary="浇水两次"},new(){Day=22,Minute=800,Summary="未来尚未发生的钓鱼"}};
+var recall=MemoryRecall.Select(episodes,"还记得那次空军钓鱼吗",20,1);
+Check(recall.Count==1 && recall[0].Day==1,"older relevant experience beats unrelated recent work and excludes future history");

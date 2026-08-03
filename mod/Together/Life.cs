@@ -23,6 +23,8 @@ public sealed class LifeState {
     public Dictionary<string,int> RetryAfter {get;set;}=new();
     public List<Job> Suspended {get;set;}=new();
     public List<Experience> Experiences {get;set;}=new();
+    public object ModelState()=>new{Interest,Company,Variety,Wish,WishProgress,WishTarget,Intent,Reason,SharedHabit,
+        suspended=Suspended.Select(j=>new{j.Title,j.Status,j.Completed})};
     public void Tick(int day,int minute,bool near,Profile profile) {
         if(LastDay!=day) {LastDay=day;LastMinute=minute;LastDecisionMinute=-1000;LastSpeechMinute=-1000;RetryAfter.Clear();}
         int elapsed=Math.Clamp(minute-LastMinute,0,30);LastMinute=minute;
@@ -95,6 +97,8 @@ public sealed class Situation {
     public int Harvest {get;set;}
     public int Pet {get;set;}
     public int Collect {get;set;}
+    public int Refill {get;set;}
+    public int Deposit {get;set;}
     public int Mine {get;set;}
     public bool FarmProject {get;set;}
     public string Pace {get;set;}="balanced";
@@ -112,6 +116,8 @@ public static class LifePlanner {
         if(s.Minute>=23*60) {Add("company","一起收工","已经很晚了，别再添新活",120,"care","follow");return list.OrderByDescending(x=>x.Score).ToList();}
         double work=s.Pace=="relaxed"?12:s.Pace=="focused"?40:25;
         if(p.Energy>=25) {
+            if(s.Deposit>0)Add("deposit","把带着的物资收好","有你指定的收货箱，先放好再忙下一件事",95,"shared","deposit");
+            if(s.Refill>0)Add("refill","去给空闲机器补料","你指定的原料箱里有未预留的配料",work+(s.FarmProject?36:10),"shared","refill",Math.Min(s.Refill,4));
             if(s.Pet>0)Add("pet","去看看农场的小家伙","有动物今天还没有被抚摸",work+(s.FarmProject?42:12),"shared","pet",Math.Min(s.Pet,8));
             if(s.Collect>0)Add("collect","收下机器做好的东西","机器的成品已经准备好了",work+(s.FarmProject?30:10),"shared","collect",Math.Min(s.Collect,8));
             if(s.Water>0)Add("water","我来照料干渴的作物","这里的作物还没有浇水",work+(s.FarmProject?40:15),"shared","water",Math.Min(s.Water,12));

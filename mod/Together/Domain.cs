@@ -33,12 +33,12 @@ public sealed class Decision {
             || d.title==null || d.title.Length>80 || d.steps==null || d.steps.Count>3) throw new InvalidOperationException("决策格式不合法");
         if(!new[]{"none","farm","bundle"}.Contains(d.project))throw new InvalidOperationException("共同项目类型不支持");
         foreach(var step in d.steps) if(step==null || !Labels.ContainsKey(step.skill) || step.count<1 || step.count>5
-            || (!new[]{"mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
+            || (!new[]{"refill","deposit","mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
         if(d.decision=="accept" && d.steps.Count==0) throw new InvalidOperationException("接受任务却没有步骤");
         if(d.decision=="chat" && d.steps.Count>0) throw new InvalidOperationException("聊天不应派工");
         return d;
     }
-    public static readonly Dictionary<string,string> Labels=new(){["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
+    public static readonly Dictionary<string,string> Labels=new(){["refill"]="给机器补料",["deposit"]="存放随身物资",["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
     public string PlanText()=>string.Join(" → ",steps.Select(s=>Labels[s.skill]+(s.count>1?$" ×{s.count}":"")));
 }
 public sealed class Line {

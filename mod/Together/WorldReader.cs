@@ -17,9 +17,11 @@ public sealed class WorldFacts {
     public int AnimalsUnpetted {get;set;}
     public List<object> Crops {get;set;}=new();
     public List<object> Animals {get;set;}=new();
+    public List<object> Machines {get;set;}=new();
     public List<object> Quests {get;set;}=new();
     public List<BundleFact> Bundles {get;set;}=new();
     public List<StockFact> Stock {get;set;}=new();
+    public List<object> Containers {get;set;}=new();
     public List<string> Alerts {get;set;}=new();
     public Dictionary<string,int> Progress {get;set;}=new();
     public List<string> Errors {get;set;}=new();
@@ -52,7 +54,7 @@ public static class WorldReader {
         return data;
     }
     // Called on the game thread; never expose mutable game objects to HTTP/model tasks.
-    public static WorldFacts Read() {
+    public static WorldFacts Read(string[]? companions=null) {
         var p=Game1.player;var farm=Game1.getFarm();
         var f=new WorldFacts{Day=Game1.Date.TotalDays,Time=Game1.timeOfDay,Season=Game1.currentSeason,Money=p.Money,
             Route=Game1.MasterPlayer.mailReceived.Contains("JojaMember")?"joja":Game1.MasterPlayer.mailReceived.Contains("ccIsComplete")?"community_complete":"undecided_or_community"};
@@ -61,6 +63,7 @@ public static class WorldReader {
         }
         Stock(p.Items,"player");
         Stock(p.team.GetOrCreateGlobalInventory($"TheStardewSquad_SquadInventory_{p.UniqueMultiplayerID}"),"squad_inventory");
+        foreach(var name in companions??Array.Empty<string>())Stock(p.team.GetOrCreateGlobalInventory($"Together_Pouch_{p.UniqueMultiplayerID}_{name}"),"npc_pouch:"+name);
         var locations=new List<GameLocation>{farm};
         foreach(var building in farm.buildings) {var indoors=building.GetIndoors();if(indoors!=null)locations.Add(indoors);}
         foreach(var location in locations) {
@@ -71,8 +74,18 @@ public static class WorldReader {
                     phase=crop.currentPhase.Value,day_in_phase=crop.dayOfCurrentPhase.Value,phase_days=crop.phaseDays.ToArray()});
             }
             foreach(var entry in location.objects.Pairs) {
-                if(entry.Value is Chest chest)Stock(chest.GetItemsForPlayer(p.UniqueMultiplayerID),location.NameOrUniqueName+":"+entry.Key.X+","+entry.Key.Y);
-                else if(entry.Value.bigCraftable.Value && entry.Value.readyForHarvest.Value)f.MachinesReady++;
+                if(entry.Value is Chest chest) {
+                    string source=location.NameOrUniqueName+":"+entry.Key.X+","+entry.Key.Y;
+                    Stock(chest.GetItemsForPlayer(p.UniqueMultiplayerID),source);
+                    f.Containers.Add(new{source,role=chest.modData.TryGetValue("stardewagent.together/chest-role",out var role)?role:"none"});
+                }
+                else if(entry.Value.bigCraftable.Value) {
+                    var machine=entry.Value;
+                    if(machine.readyForHarvest.Value)f.MachinesReady++;
+                    if(machine.GetMachineData()!=null)f.Machines.Add(new{location=location.NameOrUniqueName,x=(int)entry.Key.X,y=(int)entry.Key.Y,
+                        name=machine.DisplayName,item=machine.QualifiedItemId,ready=machine.readyForHarvest.Value,
+                        processing_output=machine.heldObject.Value?.QualifiedItemId,minutes_remaining=machine.MinutesUntilReady});
+                }
             }
         }
         foreach(var animal in farm.getAllFarmAnimals()) {

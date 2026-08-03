@@ -51,6 +51,15 @@ def build():
         '        private void ExecutePathMovement(ISquadMate mate)')
     replace_once(follower, '            npc.Position += velocity;',
         '            if (CompanionControl.IsManaged(mate) && ((npc.getStandingPosition() + velocity) / 64f).ToPoint() != npc.TilePoint && !AStarPathfinder.IsTilePassableForFollower(npc.currentLocation, ((npc.getStandingPosition() + velocity) / 64f).ToPoint(), npc)) { mate.Path.Clear(); mate.Halt(); return; }\n            npc.Position += velocity;')
+    # Replanning from a tile corner and smoothing a centre-to-centre ray can cut
+    # into a machine. Managed paths keep their checked waypoints until obstructed.
+    replace_once(follower,'if (isSlowTick || mate.Path == null || mate.Path.Count == 0)',
+        'if ((isSlowTick && !CompanionControl.IsManaged(mate)) || mate.Path == null || mate.Path.Count == 0 || (CompanionControl.IsManaged(mate) && mate.Path.Last() != targetTile))')
+    replace_once(follower,'if (AStarPathfinder.IsPathUnobstructed(npc.currentLocation, npc.TilePoint, pathableTarget, npc))',
+        'if (!CompanionControl.IsManaged(mate) && AStarPathfinder.IsPathUnobstructed(npc.currentLocation, npc.TilePoint, pathableTarget, npc))')
+    replace_once(follower,'if (path != null && path.Count > 0 && path.Peek() == npc.TilePoint)',
+        'if (path != null && path.Count > 0 && path.Peek() == npc.TilePoint && (!CompanionControl.IsManaged(mate) || Vector2.Distance(npc.getStandingPosition(), npc.TilePoint.ToVector2()*64f+new Vector2(32,32)) <= npc.speed))')
+    replace_once(follower,'if (mate.Path.Count > 1)', 'if (mate.Path.Count > 1 && !CompanionControl.IsManaged(mate))')
     map_wrapper = stage / 'Framework/Wrappers/MapInfoWrapper.cs'
     replace_once(map_wrapper, '        public bool IsTilePassable(Point tile)\n        {',
         '        public bool IsTilePassable(Point tile)\n        {\n'

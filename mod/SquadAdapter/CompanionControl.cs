@@ -19,7 +19,7 @@ public sealed partial class CompanionControl {
     private readonly HashSet<string> managed = new();
     private readonly ConditionalWeakTable<object, Identity> targets = new();
     private sealed class Identity { public string Id = Guid.NewGuid().ToString("N"); }
-    public CompanionControl(ModEntry mod) { this.mod = mod; instance = this; }
+    public CompanionControl(ModEntry mod) { this.mod = mod; instance = this;PatchCargo(); }
     private static string Json(object value) => JsonSerializer.Serialize(value);
     private static int[] Tile(Point p) => new[] { p.X, p.Y };
     private static string Id(ISquadMate mate) => $"{Game1.uniqueIDForThisGame}:{mate.RecruiterUniqueId}:{mate.Npc.Name}";
@@ -75,6 +75,8 @@ public sealed partial class CompanionControl {
         mate.Npc.currentLocation, point, mate.Npc, null, validateReachability: true);
     private record Candidate(string Id, string Skill, Point Tile, object Source, Point Stand);
     private IEnumerable<Candidate> FindCandidates(ISquadMate mate) {
+        foreach(var candidate in EconomyCandidates(mate))yield return candidate;
+        foreach(var candidate in ProductionCandidates(mate))yield return candidate;
         foreach(var candidate in ResourceCandidates(mate))yield return candidate;
         var entries = new List<(Vector2 Tile,object Source,string Skill)>();
         if (mate.CanPerformTask(TaskType.Mining)) entries.AddRange(mate.Npc.currentLocation.objects.Pairs
@@ -168,7 +170,7 @@ public sealed partial class CompanionControl {
         }
         var mate = Mate(actor);
         if (records.Values.Any(r => r.Actor == actor && r.Status == "running")) throw new InvalidOperationException("actor_busy");
-        if (skill is not ("refill" or "deposit" or "travel" or "stay" or "pet" or "collect" or "mine" or "follow" or "water" or "harvest" or "fish" or "guard" or "rest" or "dismiss")) throw new InvalidOperationException("unsupported_skill");
+        if (skill is not ("buy" or "ship" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "travel" or "stay" or "pet" or "collect" or "mine" or "follow" or "water" or "harvest" or "fish" or "guard" or "rest" or "dismiss")) throw new InvalidOperationException("unsupported_skill");
         var record = new Record { Id = id, Actor = actor, Mate = mate, Skill = skill, Location = mate.Npc.currentLocation,
             Started = DateTime.UtcNow, BeforeTile = Tile(mate.Npc.TilePoint) };
         if(skill=="travel") {
@@ -179,7 +181,7 @@ public sealed partial class CompanionControl {
             mod.FollowerManager.ClearMateTaskAndReset(mate);
         } else if(skill=="stay") {
             managed.Add(actor);stay.Add(actor);mod.FollowerManager.ClearMateTaskAndReset(mate);Finish(record,"succeeded");
-        } else if (skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
+        } else if (skill is "buy" or "ship" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
             string target = root.GetProperty("target_id").GetString()!;
             var candidate = FindCandidates(mate).FirstOrDefault(c=>c.Id==target && c.Skill==skill)
                 ?? throw new InvalidOperationException("stale_target");
@@ -190,7 +192,9 @@ public sealed partial class CompanionControl {
             mate.IsCatchingUp = false;
             record.Stand=candidate.Stand;
             if(skill=="refill")record.Resources=SupplyFor(mate,(StardewValley.Object)candidate.Source)??throw new InvalidOperationException("supply_changed");
-            if(skill is not ("collect" or "refill" or "deposit")) {
+            if(skill=="plant")record.Resources=Ingredient(mate,((Plot)candidate.Source).Seed)??throw new InvalidOperationException("seed_missing");
+            if(skill=="feed")record.Resources=Ingredient(mate,"(O)178");
+            if(skill is not ("buy" or "ship" or "till" or "plant" or "feed" or "tend" or "forage" or "collect" or "gift" or "refill" or "deposit")) {
                 var kind=skill=="mine"?TaskType.Mining:skill=="water"?TaskType.Watering:skill=="pet"?TaskType.Petting:TaskType.Harvesting;
                 mod.FollowerManager.AssignAgentTask(mate, new SquadTask(kind, record.Target, candidate.Stand, isManual: true));
                 record.Assigned = mate.Task;
@@ -224,7 +228,9 @@ public sealed partial class CompanionControl {
         r.TargetRemaining = r.Rock != null && r.Location.objects.ContainsKey(r.Target.ToVector2());
     }
     private bool PendingEffect(Record r) {
-        if(r.Skill is "refill" or "deposit")return ResourcePending(r);
+        if(r.Skill is "buy" or "ship")return EconomyPending(r);
+        if(r.Skill is "till" or "plant" or "feed" or "tend" or "forage")return ProductionPending(r);
+        if(r.Skill is "gift" or "refill" or "deposit")return ResourcePending(r);
         if (r.Skill=="mine") return r.Location.objects.TryGetValue(r.Target.ToVector2(),out var rock) && ReferenceEquals(rock,r.Source);
         if(r.Skill=="pet")return r.Source is FarmAnimal animal && animal.currentLocation==r.Location && !animal.wasPet.Value;
         if(r.Skill=="collect")return r.Source is StardewValley.Object machine && r.Location.objects.TryGetValue(r.Target.ToVector2(),out var current) && ReferenceEquals(current,machine) && machine.readyForHarvest.Value && machine.heldObject.Value!=null;
@@ -241,7 +247,7 @@ public sealed partial class CompanionControl {
             bool combat=r.Mate.Task?.Type==TaskType.Attacking;
             if (combat) r.CombatPaused=true;
             if (!combat) r.ActiveSeconds+=dt;
-            if(!combat && r.Skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
+            if(!combat && r.Skill is "buy" or "ship" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
                 r.StallSeconds=r.LastPosition==r.Mate.Npc.TilePoint && !r.Mate.IsOnCooldown()?r.StallSeconds+dt:0;
                 r.LastPosition=r.Mate.Npc.TilePoint;
             }
@@ -272,7 +278,7 @@ public sealed partial class CompanionControl {
                 if(r.Status=="running" && r.Skill=="fish" && r.Mate.Npc.TilePoint==r.Assigned?.InteractionTile) {
                     r.FishingSeconds+=dt;
                     if(r.FishingSeconds-r.LastCatch>=10 && !r.Mate.IsOnCooldown()) {
-                        r.LastCatch=r.FishingSeconds; TaskManager.TryNpcCatchFish(r.Mate,mod.SquadManager.Count);
+                        r.LastCatch=r.FishingSeconds; using(OwnOutput(r.Mate))TaskManager.TryNpcCatchFish(r.Mate,mod.SquadManager.Count);
                     }
                     if(r.FishingSeconds>=r.Duration) Finish(r,"succeeded");
                 }
@@ -299,7 +305,7 @@ public sealed partial class CompanionControl {
             follow_mode_enabled = r.Skill == "follow" && r.Status == "succeeded" } };
     public void Reset() {
         foreach (var r in records.Values.Where(r => r.Status == "running").ToArray()) Finish(r, "cancelled", "session_reset");
-        records.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();resourceReservations.Clear();
+        records.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();resourceReservations.Clear();plotTargets.Clear();farmPolicy=new(){Enabled=false};
     }
     public string PrepareLab() {
         if (Context.IsMultiplayer || Game1.player.Name != "AgentLab") throw new InvalidOperationException("lab_save_required");
@@ -349,6 +355,7 @@ public sealed partial class CompanionControl {
         return Json(new { fixture = "CompanionLab-v3", actors = 2, rocks = 3, dry_crops=2, mature_crops=2, note = "Explicit test setup; actions use Squad tasks and pathfinding." });
     }
     private sealed class Record {
+        public int ShipCount;
         public ResourceWork? Resources;
         public int[]? PickupTile;
         public Dictionary<string,int> ResourceChanges=new();

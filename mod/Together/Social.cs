@@ -1,0 +1,110 @@
+namespace Together;
+
+public sealed class Temperament {
+    public int Initiative {get;set;}=60;
+    public int Sociability {get;set;}=50;
+    public int RiskTolerance {get;set;}=45;
+    public int Patience {get;set;}=60;
+    public int Planning {get;set;}=55;
+}
+public sealed class RelationshipState {
+    public int Trust {get;set;}=35;
+    public int Comfort {get;set;}=40;
+    public int Cooperation {get;set;}=35;
+    public int ChangeDay {get;set;}=-1;
+    public int DailyPositive {get;set;}
+    public List<string> AppliedEvents {get;set;}=new();
+    public void Apply(string id,string kind,int day) {
+        if(AppliedEvents.Contains(id))return;
+        AppliedEvents.Add(id);if(AppliedEvents.Count>400)AppliedEvents.RemoveAt(0);
+        if(ChangeDay!=day){ChangeDay=day;DailyPositive=0;}
+        if(kind=="forced") {Comfort=Math.Max(0,Comfort-2);Cooperation=Math.Max(0,Cooperation-1);return;}
+        if(kind=="external_failure" || kind=="declined" || kind=="quiet" || DailyPositive>=6)return;
+        if(kind=="promise_kept") {Trust=Math.Min(100,Trust+1);Cooperation=Math.Min(100,Cooperation+1);}
+        else if(kind=="shared_time")Comfort=Math.Min(100,Comfort+1);
+        else return;
+        DailyPositive++;
+    }
+}
+public sealed class ConversationTopic {
+    public string Id {get;set;}=Guid.NewGuid().ToString("N");
+    public string Text {get;set;}="";
+    public string EventId {get;set;}="";
+    public int Day {get;set;}
+    public int ExpiresDay {get;set;}
+    public bool Answered {get;set;}
+    public string Reply {get;set;}="";
+}
+public sealed class SharedHabit {
+    public string Skill {get;set;}="";
+    public string Location {get;set;}="";
+    public string Title {get;set;}="";
+    public bool Enabled {get;set;}=true;
+    public bool Confirmed {get;set;}
+    public List<int> Days {get;set;}=new();
+    public int LastInvitedDay {get;set;}=-1;
+}
+public sealed class DiaryEntry {
+    public int Day {get;set;}
+    public string Text {get;set;}="";
+    public List<string> Sources {get;set;}=new();
+}
+public sealed class PersonalWish {
+    public string Id {get;set;}=Guid.NewGuid().ToString("N");
+    public string Title {get;set;}="";
+    public string Skill {get;set;}="fish";
+    public string Status {get;set;}="active";
+    public int Target {get;set;}=3;
+    public int CreatedDay {get;set;}
+    public List<string> Evidence {get;set;}=new();
+}
+public sealed class SocialState {
+    public int GiftDay {get;set;}=-1;
+    public int HolidayDay {get;set;}=-1;
+    public string Mode {get;set;}="normal"; // quiet, holiday, normal
+    public double PlaySeconds {get;set;}
+    public double LastOpening {get;set;}=-180;
+    public int OpeningDay {get;set;}=-1;
+    public int Openings {get;set;}
+    public RelationshipState Relationship {get;set;}=new();
+    public List<ConversationTopic> Topics {get;set;}=new();
+    public List<SharedHabit> Habits {get;set;}=new();
+    public List<DiaryEntry> Diary {get;set;}=new();
+    public List<PersonalWish> Wishes {get;set;}=new();
+    public List<string> Preferences {get;set;}=new();
+    public List<string> SharedResults {get;set;}=new();
+    public bool CanOpen(int day) {
+        if(OpeningDay!=day){OpeningDay=day;Openings=0;}
+        return Mode!="quiet" && Openings<3 && PlaySeconds-LastOpening>=180;
+    }
+    public void Open(int day,string text,string eventId) {
+        if(OpeningDay!=day){OpeningDay=day;Openings=0;}
+        LastOpening=PlaySeconds;Openings++;
+        Topics.Add(new(){Text=text,EventId=eventId,Day=day,ExpiresDay=day+3});
+        Topics=Topics.Where(t=>t.ExpiresDay>=day).TakeLast(12).ToList();
+    }
+    public void Reply(string text,int day) {
+        var topic=Topics.LastOrDefault(t=>!t.Answered && t.ExpiresDay>=day);
+        if(topic!=null){topic.Answered=true;topic.Reply=text;}
+    }
+    public void ObserveShared(string eventId,string skill,string location,int day,bool voluntary) {
+        if(!voluntary || SharedResults.Contains(eventId))return;
+        SharedResults.Add(eventId);SharedResults=SharedResults.TakeLast(120).ToList();
+        Relationship.Apply(eventId,"shared_time",day);
+        if(skill is not ("fish" or "mine" or "rest" or "harvest"))return;
+        var habit=Habits.FirstOrDefault(h=>h.Skill==skill && h.Location==location);
+        if(habit==null){habit=new(){Skill=skill,Location=location,Title="在"+location+"一起"+Decision.Labels[skill]};Habits.Add(habit);}
+        if(!habit.Days.Contains(day))habit.Days.Add(day);
+        // Repetition suggests a habit; explicit acceptance is required to call it "our habit".
+        Habits=Habits.TakeLast(12).ToList();
+    }
+    public void CloseDay(int day,IEnumerable<Experience> experiences,IEnumerable<SharedProject> projects) {
+        var facts=experiences.Where(e=>e.Day==day).ToArray();
+        if(Diary.Any(d=>d.Day==day))return;
+        string text=facts.Length==0?"今天没有记下已经完成的活动。":string.Join("；",facts.TakeLast(3).Select(e=>e.Summary));
+        var promises=projects.Where(p=>p.Status=="active").Take(2).Select(p=>p.Title+"："+p.Detail).ToArray();
+        if(promises.Length>0)text+="。还惦记着："+string.Join("；",promises);
+        Diary.Add(new(){Day=day,Text=text,Sources=facts.Select(e=>e.Id).ToList()});Diary=Diary.TakeLast(28).ToList();
+    }
+    public void Forget() {Topics.Clear();Habits.Clear();Diary.Clear();Wishes.Clear();Preferences.Clear();SharedResults.Clear();}
+}

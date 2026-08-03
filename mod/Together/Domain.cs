@@ -3,16 +3,18 @@ using System.Text.Json;
 namespace Together;
 
 public sealed class Profile {
+    public Temperament Temperament {get;set;}=new();
     public string Role {get;set;}="朋友";
     public string Traits {get;set;}="有主见，温柔，会开玩笑";
     public string Likes {get;set;}="钓鱼，和你一起冒险";
     public string Dislikes {get;set;}="连续劳动，被当成工具";
     public string Style {get;set;}="简短自然，像熟悉的朋友；有点俏皮，不说教";
     public static Profile Preset(string name) => name switch {
-        "冒险搭子" => new(){Traits="勇敢、好奇、主动帮忙",Likes="挖矿，战斗，探险",Dislikes="一直待着不动",Style="爽朗、有一点冒险家的幽默"},
-        "钓鱼搭子" => new(){Traits="慢性子、有主见、喜欢安静",Likes="钓鱼，看水面发呆",Dislikes="挖矿，连续劳动",Style="悠闲，偶尔冷幽默"},
-        "贴心恋人" => new(){Role="恋人（自定义称呼，不改游戏婚姻）",Traits="体贴，会撒娇，也有自己的安排",Likes="一起钓鱼，散步，小约定",Dislikes="被忘记的约定",Style="亲近，偶尔调侃，不油腻"},
-        _ => new(){Traits="勤快、务实、喜欢合作",Likes="浇水，收获，整理农场",Dislikes="忽视休息",Style="朴实温暖，乐意分享小发现"}
+        "冒险搭子" => new(){Temperament=new(){RiskTolerance=85,Initiative=80,Planning=40},Traits="勇敢、好奇、主动帮忙",Likes="挖矿，战斗，探险",Dislikes="一直待着不动",Style="爽朗、有一点冒险家的幽默"},
+        "钓鱼搭子" => new(){Temperament=new(){RiskTolerance=25,Initiative=55,Sociability=35},Traits="慢性子、有主见、喜欢安静",Likes="钓鱼，看水面发呆",Dislikes="挖矿，连续劳动",Style="悠闲，偶尔冷幽默"},
+        "贴心恋人" => new(){Temperament=new(){Sociability=85,Patience=80},Role="恋人（自定义称呼，不改游戏婚姻）",Traits="体贴，会撒娇，也有自己的安排",Likes="一起钓鱼，散步，小约定",Dislikes="被忘记的约定",Style="亲近，偶尔调侃，不油腻"},
+        "慢热朋友" => new(){Temperament=new(){Sociability=20,Initiative=30,Patience=75},Traits="慢热、认真，有一点笨拙的幽默",Likes="散步，钓鱼，安静地陪着",Dislikes="突然被催促，危险的地方",Style="开始话少，熟悉后会记住小事"},
+        _ => new(){Temperament=new(){Planning=85,Initiative=70},Traits="勤快、务实、喜欢合作",Likes="浇水，收获，整理农场",Dislikes="忽视休息",Style="朴实温暖，乐意分享小发现"}
     };
 }
 public sealed class Step {
@@ -33,12 +35,12 @@ public sealed class Decision {
             || d.title==null || d.title.Length>80 || d.steps==null || d.steps.Count>3) throw new InvalidOperationException("决策格式不合法");
         if(!new[]{"none","farm","bundle"}.Contains(d.project))throw new InvalidOperationException("共同项目类型不支持");
         foreach(var step in d.steps) if(step==null || !Labels.ContainsKey(step.skill) || step.count<1 || step.count>5
-            || (!new[]{"refill","deposit","mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
+            || (!new[]{"till","plant","feed","tend","gift","forage","buy","ship","refill","deposit","mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
         if(d.decision=="accept" && d.steps.Count==0) throw new InvalidOperationException("接受任务却没有步骤");
         if(d.decision=="chat" && d.steps.Count>0) throw new InvalidOperationException("聊天不应派工");
         return d;
     }
-    public static readonly Dictionary<string,string> Labels=new(){["refill"]="给机器补料",["deposit"]="存放随身物资",["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
+    public static readonly Dictionary<string,string> Labels=new(){["tend"]="挤奶剪毛",["gift"]="留一件小礼物",["till"]="翻土",["plant"]="播种",["feed"]="给食槽添草",["forage"]="采集",["buy"]="采购清单物品",["ship"]="运送出售物品",["refill"]="给机器补料",["deposit"]="存放随身物资",["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
     public string PlanText()=>string.Join(" → ",steps.Select(s=>Labels[s.skill]+(s.count>1?$" ×{s.count}":"")));
 }
 public sealed class Line {
@@ -60,6 +62,8 @@ public sealed class Job {
     public int Completed {get;set;}
     public string? Command {get;set;}
     public bool FollowMode {get;set;}
+    public double SharedSeconds {get;set;}
+    public double ObservedSeconds {get;set;}
     public bool Forced {get;set;}
     public int Resumes {get;set;}
     public bool Rewarded {get;set;}
@@ -75,6 +79,7 @@ public sealed class Job {
     }
 }
 public sealed class Companion {
+    public SocialState Social {get;set;}=new();
     public Profile Profile {get;set;}=new();
     public LifeState Life {get;set;}=new();
     public int Energy {get;set;}=80;
@@ -100,6 +105,8 @@ public sealed class Companion {
     }
 }
 public sealed class SaveData {
+    public FarmPolicy FarmPolicy {get;set;}=new();
+    public List<PlanNode> Today {get;set;}=new();
     public int SchemaVersion {get;set;}=2;
     public string Pace {get;set;}="balanced";
     public bool FarmHelp {get;set;}=true;

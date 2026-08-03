@@ -9,14 +9,13 @@ namespace TheStardewSquad;
 
 public sealed partial class CompanionControl {
     private readonly HashSet<string> stay=new();
-    // Only existing warp edges are traversed. Doors, mine ladders and special transport
-    // require dedicated adapters; an absent edge is not permission to teleport.
+    // Map warps, unlocked doors, constructed building doors and actual mine stairs.
     private static Warp? NextExit(GameLocation start,string destination) {
         var queue=new Queue<(GameLocation Location,Warp? First)>();
         var visited=new HashSet<string>{start.NameOrUniqueName};queue.Enqueue((start,null));
         while(queue.Count>0 && visited.Count<100) {
             var node=queue.Dequeue();
-            foreach(var edge in node.Location.warps) {
+            foreach(var edge in Exits(node.Location,destination)) {
                 var next=Game1.getLocationFromName(edge.TargetName);
                 if(next==null || !visited.Add(next.NameOrUniqueName))continue;
                 var first=node.First??edge;
@@ -59,10 +58,12 @@ public sealed partial class CompanionControl {
         if(mate.Task!=null) {
             if(mate.Task.Type==TaskType.Fishing && npc.TilePoint==mate.Task.InteractionTile) {
                 if(fast)TaskManager.AnimateFishing(npc,mate.Task.Tile);
-            } else self.mod.FollowerManager.DriveAgentTask(mate,slow,player);
+            } else {using var output=OwnOutput(mate);self.mod.FollowerManager.DriveAgentTask(mate,slow,player);}
             return true;
         }
-        if(active?.Skill is "refill" or "deposit" && !active.EffectByActor) {self.DriveResources(active,slow,player);return true;}
+        if(active?.Skill is "buy" or "ship" && !active.EffectByActor) {self.DriveEconomy(active,slow,player);return true;}
+        if(active?.Skill is "till" or "plant" or "feed" or "tend" or "forage" && !active.EffectByActor) {self.DriveProduction(active,slow,player);return true;}
+        if(active?.Skill is "gift" or "refill" or "deposit" && !active.EffectByActor) {self.DriveResources(active,slow,player);return true;}
         if(active?.Skill=="collect" && !active.EffectByActor) {
             if(npc.TilePoint!=active.Stand)self.mod.FollowerManager.WalkAgent(mate,active.Stand,slow,player);
             else {
@@ -71,7 +72,7 @@ public sealed partial class CompanionControl {
                 if(active.WorkSeconds>=.5 && self.PendingEffect(active)) {
                     var machine=(StardewValley.Object)active.Source!;
                     string output=machine.heldObject.Value.QualifiedItemId;
-                    machine.checkForAction(player,false);
+                    using(var outputScope=OwnOutput(mate))machine.checkForAction(player,false);
                     if(!self.PendingEffect(active)){active.EffectByActor=true;active.Catches.Add(output);mate.ActionCooldown=24;}
                     else self.Finish(active,"failed","inventory_full_or_machine_rejected");
                 }

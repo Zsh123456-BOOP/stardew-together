@@ -39,9 +39,9 @@ public sealed partial class ModEntry {
         if(chest==null){Notice="先走到普通箱子旁边，再设置它的用途。";return;}
         const string key="stardewagent.together/chest-role";
         string role=chest.modData.TryGetValue(key,out var current)?current:"none";
-        role=role=="none"?"supplies":role=="supplies"?"output":"none";
+        role=role=="none"?"supplies":role=="supplies"?"output":role=="output"?"sell":"none";
         chest.modData[key]=role;
-        Notice=role=="supplies"?"这个箱子现在是原料箱：允许取用未预留的物品给机器补料。":role=="output"?"这个箱子现在是收货箱：允许伙伴把随身物资存进来。":"已取消这个箱子的同行用途。";
+        Notice=role=="sell"?"这个箱子现在是待售箱：允许将未预留物品运到出货箱，过夜出售。":role=="supplies"?"这个箱子现在是原料箱：允许取用未预留的物品给机器补料。":role=="output"?"这个箱子现在是收货箱：允许伙伴把随身物资存进来。":"已取消这个箱子的同行用途。";
         RefreshFacts(true);
     }
     public void PauseProject(string id) {var p=Data.Projects.FirstOrDefault(x=>x.Id==id);if(p!=null)p.Status=p.Status=="paused"?"active":"paused";UpdateProjects();}
@@ -64,8 +64,10 @@ public sealed partial class ModEntry {
                 foreach(var need in project.Needs)Data.Reservations[need.Item]=Data.Reservations.GetValueOrDefault(need.Item)+need.Count;
             }
         }
+        UpdateDevelopmentProjects();BuildToday();
         if(Data.Projects.Count>40)Data.Projects=Data.Projects.TakeLast(40).ToList();
-        api?.ConfigureFarm(JsonSerializer.Serialize(Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).Select(n=>new{n.Item,n.Quality,n.Count})));
+        Data.FarmPolicy.Enabled=Data.FarmHelp;
+        api?.ConfigureFarm(JsonSerializer.Serialize(new{reservations=Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).Select(n=>new{n.Item,n.Quality,n.Count}),policy=Data.FarmPolicy}));
     }
     private Situation SituationFor(string name,JsonElement actor,JsonElement world) {
         string location=actor.GetProperty("location").GetString()!;
@@ -93,17 +95,7 @@ public sealed partial class ModEntry {
             p.Life.Tick(s.Day,s.Minute,s.NearPlayer,p.Profile);
             if(p.ProposalAutonomous && p.Proposal!=null && s.Minute>=p.ProposalExpires) {p.Proposal=null;p.ProposalAutonomous=false;}
 
-            if(Settings.Autonomy && s.NearPlayer && s.Minute>=18*60 && p.Life.HabitDay!=s.Day && !Thinking && s.Minute-p.Life.LastSpeechMinute>=60) {
-                p.Life.HabitDay=s.Day;p.Life.LastSpeechMinute=s.Minute;
-                string work=Facts.DryCrops+Facts.RipeCrops==0?"农田这会儿没什么遗漏了":"还有一点农活，不过也不急着把今晚全搭进去";
-                Say(pair.Key,"碰到你啦。"+work+"。今天有没有什么想跟我说的？");
-                AddLine(p.Memories,"我们的习惯",p.Life.SharedHabit);
-            }
-            // Actual experience is shared once, when reunited; remote work isn't narrated as joint labor.
-            if(Settings.Autonomy && s.NearPlayer && s.Minute-p.Life.LastSpeechMinute>=60 && !Thinking) {
-                var memory=p.Life.Experiences.LastOrDefault(x=>!x.Shared && x.Day>=s.Day-2);
-                if(memory!=null) {string when=memory.Day==s.Day?(s.Minute-memory.Minute<120?"刚才":"今天早些时候"):memory.Day==s.Day-1?"昨天":"前天";Say(pair.Key,when+"我"+memory.Summary+"。你那边怎么样？");memory.Shared=true;p.Life.LastSpeechMinute=s.Minute;p.Life.Company=Math.Max(0,p.Life.Company-25);}
-            }
+            SocialTick(pair.Key,p,s);
             if(p.Job?.Status is not ("active" or "waiting" or "paused") && p.Life.Suspended.Count>0) {
                 if(p.Energy<40) {StartOption(pair.Key,new(){Id="rest",Title="把力气歇回来",Reason="还有没做完的安排，先照顾好自己",Steps=new(){new(){skill="rest"}}});continue;}
                 p.Job=p.Life.Suspended[^1];p.Life.Suspended.RemoveAt(p.Life.Suspended.Count-1);
@@ -118,13 +110,13 @@ public sealed partial class ModEntry {
             var pair=people[(autoCursor+i)%people.Length];var p=pair.Value;
             if(p.Job?.Status is "active" or "waiting" or "paused" || p.Proposal!=null || Minute-p.Life.LastDecisionMinute<20)continue;
             var actor=Actor(world,pair.Key);if(!actor.HasValue)continue;
-            var options=LifePlanner.Options(p,SituationFor(pair.Key,actor.Value,world));if(options.Count==0)continue;
+            var options=OptionsFor(pair.Key,p,SituationFor(pair.Key,actor.Value,world),actor.Value);if(options.Count==0)continue;
             autoCursor=(autoCursor+i+1)%people.Length;p.Life.LastDecisionMinute=Minute;
             EnsureBudget();
             string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
             if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100) || !File.Exists(file)) {p.Life.DecisionSource="local-budget-or-offline";StartOption(pair.Key,options[0]);return;}
             pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
-            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,
+            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=p.Social,today=Data.Today,
                 options,projects=Data.Projects.Where(x=>x.Status=="active"),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};
             Data.Calls++;RecordUsage();pending=ModelClient.Ask(file,Settings.Model,context,true);return;
@@ -134,8 +126,8 @@ public sealed partial class ModEntry {
         var p=Person(name);p.Life.Intent=option.Title;p.Life.Reason=option.Reason;
         var d=new Decision{decision="accept",title=option.Title,speech=speech??option.Reason,steps=option.Steps};
         StartFor(name,d,false,"autonomous",option.Id,option.Reason);
-        if(Minute-p.Life.LastSpeechMinute>=60 && Game1.getCharacterFromName(name)?.currentLocation==Game1.currentLocation) {
-            Say(name,speech??(option.Id=="fish"?"我想在这里钓会儿鱼。你忙完了可以过来找我。":option.Title+"，你按自己的节奏来。"));
+        if(p.Social.CanOpen(Game1.Date.TotalDays) && Game1.getCharacterFromName(name)?.currentLocation==Game1.currentLocation) {
+            OpenTopic(name,speech??(option.Id=="fish"?"我想在这里钓会儿鱼。你忙完了可以过来找我。":option.Title+"，你按自己的节奏来。"),"activity:"+p.Job?.Id);
             p.Life.LastSpeechMinute=Minute;
         }
     }
@@ -151,7 +143,7 @@ public sealed partial class ModEntry {
         // Candidate is revalidated against the fresh map before starting, not only its ID.
         var world=World();var actor=Actor(world,pendingName);
         if(!actor.HasValue)return true;
-        var fresh=LifePlanner.Options(p,SituationFor(pendingName,actor.Value,world)).FirstOrDefault(o=>o.Id==id);
+        var fresh=OptionsFor(pendingName,p,SituationFor(pendingName,actor.Value,world),actor.Value).FirstOrDefault(o=>o.Id==id);
         if(fresh==null || p.Job?.Status is "active" or "waiting" or "paused")return true;
         string mode=root.TryGetProperty("decision",out var modeField)?modeField.GetString()??"":"";
         p.Life.DecisionSource="model";p.Life.LastDecisionError="";
@@ -160,7 +152,7 @@ public sealed partial class ModEntry {
             p.Life.LastInvitationDay=Game1.Date.TotalDays;p.ProposalAutonomous=true;p.ProposalExpires=Minute+30;p.Proposal=new(){decision="negotiate",title=fresh.Title,speech=speech??fresh.Title,steps=fresh.Steps};
             Say(pendingName,p.Proposal.speech);
         } else if(mode=="accept")StartOption(pendingName,fresh,speech);
-        else if(mode=="chat") {if(!string.IsNullOrWhiteSpace(speech))Say(pendingName,speech);p.Life.LastSpeechMinute=Minute;}
+        else if(mode=="chat") {if(!string.IsNullOrWhiteSpace(speech))OpenTopic(pendingName,speech,"model:"+Guid.NewGuid().ToString("N"));p.Life.LastSpeechMinute=Minute;}
         else throw new InvalidOperationException("自主决策类型无效。");
         return true;
     }
@@ -180,14 +172,14 @@ public sealed partial class ModEntry {
         if(!Actor(World(),name).HasValue){Notice="先邀请同行，再开始约定。";return;}
         p.Job=new(){Title=d.title,Steps=d.steps.Select(s=>new Step{skill=s.skill,count=s.count,location=s.location}).ToList(),Forced=forced,Origin=origin,OptionId=optionId,Reason=reason};
         p.Proposal=null;p.ProposalAutonomous=false;p.Life.Intent=d.title;p.Life.Reason=reason;
-        if(forced)p.Bond=Math.Max(0,p.Bond-1); // once per forced commitment, never once per crop
+        if(forced){p.Bond=Math.Max(0,p.Bond-1);p.Social.Relationship.Apply(p.Job.Id,"forced",Game1.Date.TotalDays);} // once per forced commitment, never once per crop
         AddLine(p.Memories,origin=="autonomous"?"自己的安排":"约定",d.title+"："+d.PlanText());
         Notice="安排开始；关闭面板后会行动。";
     }
     private void CheckpointJobs() {
         generation++;pending=null;
         foreach(var pair in Data.People) {
-            var p=pair.Value;var job=p.Job;if(job==null || job.Status is not ("active" or "waiting"))continue;
+            var p=pair.Value;p.Social.CloseDay(Game1.Date.TotalDays,p.Life.Experiences,Data.Projects);var job=p.Job;if(job==null || job.Status is not ("active" or "waiting"))continue;
             try {
                 if(job.TravelCommand!=null){api?.CancelAction(job.TravelCommand);job.TravelCommand=null;}
                 if(job.Command!=null && api!=null) {

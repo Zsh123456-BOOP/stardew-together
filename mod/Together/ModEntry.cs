@@ -211,17 +211,18 @@ public sealed partial class ModEntry:Mod {
     }
     public void Send(string message,bool autonomous=false) {
         if(!Context.IsWorldReady || !Connected || string.IsNullOrWhiteSpace(message))return;
+        if(HandleLocalConversation(message))return;
         if(Thinking){Notice="等我把这句话想完，或点停止。";return;}
         if(message.Length>400){Notice="一句话最多 400 字。";return;}
         EnsureBudget();if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100)){Notice="今天的聊天额度用完啦，仍可继续约定和使用快捷活动。";return;}
         JsonElement world;try{world=World();}catch{Notice="游戏状态暂不可用。";return;}
         RefreshFacts();pendingAutonomous=false;pendingOptions.Clear();
         var person=Current; var actor=Actor(world,Selected);
-        if(!autonomous)AddLine(person.Chat,"你",message);
+        if(!autonomous){AddLine(person.Chat,"你",message);person.Social.Reply(message,Game1.Date.TotalDays);}
         var context=new {event_type=autonomous?"idle":"player_message",player_message=message,npc=Selected,profile=person.Profile,
             mood=person.Mood,energy=person.Energy,bond=person.Bond,actor,world=new{location=world.GetProperty("location").GetString(),time=Game1.timeOfDay,
                 health=Game1.player.health,season=Game1.currentSeason,raining=Game1.isRaining,threats=world.GetProperty("threats")},
-            farm=Facts,projects=Data.Projects,needs=person.Life.ModelState(),pace=Data.Pace,
+            farm=Facts,projects=Data.Projects,today=Data.Today,social=person.Social,needs=person.Life.ModelState(),pace=Data.Pace,
             recalled_experiences=MemoryRecall.Select(person.Life.Experiences,message,Game1.Date.TotalDays),
             memories=person.Memories.TakeLast(5).ToArray(),conversation=person.Chat.TakeLast(5).ToArray(),current_promise=person.Job,
             note="bond是本Mod亲近感，actor.relationship是真实好感。没有招募时可以聊天，行动需先邀请。"};
@@ -248,7 +249,7 @@ public sealed partial class ModEntry:Mod {
             if(pendingAutonomous) {
                 var world=World();var actor=Actor(world,pendingName);var p=Person(pendingName);
                 if(actor.HasValue && p.Job?.Status is not ("active" or "waiting" or "paused")) {
-                    var fallback=LifePlanner.Select(p,SituationFor(pendingName,actor.Value,world));
+                    var fallback=OptionsFor(pendingName,p,SituationFor(pendingName,actor.Value,world),actor.Value).FirstOrDefault();
                     if(fallback!=null){p.Life.DecisionSource="local-after-model-error";p.Life.LastDecisionError=e is InvalidOperationException?e.Message:"invalid_model_response";StartOption(pendingName,fallback);}
                 }
                 return;
@@ -303,7 +304,7 @@ public sealed partial class ModEntry:Mod {
         var job=person.Job!;if(job.Index>=job.Steps.Count)return;
         var step=job.Steps[job.Index];
         if(job.FollowMode)return;
-        if(job.Origin=="autonomous" && person.Energy<20 && job.TravelCommand==null && person.Life.Suspended.Count<3 && step.skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
+        if(job.Origin=="autonomous" && person.Energy<20 && job.TravelCommand==null && person.Life.Suspended.Count<3 && step.skill is "till" or "plant" or "feed" or "tend" or "forage" or "buy" or "ship" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
             if(person.Life.Suspended.Count<3)person.Life.Suspended.Add(job);
             job.Status="paused";person.Job=null;
             StartOption(name,new(){Id="rest",Title="先歇会儿，再接着做",Reason="我需要恢复些精力",Steps=new(){new(){skill="rest"}}});return;
@@ -323,7 +324,7 @@ public sealed partial class ModEntry:Mod {
                 using var travel=JsonDocument.Parse(api!.StartAction(JsonSerializer.Serialize(new{command_id=Guid.NewGuid().ToString("N"),actor_id=a.GetProperty("id").GetString(),skill="travel",destination=step.location})));
                 job.TravelCommand=travel.RootElement.GetProperty("command_id").GetString();return;
             }
-            if(step.skill is "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
+            if(step.skill is "till" or "plant" or "feed" or "tend" or "forage" or "buy" or "ship" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
                 var targets=a.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==step.skill && !job.SkippedTargets.Contains(c.GetProperty("target_id").GetString()!)).ToArray();
                 if(targets.Length==0){
                     if(job.Origin=="autonomous") {job.Status="exhausted";job.Detail="当前可达范围已没有待处理目标；实际完成 "+job.Completed+" 个";person.Life.RetryAfter[job.OptionId]=Minute+60;RefreshFacts(true);return;}
@@ -387,6 +388,7 @@ public sealed partial class ModEntry:Mod {
             AddLine(person.Memories,job.Origin=="autonomous"?"自己的收获":"兑现约定",job.Title);
             if(step.skill!="follow")person.Life.Complete(step.skill,Game1.Date.TotalDays,Minute,$"做了“{job.Title}”（{detail}；累计 {job.Completed} 个动作）",job.Origin=="autonomous" && (job.OptionId is "fish" or "mine" or "beach_trip" || person.Profile.Likes.Contains(Decision.Labels[step.skill])));
             else job.Detail="已进入跟随模式；是否来到身边仍取决于实际路径。";
+            RememberResult(name,person,job,step.skill,result);
             person.Life.LastDecisionMinute=Minute;RefreshFacts(true);
             if(job.Origin=="player")Say(name,job.Forced?"做完啦。下一个活动，让我来选一次吧？":step.skill=="refill"?"原料补好了，接下来等机器慢慢加工。你那边怎么样？":"答应你的事做好了，你那边还顺利吗？");
             Notice="约定完成 · "+job.Title;

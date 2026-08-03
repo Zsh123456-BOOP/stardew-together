@@ -98,6 +98,10 @@ def build():
         'CompanionControl.ObserveMine(mate, tile, rock, location);\n\n                if (Game1.random.Next(10) == 0)\n                {\n                    mate.Communicate(TaskType.Mining.ToString());')
     replace_once(task,'// Play sound and show fish icon',
         'CompanionControl.ObserveFish(mate, fishCopy);\n\n            // Play sound and show fish icon')
+    replace_once(task, 'public static bool CanAcceptItem(Item item, Farmer? recruiter = null)\n        {',
+        'public static bool CanAcceptItem(Item item, Farmer? recruiter = null)\n        {\n            if (CompanionControl.CargoAccept(item, false) is bool cargo) return cargo;')
+    replace_once(task, 'private static bool TryAddItemToInventory(Item item, NPC? dropIfFullAt = null, Farmer? recruiter = null)\n        {',
+        'private static bool TryAddItemToInventory(Item item, NPC? dropIfFullAt = null, Farmer? recruiter = null)\n        {\n            if (CompanionControl.CargoAccept(item, true) is bool cargo) return cargo;')
     for adapter in (ROOT / 'mod/SquadAdapter').glob('*.cs'):
         shutil.copyfile(adapter,stage / adapter.name)
     # Drop the separate upstream AfterBuild deployment target in the staging copy.

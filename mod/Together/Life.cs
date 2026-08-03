@@ -50,6 +50,9 @@ public sealed class Experience {
     public int Minute {get;set;}
     public string Summary {get;set;}="";
     public bool Personal {get;set;}
+    public string Location {get;set;}="";
+    public bool PlayerParticipated {get;set;}
+    public string Skill {get;set;}="";
     public bool Shared {get;set;}
 }
 public sealed class SharedProject {

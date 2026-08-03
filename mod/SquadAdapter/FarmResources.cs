@@ -17,7 +17,12 @@ public sealed partial class CompanionControl {
         public int Count {get;set;}
     }
     public string ConfigureFarm(string json) {
-        resourceReservations=JsonSerializer.Deserialize<List<ResourceReservation>>(json)??new();
+        using var doc=JsonDocument.Parse(json);
+        if(doc.RootElement.ValueKind==JsonValueKind.Array)resourceReservations=JsonSerializer.Deserialize<List<ResourceReservation>>(json)??new();
+        else {
+            resourceReservations=JsonSerializer.Deserialize<List<ResourceReservation>>(doc.RootElement.GetProperty("reservations"))??new();
+            farmPolicy=JsonSerializer.Deserialize<FarmPolicy>(doc.RootElement.GetProperty("policy"))??new(){Enabled=false};
+        }
         return Json(new{configured=true});
     }
     private static string PouchId(ISquadMate mate)=>$"Together_Pouch_{mate.RecruiterUniqueId}_{mate.Npc.Name}";
@@ -25,8 +30,28 @@ public sealed partial class CompanionControl {
     private static string Role(Chest chest)=>chest.modData.TryGetValue(ChestRoleKey,out var role)?role:"none";
     private static Dictionary<string,int> Counts(IEnumerable<Item> items)=>items.Where(i=>i!=null && i.Stack>0)
         .GroupBy(i=>i.QualifiedItemId+":"+i.Quality).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
-    private bool Reserved(Item item)=>resourceReservations.Any(r=>r.Count>0 && item.Quality>=r.Quality &&
-        (r.Item==item.QualifiedItemId || (int.TryParse(r.Item.Replace("(O)",""),out int category) && category<0 && item.Category==category)));
+    private static bool Matches(Item item,ResourceReservation r)=>item.Quality>=r.Quality &&
+        (r.Item==item.QualifiedItemId || (int.TryParse(r.Item.Replace("(O)",""),out int category) && category<0 && item.Category==category));
+    private int FreeCount(Item item) {
+        // Allocate each reservation once, preferring the lowest adequate quality. Preserve references
+        // so moved stacks are re-evaluated against their actual current inventory, not stale copies.
+        var items=new List<Item>();items.AddRange(Game1.player.Items.Where(i=>i!=null));
+        void Visit(GameLocation l) {
+            foreach(var c in l.objects.Values.OfType<Chest>())items.AddRange(c.GetItemsForPlayer(Game1.player.UniqueMultiplayerID).Where(i=>i!=null));
+            foreach(var b in l.buildings)if(b.GetIndoors() is {} inside)Visit(inside);
+        }
+        Visit(Game1.getFarm());foreach(var m in Members)items.AddRange(Pouch(m).Where(i=>i!=null));
+        if(!items.Any(i=>ReferenceEquals(i,item)))return 0;
+        var remaining=items.Distinct().ToDictionary(i=>i,i=>i.Stack);
+        foreach(var r in resourceReservations.Where(r=>r.Count>0).OrderByDescending(r=>r.Quality)) {
+            int need=r.Count;
+            foreach(var stack in remaining.Keys.Where(i=>Matches(i,r)).OrderBy(i=>i.Quality).ToArray()) {
+                int keep=Math.Min(need,remaining[stack]);remaining[stack]-=keep;need-=keep;if(need<=0)break;
+            }
+        }
+        return remaining.GetValueOrDefault(item);
+    }
+    private bool Reserved(Item item)=>FreeCount(item)<=0;
     private sealed record Take(Item Item,int Count);
     private sealed class ResourceWork {
         public Chest? Chest;
@@ -36,8 +61,7 @@ public sealed partial class CompanionControl {
         public int Quality;
         public bool PickedUp;
     }
-    // Conservative reservation: any matching reserved stack is excluded from processing.
-    // This can leave surplus unused, but never spends promised high-quality ingredients.
+    // Only unreserved quantities can be selected or consumed.
     private ResourceWork? SupplyFor(ISquadMate mate,StardewValley.Object machine) {
         var data=machine.GetMachineData();if(data==null || machine.heldObject.Value!=null || machine.GetType()!=typeof(StardewValley.Object))return null;
         bool carrying=Pouch(mate).Any(i=>i!=null);
@@ -49,14 +73,14 @@ public sealed partial class CompanionControl {
                 if(!MachineDataUtility.TryGetMachineOutputRule(machine,data,MachineOutputTrigger.ItemPlacedInMachine,item,Game1.player,machine.Location,
                     out _,out var trigger,out _,out _) || trigger.RequiredCount<=0)continue;
                 var takes=new List<Take>{new(item,trigger.RequiredCount)};
-                bool valid=item.Stack>=trigger.RequiredCount;
+                bool valid=FreeCount(item)>=trigger.RequiredCount;
                 foreach(var fuel in data.AdditionalConsumedItems??new()) {
                     var stack=inventory.FirstOrDefault(i=>i!=null && i.QualifiedItemId==ItemRegistry.QualifyItemId(fuel.ItemId) && !Reserved(i));
                     if(stack==null){valid=false;break;}
                     takes.Add(new(stack,fuel.RequiredCount));
                 }
                 takes=takes.GroupBy(t=>t.Item).Select(g=>new Take(g.Key,g.Sum(t=>t.Count))).ToList();
-                if(valid && takes.All(t=>t.Count>0 && t.Item.Stack>=t.Count) && takes.Count<=8)
+                if(valid && takes.All(t=>t.Count>0 && FreeCount(t.Item)>=t.Count) && takes.Count<=8)
                     return new(){Chest=chest,PickupStand=stand.Value,Takes=takes,Input=item.QualifiedItemId,Quality=item.Quality,PickedUp=carrying};
             }
         }
@@ -66,7 +90,10 @@ public sealed partial class CompanionControl {
         if(Pouch(mate).Any(i=>i!=null && i.Stack>0)) {
             foreach(var chest in mate.Npc.currentLocation.objects.Values.OfType<Chest>().Where(c=>Role(c)=="output")) {
                 var stand=StandingSpot(mate,chest.TileLocation.ToPoint());
-                if(stand.HasValue)yield return new(TargetId(chest)+":deposit","deposit",chest.TileLocation.ToPoint(),chest,stand.Value);
+                if(stand.HasValue) {
+                    yield return new(TargetId(chest)+":deposit","deposit",chest.TileLocation.ToPoint(),chest,stand.Value);
+                    if(Pouch(mate).Any(i=>i!=null && i.Category is -4 or -80 && FreeCount(i)>0))yield return new(TargetId(chest)+":gift","gift",chest.TileLocation.ToPoint(),chest,stand.Value);
+                }
             }
         }
         foreach(var machine in mate.Npc.currentLocation.objects.Values.Where(o=>o.bigCraftable.Value && o.heldObject.Value==null).Take(32)) {
@@ -75,7 +102,7 @@ public sealed partial class CompanionControl {
         }
     }
     private bool ResourcePending(Record r)=>r.Location.objects.TryGetValue(r.Target.ToVector2(),out var current) && ReferenceEquals(current,r.Source)
-        && (r.Skill=="deposit"?current is Chest c && Role(c)=="output" && Pouch(r.Mate).Any(i=>i!=null && i.Stack>0):current.heldObject.Value==null);
+        && (r.Skill is "deposit" or "gift"?current is Chest c && Role(c)=="output" && Pouch(r.Mate).Any(i=>i!=null && i.Stack>0):current.heldObject.Value==null);
     private void DriveResources(Record r,bool slow,Farmer player) {
         var mate=r.Mate;var npc=mate.Npc;var work=r.Resources;
         var spot=r.Skill=="refill" && work?.PickedUp==false?work.PickupStand:r.Stand;
@@ -85,11 +112,12 @@ public sealed partial class CompanionControl {
         if(r.WorkSeconds<.5)return;
         r.WorkSeconds=0;
         var pouch=Pouch(mate);
-        if(r.Skill=="deposit") {
+        if(r.Skill is "deposit" or "gift") {
             if(r.Source is not Chest chest || Role(chest)!="output"){Finish(r,"failed","chest_permission_changed");return;}
-            var item=pouch.FirstOrDefault(i=>i!=null && i.Stack>0);if(item==null){Finish(r,"failed","pouch_empty");return;}
-            int count=item.Stack;string key=item.QualifiedItemId+":"+item.Quality;
+            var item=pouch.FirstOrDefault(i=>i!=null && i.Stack>0 && (r.Skill!="gift" || (i.Category is -4 or -80 && FreeCount(i)>0)));if(item==null){Finish(r,"failed","pouch_empty");return;}
+            int count=r.Skill=="gift"?1:item.Stack;string key=item.QualifiedItemId+":"+item.Quality;
             var copy=item.getOne();copy.Stack=count;
+            if(r.Skill=="gift")copy.modData["stardewagent.together/gift-from"]=r.Mate.Npc.Name;
             var remainder=chest.addItem(copy);int moved=count-(remainder?.Stack??0);
             if(moved==0){Finish(r,"failed","output_chest_full");return;}
             item.Stack-=moved;if(item.Stack==0)pouch.Remove(item);
@@ -100,7 +128,7 @@ public sealed partial class CompanionControl {
             if(work.Chest==null){Finish(r,"failed","missing_supply_chest");return;}
             var inventory=work.Chest.GetItemsForPlayer(mate.RecruiterUniqueId);
             if(Role(work.Chest)!="supplies" || !r.Location.objects.Values.Any(o=>ReferenceEquals(o,work.Chest)) || pouch.Any(i=>i!=null)
-                || work.Takes.Any(t=>!inventory.Contains(t.Item) || t.Item.Stack<t.Count || Reserved(t.Item))) {
+                || work.Takes.Any(t=>!inventory.Contains(t.Item) || FreeCount(t.Item)<t.Count)) {
                 Finish(r,"failed","supply_changed_or_reserved");return;
             }
             foreach(var take in work.Takes) {
@@ -109,7 +137,7 @@ public sealed partial class CompanionControl {
             }
             work.PickedUp=true;r.PickupTile=Tile(npc.TilePoint);return;
         }
-        if(work.Takes.Any(t=>Reserved(t.Item))){Finish(r,"failed","supply_now_reserved");return;}
+        if(work.Takes.Any(t=>!pouch.Any(i=>i!=null && i.QualifiedItemId==t.Item.QualifiedItemId && i.Quality==t.Item.Quality && FreeCount(i)>=t.Count))){Finish(r,"failed","supply_now_reserved");return;}
         var machine=(StardewValley.Object)r.Source!;
         var input=pouch.FirstOrDefault(i=>i!=null && i.QualifiedItemId==work.Input && i.Quality==work.Quality);
         if(input==null || machine.heldObject.Value!=null || !ResourcePending(r)){Finish(r,"failed","machine_or_cargo_changed");return;}

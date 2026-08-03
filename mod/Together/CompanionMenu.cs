@@ -6,12 +6,12 @@ using StardewValley.Menus;
 
 namespace Together;
 
-public sealed class CompanionMenu:IClickableMenu {
+public sealed partial class CompanionMenu:IClickableMenu {
     private readonly ModEntry mod;
     private readonly List<(Rectangle Rect,string Text,Action Click)> buttons=new();
     private readonly List<TextBox> fields=new();
     private TextBox? chat;
-    private int tab,scroll;
+    private int tab,scroll,managePage,choiceIndex;
     private static readonly Color Paper=new(248,239,216),Ink=new(43,65,57),Green=new(65,109,86),Gold=new(184,132,66);
     public CompanionMenu(ModEntry mod,int initialTab=0):base(0,0,Math.Min(1000,Game1.uiViewport.Width-40),Math.Min(670,Game1.uiViewport.Height-32),false) {
         this.mod=mod; tab=initialTab; xPositionOnScreen=(Game1.uiViewport.Width-width)/2;yPositionOnScreen=(Game1.uiViewport.Height-height)/2;
@@ -31,7 +31,7 @@ public sealed class CompanionMenu:IClickableMenu {
         });
         Button(166,112,130,36,"邀请同行",()=>mod.Recruit());
         Button(310,112,130,36,"各忙各的",()=>mod.Dismiss());
-        for(int i=0;i<5;i++){int next=i;Button(width-500+i*95,112,89,36,new[]{"聊天","人设","经历","心事","农场"}[i],()=>{tab=next;scroll=0;Rebuild();});}
+        for(int i=0;i<7;i++){int next=i;Button(width-546+i*76,112,70,36,new[]{"聊天","人设","经历","心事","农场","经营","相处"}[i],()=>{tab=next;scroll=0;Rebuild();});}
         if(tab==0) {
             chat=Input(32,height-112,width-178,"",400);
             chat.OnEnterPressed+=_=>Send();
@@ -45,8 +45,8 @@ public sealed class CompanionMenu:IClickableMenu {
             for(int i=0;i<shortcuts.Length;i++){var item=shortcuts[i];Button(28+i*108,height-158,98,30,item.Item2,()=>mod.Quick(item.Item1));}
             Button(width-204,height-158,172,30,mod.Settings.Autonomy?"自主生活：开":"自主生活：关",()=>{mod.ToggleAuto();Rebuild();});
         } else if(tab==1) {
-            var names=new[]{"冒险搭子","钓鱼搭子","贴心恋人","农场伙伴"};
-            for(int i=0;i<4;i++){string name=names[i];Button(28+i*166,178,152,36,name,()=>{mod.SetPreset(name);Rebuild();});}
+            var names=new[]{"冒险搭子","钓鱼搭子","贴心恋人","农场伙伴","慢热朋友"};
+            for(int i=0;i<5;i++){string name=names[i];Button(28+i*148,178,140,36,name,()=>{mod.SetPreset(name);Rebuild();});}
             var p=mod.Current.Profile;
             int gap=Math.Clamp((height-350)/5,38,54);
             Input(152,230,width-188,p.Role,80);Input(152,230+gap,width-188,p.Traits,160);
@@ -67,7 +67,8 @@ public sealed class CompanionMenu:IClickableMenu {
             }
             var paces=new[]{("relaxed","慢慢生活"),("balanced","劳逸结合"),("focused","推进目标")};
             for(int i=0;i<paces.Length;i++){var pace=paces[i];Button(28+i*160,height-102,150,36,(mod.Data.Pace==pace.Item1?"● ":"")+pace.Item2,()=>{mod.SetPace(pace.Item1);Rebuild();});}
-        }
+        } else if(tab==5)BuildManagement();
+        else if(tab==6)BuildSocial();
     }
     private void Send() {
         if(chat==null || string.IsNullOrWhiteSpace(chat.Text))return;
@@ -124,7 +125,9 @@ public sealed class CompanionMenu:IClickableMenu {
                 Text(b,Wrap((project.Status=="paused"?"已暂停 · ":"")+project.Title+"："+project.Detail+(project.Needs.Count>0?"\n"+string.Join(" / ",project.Needs.Take(3).Select(n=>n.Name+"缺"+n.Missing)):""),width-200),28,y,Ink,.78f);y+=72;
             }
             if(!mod.Data.Projects.Any(p=>p.Status=="active"))Text(b,"先选一个共同安排。大事由你决定，小事我们分担。",28,344,Gold,.8f);
-        } else {
+        } else if(tab==5)DrawManagement(b);
+        else if(tab==6)DrawSocial(b);
+        else {
             Text(b,"我们一起做过的事",28,178,Green);
             var entries=mod.Current.Memories.AsEnumerable().Reverse().Skip(scroll).Take(5).ToArray();int y=220;
             if(entries.Length==0)Text(b,"一起完成一个小约定，这里就会留下记忆。",32,y,Gold,.85f);

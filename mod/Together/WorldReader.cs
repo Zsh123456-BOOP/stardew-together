@@ -5,6 +5,12 @@ using StardewValley.TerrainFeatures;
 namespace Together;
 
 public sealed class WorldFacts {
+    public int FeedNeeded {get;set;}
+    public int HayInSilo {get;set;}
+    public List<ProgressGoal> Goals {get;set;}=new();
+    public List<object> Objectives {get;set;}=new();
+    public List<SeedFact> Seeds {get;set;}=new();
+    public List<PlanNode> CareLocations {get;set;}=new();
     public int Day {get;set;}
     public int Time {get;set;}
     public string Season {get;set;}="";
@@ -123,6 +129,7 @@ public static class WorldReader {
         if(f.AnimalsUnpetted>0)f.Alerts.Add($"{f.AnimalsUnpetted} 只动物还没被抚摸");
         if(f.MachinesReady>0)f.Alerts.Add($"{f.MachinesReady} 台机器可以收取");
         if(Game1.dayOfMonth>=25)f.Alerts.Add("临近换季：播种前需要核对剩余生长天数");
+        ProgressReader.Read(f);
         return f;
     }
 }

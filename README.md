@@ -1,15 +1,15 @@
 # 同行 · Together：星露谷陪伴 Agent
 
-**当前可运行原型为 C# Mod「同行 · Together 0.2」**：游戏内 F8 聊天、自定义人设、DeepSeek Flash 决策、自主目标、中断恢复、共同农务、真实进度读取、关系与记忆，以及 Squad 执行动作。不使用视觉模型，正式游玩不依赖 Python 服务。
+**当前可运行阶段版为 C# Mod「同行 · Together 0.3」**：游戏内 F8 聊天、自定义人设、DeepSeek Flash 决策、自主目标、中断恢复、共同农务、指定箱子的物资取放、机器补料、真实进度读取、经历检索，以及 Squad 执行动作。不使用视觉模型，正式游玩不依赖 Python 服务。
 
-[完整产品设计方案（实施中）](docs/同行完整设计方案.md) · [原型使用指南](docs/同行使用指南.md) · [0.2 实现与验收](docs/同行0.2实现与验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
+[完整产品设计方案（实施中）](docs/同行完整设计方案.md) · [使用指南](docs/同行使用指南.md) · [0.3 实现与验收](docs/同行0.3实现与验收.md) · [0.2 基础验收](docs/同行0.2实现与验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
 
 ```bash
 python3 scripts/build_companion.py
 python3 scripts/package_together.py
 ```
 
-双击生成目录 `outputs/同行体验版/启动同行.command`。模型 Key 读取项目 `.env`，不进入 Git 或安装 ZIP。`Together-0.2.0-own-code.zip` 仅含新 Mod，需要单独准备 Squad 适配依赖；本机体验目录已配好。
+双击生成目录 `outputs/同行体验版/启动同行.command`。模型 Key 读取项目 `.env`，不进入 Git 或安装 ZIP。`Together-0.3.0-own-code.zip` 仅含新 Mod，需要单独准备 Squad 适配依赖；本机体验目录已配好。
 
 开发测试仍可用 `python3 scripts/launch.py --companion --lab`，仅在 AgentLab 专用存档操作。C# 检查：`work/dotnet/dotnet run --project tests/Together.DomainChecks.csproj`；真实游戏检查：`python3 evals/companion_control.py`、`python3 evals/together_control.py`、`python3 evals/farm_care.py`（关闭面板并停止任务后运行）。
 

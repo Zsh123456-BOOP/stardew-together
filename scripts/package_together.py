@@ -48,12 +48,14 @@ def package(destination: Path):
     if credits.exists():
         shutil.copyfile(credits, playable / '来源说明.md')
     version = json.loads((source/'Together/manifest.json').read_text())['Version']
+    report=ROOT/'docs'/f"同行{'.'.join(version.split('.')[:2])}实现与验收.md"
+    if report.exists():shutil.copyfile(report,playable/'验收与限制.md')
     archive = destination / f'Together-{version}-own-code.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for name in ('Together.dll', 'manifest.json'):
             z.write(source / 'Together' / name, 'Together/' + name)
         z.writestr('Together/.env.example', 'DEEPSEEK_API_KEY=put_your_key_here\n')
-        for path in (readme, credits):
+        for path in (readme, credits, report):
             if path.exists(): z.write(path, 'Together/' + path.name)
     print('Local playable folder:', playable)
     print('Own-code archive (requires separately prepared Squad adapter):', archive)

@@ -13,8 +13,8 @@ public sealed partial class CompanionMenu:IClickableMenu {
     private TextBox? chat;
     private int tab,scroll,managePage,choiceIndex;
     private static readonly Color Paper=new(248,239,216),Ink=new(43,65,57),Green=new(65,109,86),Gold=new(184,132,66);
-    public CompanionMenu(ModEntry mod,int initialTab=0):base(0,0,Math.Min(1000,Game1.uiViewport.Width-40),Math.Min(670,Game1.uiViewport.Height-32),false) {
-        this.mod=mod; tab=initialTab; xPositionOnScreen=(Game1.uiViewport.Width-width)/2;yPositionOnScreen=(Game1.uiViewport.Height-height)/2;
+    public CompanionMenu(ModEntry mod,int initialTab=0,int initialPage=0,int initialChoice=0):base(0,0,Math.Min(1000,Game1.uiViewport.Width-40),Math.Min(670,Game1.uiViewport.Height-32),false) {
+        this.mod=mod; tab=initialTab;managePage=Math.Clamp(initialPage,0,3);choiceIndex=Math.Max(0,initialChoice); xPositionOnScreen=(Game1.uiViewport.Width-width)/2;yPositionOnScreen=(Game1.uiViewport.Height-height)/2;
         Rebuild();
     }
     private void Button(int x,int y,int w,int h,string label,Action action)=>buttons.Add((new Rectangle(xPositionOnScreen+x,yPositionOnScreen+y,w,h),label,action));
@@ -98,7 +98,7 @@ public sealed partial class CompanionMenu:IClickableMenu {
     public override void draw(SpriteBatch b) {
         b.Draw(Game1.staminaRect,new Rectangle(0,0,Game1.uiViewport.Width,Game1.uiViewport.Height),Color.Black*.55f);
         Panel(b,-5,-5,width+10,height+10,Ink);Panel(b,0,0,width,height,Paper);Panel(b,0,0,width,100,Green);
-        var npc=Game1.getCharacterFromName(mod.Selected);
+        var npc=mod.FindCharacter(mod.Selected);
         if(npc!=null)b.Draw(npc.Portrait,new Rectangle(xPositionOnScreen+22,yPositionOnScreen+14,74,74),new Rectangle(0,0,64,64),Color.White);
         Text(b,"同行 / TOGETHER",114,13,Paper,1.12f);
         Text(b,(npc?.displayName??mod.Selected)+"  ·  "+mod.Current.Profile.Role,114,46,Paper,.85f);

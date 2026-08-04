@@ -5,11 +5,12 @@ using StardewValley.TerrainFeatures;
 
 namespace Together;
 public sealed partial class ModEntry {
+    public void RefreshManagement(){UpdateProjects();Persist();}
     public void AddProgressProject(string id) {
         RefreshFacts(true);var goal=Facts.Goals.FirstOrDefault(g=>g.Id==id && !g.Complete);
         if(goal==null){Notice="这个目标已经变化，请重新选择。";return;}
         if(Data.Projects.Any(p=>p.Kind==id && p.Status=="active")){Notice="已经在共同安排里。";return;}
-        Data.Projects.Add(new(){Kind=id,Title=goal.Title,CreatedDay=Facts.Day,Owner=Selected});UpdateProjects();Persist();
+        Data.Projects.Add(new(){Kind=id,Title=goal.Title,Baseline=goal.Cumulative,CreatedDay=Facts.Day,Owner=Selected});UpdateProjects();Persist();
         Notice="已经记下目标和缺口；特殊提交由你来，伙伴会分担可执行的准备。";
     }
     public void AssignProject(string id) {
@@ -37,8 +38,12 @@ public sealed partial class ModEntry {
     private void UpdateDevelopmentProjects() {
         foreach(var p in Data.Projects.Where(p=>p.Status=="active" && p.Kind!="farm" && !p.Kind.StartsWith("bundle:"))) {
             var goal=Facts.Goals.FirstOrDefault(g=>g.Id==p.Kind);
-            if(goal==null){p.Detail="当前存档未再提供此目标，请检查任务是否结束或已过期。";continue;}
-            if(goal.Complete){p.Status="fulfilled";p.Remaining=0;p.Detail="游戏状态确认完成。";continue;}
+            if(goal==null){
+                if(p.Kind.StartsWith("quest:") || p.Kind.StartsWith("order:") || p.Kind.StartsWith("craft:")){p.Status="paused";p.Detail="存档已不再提供此目标，暂停物资预留；请检查是否结束或过期。";}
+                continue;
+            }
+            if(p.Baseline<0)p.Baseline=goal.Cumulative;
+            if(goal.Complete || goal.Kind=="craft" && goal.Cumulative>p.Baseline){p.Status="fulfilled";p.Remaining=0;p.Detail="游戏状态确认完成。";continue;}
             if(goal.Deadline>=0 && goal.Deadline<Facts.Day){p.Status="expired";p.Detail="任务期限已到；不再为它预留物资。";continue;}
             p.Needs=goal.Needs;p.Remaining=goal.Gold>0?Math.Max(0,goal.Gold-Facts.Money):p.Needs.Sum(n=>n.Missing);
             p.Detail=(goal.Gold>0?$"目标资金 {goal.Gold}，还差 {p.Remaining}。":p.Remaining>0?$"还缺 {p.Remaining} 件材料。":"备料齐全，等待玩家操作。")+goal.PlayerStep;
@@ -51,15 +56,15 @@ public sealed partial class ModEntry {
                 if(entry.Item2>0)nodes.Add(new(){Id="farm:"+entry.Item1,Title=Decision.Labels[entry.Item1],Skill=entry.Item1,Location="Farm",Count=entry.Item2,Reason=entry.Item3});
             foreach(var care in Facts.CareLocations)nodes.Add(new(){Id=care.Location+":"+care.Skill,Title=Decision.Labels[care.Skill],Location=care.Location,Skill=care.Skill,Count=care.Count,Reason=care.Reason});
             foreach(var area in Data.FarmPolicy.Areas.Where(a=>a.Enabled)) {
-                var seed=Facts.Seeds.FirstOrDefault(s=>s.Item==a.Seed);var location=Game1.getLocationFromName(area.Location);if(seed==null || location==null)continue;
-                int till=0,plant=0;
+                var seed=Facts.Seeds.FirstOrDefault(s=>s.Item==area.Seed);var location=Game1.getLocationFromName(area.Location);if(seed==null || location==null)continue;
+                int till=0,plant=0,clear=0;
                 for(int y=area.Y;y<area.Y+area.Height;y++)for(int x=area.X;x<area.X+area.Width;x++) {
-                    var tile=new Vector2(x,y);if(location.objects.ContainsKey(tile))continue;
+                    var tile=new Vector2(x,y);if(location.objects.TryGetValue(tile,out var litter)){if(Data.FarmPolicy.ClearDesignatedPlots && (litter.IsTwig() || litter.IsWeeds()))clear++;continue;}
                     if(!location.terrainFeatures.TryGetValue(tile,out var feature) && location.doesTileHaveProperty(x,y,"Diggable","Back")!=null && location.CanItemBePlacedHere(tile))till++;
                     else if(feature is HoeDirt dirt && dirt.crop==null)plant++;
                 }
-                foreach(var step in new[]{("till",till),("plant",plant)})if(step.Item2>0)nodes.Add(new(){Id=area.Id+":"+step.Item1,Title=Decision.Labels[step.Item1]+seed.Name,Location=area.Location,Skill=step.Item1,Count=step.Item2,
-                    Reason="已指定种植区；取实际种子，先检查换季能否成熟",DependsOn=step.Item1=="plant" && till>0?new(){area.Id+":till"}:new()});
+                foreach(var step in new[]{("clear",clear),("till",till),("plant",plant)})if(step.Item2>0)nodes.Add(new(){Id=area.Id+":"+step.Item1,Title=Decision.Labels[step.Item1]+seed.Name,Location=area.Location,Skill=step.Item1,Count=step.Item2,
+                    Reason="已指定种植区；取实际种子，先检查换季能否成熟",DependsOn=step.Item1!="clear" && clear>0?new(){area.Id+":clear"}:step.Item1=="plant" && till>0?new(){area.Id+":till"}:new()});
             }
             foreach(var order in Data.FarmPolicy.Shopping.Where(o=>o.Enabled && o.Count>Facts.Purchased.GetValueOrDefault(o.Id)))nodes.Add(new(){Id="buy:"+order.Id,Title="采购清单："+ItemRegistry.GetDataOrErrorItem(order.Item).DisplayName,
                 Location=order.Shop,Skill="buy",Count=Math.Max(0,order.Count-Facts.Purchased.GetValueOrDefault(order.Id)),Reason="已授权购物清单，逐件核对原生价格和预算"});
@@ -75,15 +80,15 @@ public sealed partial class ModEntry {
                 Reason=goal?.PlayerStep??"材料备齐后由玩家确认交付",DependsOn=project.Needs.Where(n=>n.Missing>0).Select(n=>project.Id+":"+n.Item).ToList()});
         }
         string farmOwner=Data.Projects.LastOrDefault(p=>p.Kind=="farm" && p.Status=="active")?.Owner??"together";
-        foreach(var node in nodes.Where(n=>n.Skill is "water" or "harvest" or "collect" or "feed" or "pet" or "plant" or "till"))node.Owner=farmOwner;
+        foreach(var node in nodes.Where(n=>n.Skill is "water" or "harvest" or "collect" or "feed" or "pet" or "plant" or "till" or "clear"))node.Owner=farmOwner;
         foreach(var node in nodes.Where(n=>n.Status=="ready" && n.DependsOn.Count>0))
             if(node.DependsOn.Any(id=>nodes.Any(p=>p.Id==id && p.Count>0)))node.Status="waiting";
         Data.Today=nodes.Take(120).ToList();
     }
-    private static bool ShopOpen(string location) {
+    private bool ShopOpen(string location) {
         var merchant=location switch {"SeedShop"=>"Pierre","AnimalShop"=>"Marnie","Blacksmith"=>"Clint",_=>""};
-        var npc=Game1.getCharacterFromName(merchant);
-        if(npc?.currentLocation.Name!=location || npc.currentLocation.AreStoresClosedForFestival())return false;
+        var npc=FindCharacter(merchant);
+        if(npc?.currentLocation.Name!=location || GameLocation.AreStoresClosedForFestival())return false;
         return Game1.timeOfDay>=900 && Game1.timeOfDay<(location=="Blacksmith"?1600:1700);
     }
     private List<ActivityOption> OptionsFor(string name,Companion p,Situation s,JsonElement actor) {
@@ -92,7 +97,7 @@ public sealed partial class ModEntry {
         if(p.Social.Mode=="holiday")options.RemoveAll(o=>o.Category=="shared");
         var counts=actor.GetProperty("candidates").EnumerateArray().GroupBy(c=>c.GetProperty("skill").GetString()!).ToDictionary(g=>g.Key,g=>g.Count());
         if(s.FarmResponsibility && p.Energy>=25 && p.Social.Mode!="holiday") {
-            foreach(string skill in new[]{"feed","tend","plant","till","forage","buy","ship"})if(counts.GetValueOrDefault(skill)>0) {
+            foreach(string skill in new[]{"clear","feed","tend","plant","till","forage","buy","ship"})if(counts.GetValueOrDefault(skill)>0) {
                 string id="work:"+skill;if(p.Life.RetryAfter.GetValueOrDefault(id)>s.Minute)continue;
                 options.Add(new(){Id=id,Title="去"+Decision.Labels[skill],Reason="真实目标可达，已在你的经营许可内",Category="shared",Score=skill=="feed"?90:skill=="plant"?83:skill=="till"?78:60,
                     Steps=new(){new(){skill=skill,count=Math.Min(5,counts[skill]),location=s.Location}}});

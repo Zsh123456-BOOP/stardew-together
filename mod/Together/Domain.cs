@@ -35,12 +35,12 @@ public sealed class Decision {
             || d.title==null || d.title.Length>80 || d.steps==null || d.steps.Count>3) throw new InvalidOperationException("决策格式不合法");
         if(!new[]{"none","farm","bundle"}.Contains(d.project))throw new InvalidOperationException("共同项目类型不支持");
         foreach(var step in d.steps) if(step==null || !Labels.ContainsKey(step.skill) || step.count<1 || step.count>5
-            || (!new[]{"till","plant","feed","tend","gift","forage","buy","ship","refill","deposit","mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
+            || (!new[]{"clear","till","plant","feed","tend","gift","forage","buy","ship","refill","deposit","mine","water","harvest","pet","collect"}.Contains(step.skill) && step.count!=1)) throw new InvalidOperationException("任务超出能力范围");
         if(d.decision=="accept" && d.steps.Count==0) throw new InvalidOperationException("接受任务却没有步骤");
         if(d.decision=="chat" && d.steps.Count>0) throw new InvalidOperationException("聊天不应派工");
         return d;
     }
-    public static readonly Dictionary<string,string> Labels=new(){["tend"]="挤奶剪毛",["gift"]="留一件小礼物",["till"]="翻土",["plant"]="播种",["feed"]="给食槽添草",["forage"]="采集",["buy"]="采购清单物品",["ship"]="运送出售物品",["refill"]="给机器补料",["deposit"]="存放随身物资",["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
+    public static readonly Dictionary<string,string> Labels=new(){["clear"]="清理指定地块杂物",["tend"]="挤奶剪毛",["gift"]="留一件小礼物",["till"]="翻土",["plant"]="播种",["feed"]="给食槽添草",["forage"]="采集",["buy"]="采购清单物品",["ship"]="运送出售物品",["refill"]="给机器补料",["deposit"]="存放随身物资",["pet"]="照料动物",["collect"]="收取机器",["mine"]="挖矿",["water"]="浇水",["harvest"]="收获",["fish"]="钓鱼",["guard"]="保护你",["rest"]="歇一会儿",["follow"]="跟着你"};
     public string PlanText()=>string.Join(" → ",steps.Select(s=>Labels[s.skill]+(s.count>1?$" ×{s.count}":"")));
 }
 public sealed class Line {
@@ -81,6 +81,7 @@ public sealed class Job {
     }
 }
 public sealed class Companion {
+    public bool? DailyCompanion {get;set;}
     public SocialState Social {get;set;}=new();
     public Profile Profile {get;set;}=new();
     public LifeState Life {get;set;}=new();
@@ -89,6 +90,7 @@ public sealed class Companion {
     public int Bond {get;set;}=20;
     public List<Line> Chat {get;set;}=new();
     public List<Line> Memories {get;set;}=new();
+    public Decision? LastDecision {get;set;}
     public Decision? Proposal {get;set;}
     public bool ProposalAutonomous {get;set;}
     public int ProposalExpires {get;set;}

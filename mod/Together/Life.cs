@@ -56,6 +56,7 @@ public sealed class Experience {
     public bool Shared {get;set;}
 }
 public sealed class SharedProject {
+    public int Baseline {get;set;}=-1;
     public string Id {get;set;}=Guid.NewGuid().ToString("N");
     public string Kind {get;set;}="farm";
     public string Title {get;set;}="今天的农场一起照料";

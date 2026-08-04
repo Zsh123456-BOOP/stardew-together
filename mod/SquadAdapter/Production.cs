@@ -12,6 +12,7 @@ public sealed partial class CompanionControl {
     public sealed class FarmPolicy {
         public bool Enabled {get;set;}=true;
         public bool FeedAnimals {get;set;}=true;
+    public bool ClearDesignatedPlots {get;set;}
         public int DailyBudget {get;set;}
         public int KeepGold {get;set;}=500;
         public List<PlantingArea> Areas {get;set;}=new();
@@ -80,11 +81,17 @@ public sealed partial class CompanionControl {
         foreach(var area in farmPolicy.Areas.Where(a=>a.Enabled && a.Location==location.NameOrUniqueName).Take(16)) {
             for(int y=area.Y;y<area.Y+Math.Clamp(area.Height,1,12);y++)for(int x=area.X;x<area.X+Math.Clamp(area.Width,1,12);x++) {
                 var tile=new Point(x,y);var v=tile.ToVector2();
-                if(!CanGrow(location,area.Seed,tile) || location.objects.ContainsKey(v))continue;
+                if(location.objects.TryGetValue(v,out var litter)) {
+                    if(farmPolicy.ClearDesignatedPlots && (litter.IsTwig() || litter.IsWeeds()) && Pouch(mate).Count(i=>i!=null)<10) {
+                        var nearby=StandingSpot(mate,tile);if(nearby.HasValue)yield return new(TargetId(litter)+":clear","clear",tile,litter,nearby.Value);
+                    }
+                    continue;
+                }
+                if(!CanGrow(location,area.Seed,tile))continue;
                 location.terrainFeatures.TryGetValue(v,out var feature);
                 string skill;
                 if(feature is HoeDirt dirt && dirt.crop==null)skill="plant";
-                else if(feature==null && location.doesTileHaveProperty(x,y,"Diggable","Back")!=null && location.CanItemBePlacedHere(v))skill="till";
+                else if(feature==null && location.doesTileHaveProperty(x,y,"Diggable","Back")!=null && location.CanItemBePlacedHere(v,collisionMask:CollisionMask.All & ~(CollisionMask.Characters | CollisionMask.Farmers)))skill="till";
                 else continue;
                 if(Ingredient(mate,area.Seed)==null)continue;
                 var stand=StandingSpot(mate,tile);if(!stand.HasValue)continue;
@@ -117,6 +124,7 @@ public sealed partial class CompanionControl {
     }
     private bool ProductionPending(Record r) {
         if(!farmPolicy.Enabled)return false;
+        if(r.Skill=="clear")return farmPolicy.ClearDesignatedPlots && farmPolicy.Areas.Any(a=>a.Enabled && a.Location==r.Location.NameOrUniqueName && r.Target.X>=a.X && r.Target.X<a.X+a.Width && r.Target.Y>=a.Y && r.Target.Y<a.Y+a.Height) && r.Location.objects.TryGetValue(r.Target.ToVector2(),out var litter) && ReferenceEquals(litter,r.Source) && (litter.IsTwig() || litter.IsWeeds());
         if(r.Skill=="tend")return r.Source is FarmAnimal animal && animal.currentLocation==r.Location && animal.TilePoint==r.Target && animal.currentProduce.Value!=null;
         if(r.Skill=="forage")return r.Location.objects.TryGetValue(r.Target.ToVector2(),out var o) && ReferenceEquals(o,r.Source) && (o.isForage() || o.isAnimalProduct());
         if(r.Skill=="feed")return farmPolicy.FeedAnimals && r.Location is AnimalHouse h && h.doesTileHaveProperty(r.Target.X,r.Target.Y,"Trough","Back")!=null && !h.objects.ContainsKey(r.Target.ToVector2());
@@ -127,15 +135,26 @@ public sealed partial class CompanionControl {
         return r.Skill=="till"?feature==null:feature is HoeDirt d && d.crop==null;
     }
     private void DriveProduction(Record r,bool slow,Farmer player) {
-        var npc=r.Mate.Npc;
+        var npc=r.Mate.Npc;if(r.Mate.IsOnCooldown())return;
         if(r.Resources?.PickedUp==false) {PickupIngredient(r,slow,player);return;}
         if(npc.TilePoint!=r.Stand){mod.FollowerManager.WalkAgent(r.Mate,r.Stand,slow,player);return;}
         r.Mate.Halt();npc.faceGeneralDirection(r.Target.ToVector2()*64+new Vector2(32));
-        if(r.WorkSeconds==0) {if(r.Skill=="till")TaskManager.AnimateMining(npc);else npc.shake(350);}
-        r.WorkSeconds+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;if(r.WorkSeconds<.6)return;
+        if(r.WorkSeconds==0) {if(r.Skill=="till")AnimateHoe(npc);else if(r.Skill=="clear")TaskManager.AnimateLumbering(npc);else npc.shake(350);}
+        r.WorkSeconds+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;if(r.WorkSeconds<(r.Skill is "till" or "clear"?.3:.6))return;
         reservationTick=-1;
         if(!ProductionPending(r)){Finish(r,"failed","production_permission_or_target_changed");return;}
-        if(r.Skill=="till") {
+        if(r.Skill=="clear") {
+            var litter=(StardewValley.Object)r.Source!;var before=r.Location.debris.ToHashSet();
+            using(var output=OwnOutput(r.Mate)) {
+                bool removed=litter.performToolAction(new StardewValley.Tools.Axe{lastUser=player});
+                foreach(var drop in r.Location.debris.Where(d=>!before.Contains(d)).ToArray()) {
+                    var item=drop.item;
+                    if(item!=null && CargoAccept(item,true)==true){r.Location.debris.Remove(drop);r.Catches.Add(item.QualifiedItemId);r.ResourceChanges[item.QualifiedItemId+":"+item.Quality]=item.Stack;}
+                }
+                if(!removed){r.WorkSeconds=0;r.Mate.ActionCooldown=24;return;}
+                r.Location.objects.Remove(r.Target.ToVector2());
+            }
+        } else if(r.Skill=="till") {
             if(!r.Location.makeHoeDirt(r.Target.ToVector2())){Finish(r,"failed","soil_not_tillable");return;}
             r.Location.playSound("hoeHit");
         } else if(r.Skill=="plant") {

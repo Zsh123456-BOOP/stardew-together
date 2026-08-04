@@ -73,7 +73,7 @@ public sealed partial class ModEntry {
         else if(job.Origin=="autonomous" && job.OptionId is "fish" or "mine" or "beach_trip")social.TheirTurn=false;
         var experience=p.Life.Experiences.LastOrDefault();
         bool near=job.SharedSeconds>=5 && job.SharedSeconds>=job.ObservedSeconds*.5;
-        string location=Game1.getCharacterFromName(name)?.currentLocation.NameOrUniqueName??"";
+        string location=FindCharacter(name)?.currentLocation.NameOrUniqueName??"";
         if(experience!=null){experience.Location=location;experience.PlayerParticipated=near;experience.Skill=skill;}
         if(job.Origin=="player" && !job.Forced)social.Relationship.Apply(job.Id,"promise_kept",day);
         if(near)social.ObserveShared(job.Id,skill,location,day,!job.Forced && job.Origin=="player");
@@ -94,11 +94,11 @@ public sealed partial class ModEntry {
     }
     public void ConfirmHabit(int index) {
         if(index<0 || index>=Current.Social.Habits.Count)return;
-        var h=Current.Social.Habits[index];if(!h.Confirmed){h.Confirmed=true;h.Enabled=true;}else h.Enabled=!h.Enabled;
+        var h=Current.Social.Habits[index];if(h.Days.Count<3){Notice="先自愿一起度过三天这样的时光，再决定是不是我们的小习惯。";return;}if(!h.Confirmed){h.Confirmed=true;h.Enabled=true;}else h.Enabled=!h.Enabled;
         Notice=h.Enabled?"记住这个小习惯了。到时候会偶尔邀请，不强求。":"这个习惯先放下，不会影响关系。";Persist();
     }
     public void ClearMemories() {
-        generation++;pending=null;Current.Social.Forget();Current.Chat.Clear();Current.Memories.Clear();Current.Life.Experiences.Clear();
+        generation++;pending=null;Current.Social.Forget();Current.Chat.Clear();Current.Memories.Clear();Current.Life.Experiences.Clear();Current.LastDecision=null;Current.Proposal=null;Current.ProposalAutonomous=false;bubbles.Remove(Selected);
         Notice="已清除这位伙伴的聊天、经历、话题、偏好、习惯和日记；关系与正在执行的工作保留。";Persist();
     }
     public void ExportMemories() {

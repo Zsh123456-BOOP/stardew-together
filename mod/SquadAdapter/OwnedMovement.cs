@@ -45,6 +45,24 @@ public sealed partial class CompanionControl {
     }
     public static bool DriveOwned(ISquadMate mate,Farmer player,bool fast,bool slow) {
         if(instance==null || !IsManaged(mate))return false;
+        long before=System.Diagnostics.Stopwatch.GetTimestamp();
+        try{return DriveOwnedCore(mate,player,fast,slow);}
+        finally {
+            movementSamples.Enqueue((System.Diagnostics.Stopwatch.GetTimestamp()-before)*1000.0/System.Diagnostics.Stopwatch.Frequency);
+            if(movementSamples.Count>3600)movementSamples.Dequeue();
+        }
+    }
+    private static readonly Queue<double> movementSamples=new();
+    private static DateTime performanceUntil;
+    private static object? movementPerformance;
+    private static object MovementPerformance() {
+        if(movementPerformance!=null && DateTime.UtcNow<performanceUntil)return movementPerformance;
+        performanceUntil=DateTime.UtcNow.AddSeconds(5);
+        var samples=movementSamples.OrderBy(v=>v).ToArray();
+        return movementPerformance=new{samples=samples.Length,p95_ms=samples.Length==0?0:samples[(int)((samples.Length-1)*.95)],max_ms=samples.Length==0?0:samples[^1],scope="one managed companion body update"};
+    }
+    private static bool DriveOwnedCore(ISquadMate mate,Farmer player,bool fast,bool slow) {
+        if(instance==null || !IsManaged(mate))return false;
         var self=instance;var npc=mate.Npc;
         npc.speed=Math.Clamp((int)player.getMovementSpeed(),2,5);mate.IsCatchingUp=false;
         var active=self.records.Values.LastOrDefault(r=>r.Actor==Id(mate) && r.Status=="running");
@@ -63,7 +81,7 @@ public sealed partial class CompanionControl {
             return true;
         }
         if(active?.Skill is "buy" or "ship" && !active.EffectByActor) {self.DriveEconomy(active,slow,player);return true;}
-        if(active?.Skill is "till" or "plant" or "feed" or "tend" or "forage" && !active.EffectByActor) {self.DriveProduction(active,slow,player);return true;}
+        if(active?.Skill is "clear" or "till" or "plant" or "feed" or "tend" or "forage" && !active.EffectByActor) {self.DriveProduction(active,slow,player);return true;}
         if(active?.Skill is "gift" or "refill" or "deposit" && !active.EffectByActor) {self.DriveResources(active,slow,player);return true;}
         if(active?.Skill=="collect" && !active.EffectByActor) {
             if(npc.TilePoint!=active.Stand)self.mod.FollowerManager.WalkAgent(mate,active.Stand,slow,player);

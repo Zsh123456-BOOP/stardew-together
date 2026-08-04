@@ -50,7 +50,7 @@ def build():
         '        public void WalkAgent(ISquadMate mate, Point tile, bool slow, Farmer player) => GenerateAndFollowPath(mate, tile, slow, player);\n'
         '        private void ExecutePathMovement(ISquadMate mate)')
     replace_once(follower, '            npc.Position += velocity;',
-        '            if (CompanionControl.IsManaged(mate) && ((npc.getStandingPosition() + velocity) / 64f).ToPoint() != npc.TilePoint && !AStarPathfinder.IsTilePassableForFollower(npc.currentLocation, ((npc.getStandingPosition() + velocity) / 64f).ToPoint(), npc)) { mate.Path.Clear(); mate.Halt(); return; }\n            npc.Position += velocity;')
+        '            if (CompanionControl.IsManaged(mate)) CompanionControl.OpenInteriorDoorIfNeeded(npc, ((npc.getStandingPosition() + velocity) / 64f).ToPoint());\n            if (CompanionControl.IsManaged(mate) && ((npc.getStandingPosition() + velocity) / 64f).ToPoint() != npc.TilePoint && !AStarPathfinder.IsTilePassableForFollower(npc.currentLocation, ((npc.getStandingPosition() + velocity) / 64f).ToPoint(), npc)) { mate.Path.Clear(); mate.Halt(); return; }\n            npc.Position += velocity;')
     # Replanning from a tile corner and smoothing a centre-to-centre ray can cut
     # into a machine. Managed paths keep their checked waypoints until obstructed.
     replace_once(follower,'if (isSlowTick || mate.Path == null || mate.Path.Count == 0)',
@@ -65,11 +65,13 @@ def build():
         '        public bool IsTilePassable(Point tile)\n        {\n'
         '            if (tile.X < 0 || tile.Y < 0 || tile.X >= _location.Map.Layers[0].LayerWidth || tile.Y >= _location.Map.Layers[0].LayerHeight) return false;\n'
         '            if (_location.isWaterTile(tile.X, tile.Y) && _location.doesTileHaveProperty(tile.X, tile.Y, "Passable", "Buildings") != "T") return false;')
+    replace_once(map_wrapper, '            // Check building layer', '            if (CompanionControl.CanUseInteriorDoor(_location, tile, _character)) return true;\n            // Check building layer')
     astar = stage / 'Pathfinding/AStarPathfinder.cs'
     replace_once(astar, '        public static bool IsTilePassableForFollower(GameLocation location, Point tile, Character character)\n        {',
         '        public static bool IsTilePassableForFollower(GameLocation location, Point tile, Character character)\n        {\n'
         '            if (tile.X < 0 || tile.Y < 0 || tile.X >= location.Map.Layers[0].LayerWidth || tile.Y >= location.Map.Layers[0].LayerHeight) return false;\n'
         '            if (location.isWaterTile(tile.X, tile.Y) && location.doesTileHaveProperty(tile.X, tile.Y, "Passable", "Buildings") != "T") return false;')
+    replace_once(astar, '            var buildingLayer = location.Map.GetLayer("Buildings");', '            if (CompanionControl.CanUseInteriorDoor(location, tile, character)) return true;\n            var buildingLayer = location.Map.GetLayer("Buildings");')
     unified = stage / 'Framework/Tasks/UnifiedTaskManager.cs' 
     replace_once(unified, '// Get the set of spots claimed by *other* NPCs\n',
         'if (CompanionControl.IsManaged(mate)) return null;\n            // Get the set of spots claimed by *other* NPCs\n')
@@ -87,6 +89,9 @@ def build():
         'public bool ExecuteTask(ISquadMate mate) { if (CompanionControl.WaitForImpact(mate)) return false; bool pending = CompanionControl.BeforeTask(mate); bool result = ExecuteTaskCore(mate); CompanionControl.AfterTask(mate, pending); return result; }\n\n        private bool ExecuteTaskCore(ISquadMate mate)')
     interaction = stage / 'Framework/Behaviors/NpcInteractionBehavior.cs'
     replace_once(interaction, '_stateHelper.PrepareForDismissal(npc);', '_stateHelper.PrepareForDismissal(npc);\n                if (CompanionControl.KeepDismissalPosition(npc)) return;')
+    pathfinder = stage / 'Pathfinding/AStarPathfinder.cs'
+    replace_once(pathfinder, 'return FindPath(new MapInfoWrapper(location, character), start, end, monitor);',
+        'if (character is NPC owned && CompanionControl.IsManagedNpc(owned)) return CompanionControl.FindOwnedPath(location, start, end, character);\n            return FindPath(new MapInfoWrapper(location, character), start, end, monitor);')
     task = stage / 'Framework/TaskManager.cs'
     replace_once(task, 'public static bool ExecuteHarvestingTask(ISquadMate mate, Point tile)\n        {', 'public static bool ExecuteHarvestingTask(ISquadMate mate, Point tile)\n        {\n            if (!CompanionControl.HasHarvestRoom(mate)) return false;')
     replace_once(task, 'fish = location.getFish(',

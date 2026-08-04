@@ -21,7 +21,12 @@ public sealed partial class CompanionControl {
         var names=visited.ToArray();reachableCache[start.NameOrUniqueName]=(minute,buildings,names);return names;
     }
     private static IEnumerable<Warp> Exits(GameLocation location,string destination,string? home=null) {
-        foreach(var warp in location.warps)yield return warp;
+        foreach(var warp in location.warps) {
+            if(warp.npcOnly.Value)continue;
+            if(warp.TargetName is "Desert" or "SkullCave" or "Summit" or "WitchWarpCave" or "WitchSwamp" or "BoatTunnel" || warp.TargetName.StartsWith("Island"))continue;
+            if(warp.TargetName=="Greenhouse" && !Game1.MasterPlayer.mailReceived.Contains("ccPantry"))continue;
+            yield return warp;
+        }
         foreach(var door in location.doors.Pairs) {
             var a=location.GetTilePropertySplitBySpaces("Action","Buildings",door.Key.X,door.Key.Y);
             if(a.Length<4 || a[0] is not ("Warp" or "LockedDoorWarp"))continue;
@@ -30,6 +35,7 @@ public sealed partial class CompanionControl {
             yield return new Warp(door.Key.X,door.Key.Y,a[3],x,y,false);
         }
         foreach(var building in location.buildings) {
+            if(building.buildingType.Value=="Greenhouse" && !Game1.MasterPlayer.mailReceived.Contains("ccPantry"))continue;
             var indoor=building.GetIndoors();if(indoor==null || building.daysOfConstructionLeft.Value>0 || building.humanDoor.Value.X<0)continue;
             var exit=indoor.warps.FirstOrDefault(w=>w.TargetName==location.NameOrUniqueName || w.TargetName==location.Name);
             if(exit==null)continue;
@@ -71,7 +77,7 @@ public sealed partial class CompanionControl {
     }
     private static bool DoorOpen(GameLocation location,string[] action) {
         if(action.Length<6 || !int.TryParse(action[4],out int open) || !int.TryParse(action[5],out int close))return false;
-        if(location.AreStoresClosedForFestival() && location.InValleyContext())return false;
+        if(GameLocation.AreStoresClosedForFestival() && location.InValleyContext())return false;
         bool key=Game1.player.HasTownKey && location.InValleyContext();
         if(action[3]=="SeedShop" && Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Wed" && !Utility.HasAnyPlayerSeenEvent("191393") && !key)return false;
         if(action[3]=="FishShop" && Game1.player.mailReceived.Contains("willyHours"))open=800;

@@ -70,7 +70,7 @@ public static class ProgressReader {
         if(f.FeedNeeded>0)f.Alerts.Add($"食槽还缺 {f.FeedNeeded} 份干草（农场筒仓 {f.HayInSilo} 份）");
         foreach(string recipe in player.craftingRecipes.Keys) {
             var r=new CraftingRecipe(recipe,false);
-            var goal=new ProgressGoal{Id="craft:"+recipe,Kind="craft",Title="准备制作："+r.DisplayName,PlayerStep="材料准备好后，由玩家制作并选址放置。"};
+            var goal=new ProgressGoal{Id="craft:"+recipe,Kind="craft",Cumulative=player.craftingRecipes[recipe],Title="准备制作："+r.DisplayName,PlayerStep="材料准备好后，由玩家制作并选址放置。"};
             foreach(var pair in r.recipeList) {
                 string id=ItemRegistry.QualifyItemId(pair.Key)??pair.Key;
                 goal.Needs.Add(new(){Item=id,Count=pair.Value,Name=ItemRegistry.GetDataOrErrorItem(id).DisplayName,

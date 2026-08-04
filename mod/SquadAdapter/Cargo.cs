@@ -57,6 +57,7 @@ public sealed partial class CompanionControl {
     private static void PatchCargo() {
         if(cargoPatched)return;
         var harmony=new Harmony("stardewagent.together.cargo");
+        PatchMineLifetime(harmony);
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.addItemToInventoryBool),new[]{typeof(Item),typeof(bool)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptInventory)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.couldInventoryAcceptThisItem),new[]{typeof(Item)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptCapacity)));
         harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createItemDebris)),postfix:new HarmonyMethod(typeof(CompanionControl),nameof(CollectOwnDebris)));

@@ -12,8 +12,8 @@ class Suite:
     def __init__(self):
         self.b=Bridge();self.b.state();self.cases=[]
         assert self.b.state()['player']['name']=='AgentLab'
-    def scenario(self,name,**data):
-        return self.b.request('POST','/lab/together',dict(session_id=self.b.session,scenario=name,**data))
+    def scenario(self,scenario,**data):
+        return self.b.request('POST','/lab/together',dict(session_id=self.b.session,scenario=scenario,**data))
     def state(self):return self.b.request('GET','/lab/together')
     def actor(self,name='Abigail'):return next(a for a in self.b.state()['actors'] if a['name']==name)
     def until(self,fn,seconds=60):
@@ -81,13 +81,13 @@ class Suite:
         assert state['facts']['Transactions'] and ':ship:' in state['facts']['Transactions'][-1]
         return r
     def buying(self):
-        self.fixture('economy');self.scenario('warp_actor',npc='Pierre',location='SeedShop',x=4,y=17)
+        self.fixture('economy');self.scenario('town_key',enabled=1);self.scenario('warp_actor',npc='Pierre',location='SeedShop',x=4,y=17)
         self.action('travel',destination='SeedShop');before=self.state()['facts']['Money']
         buys=[self.action('buy'),self.action('buy')];state=self.scenario('configure')
         assert state['facts']['Purchased'].get('lab-seeds')==2,state
         assert 0<state['facts']['SpentToday']<=100 and state['facts']['Money']==before-state['facts']['SpentToday']
         assert not any(c['skill']=='buy' for c in self.actor()['candidates'])
-        self.action('travel',destination='Farm');return buys
+        self.action('travel',destination='Farm');self.scenario('town_key',enabled=0);return buys
     def removed_supplies(self):
         self.fixture();r=self.action('plant',wait=False) if any(c['skill']=='plant' for c in self.actor()['candidates']) else None
         if r is None:self.action('till');r=self.action('plant',wait=False)
@@ -97,9 +97,13 @@ class Suite:
         return done
     def quiet(self):
         self.fixture();self.scenario('social',mode='quiet');self.scenario('preset',name='钓鱼搭子')
-        self.scenario('auto',enabled=1,interval=15);initial=self.state()['person']['Social']['Relationship'].copy()
-        self.until(lambda:self.state()['person'].get('Job'),100)
-        state=self.state();assert state['person']['Social']['Openings']==0,state['person']['Social']
+        initial_state=self.state()['person'];initial=initial_state['Social']['Relationship'].copy();openings=initial_state['Social']['Openings'];previous=(initial_state.get('Job') or {}).get('Id')
+        self.scenario('auto',enabled=1,interval=15)
+        def finished_autonomy():
+            job=self.state()['person'].get('Job')
+            return job if job and job['Id']!=previous and job['Origin']=='autonomous' and job['Status']=='fulfilled' and job['Completed']>0 else None
+        self.until(finished_autonomy,180)
+        state=self.state();assert state['person']['Social']['Openings']==openings,state['person']['Social']
         assert state['person']['Social']['Relationship']['Comfort']>=initial['Comfort']
         self.scenario('auto',enabled=0);self.scenario('cancel');return state['person']['Job']
     def forced(self):

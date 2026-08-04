@@ -4,6 +4,7 @@ namespace Together;
 public sealed class FarmPolicy {
     public bool Enabled {get;set;}=true;
     public bool FeedAnimals {get;set;}=true;
+    public bool ClearDesignatedPlots {get;set;}
     public int DailyBudget {get;set;}
     public int KeepGold {get;set;}=500;
     public List<PlantingArea> Areas {get;set;}=new();
@@ -40,6 +41,7 @@ public sealed class PlanNode {
     public List<string> DependsOn {get;set;}=new();
 }
 public sealed class ProgressGoal {
+    public int Cumulative {get;set;}
     public string Id {get;set;}="";
     public string Title {get;set;}="";
     public string Kind {get;set;}="";

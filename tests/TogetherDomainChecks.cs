@@ -17,7 +17,8 @@ Check(!restored.Advance() && restored.Index==1 && restored.DoneInStep==0,"save/r
 Check(restored.Advance() && restored.Status=="fulfilled" && restored.Completed==3,"promise fulfills only after every action");
 var person=new Companion {Energy=3,Bond=1};person.Outcome("mine",true);
 Check(person.Energy==0 && person.Bond==1,"individual actions do not multiply forced-commitment relationship cost");
-person.Energy=99;person.Outcome("fish",false);Check(person.Energy==100,"leisure restores energy without overflow");
+person.Energy=99;person.Outcome("fish",false);Check(person.Energy==94,"fishing has a physical cost even when it satisfies interest");
+person.Outcome("rest",false);Check(person.Energy==100,"rest restores energy without overflow");
 var save=new SaveData {People=new(){["Abigail"]=new Companion{Proposal=proposal,Job=restored,Profile=Profile.Preset("钓鱼搭子")}}};
 var loaded=JsonSerializer.Deserialize<SaveData>(JsonSerializer.Serialize(save))!;
 Check(loaded.People["Abigail"].Job!.Status=="fulfilled" && loaded.People["Abigail"].Proposal!.decision=="negotiate","persona, proposal and memories serialize together");
@@ -78,5 +79,11 @@ social.Forget();Check(social.Topics.Count+social.Habits.Count+social.Diary.Count
 var migrated=JsonSerializer.Deserialize<SaveData>("{\"SchemaVersion\":2,\"People\":{\"Abigail\":{\"Energy\":70}}}")!;
 Check(migrated.People["Abigail"].Social.Relationship.Trust==35 && migrated.FarmPolicy.DailyBudget==0,"old saves gain safe social defaults and no spending permission");
 var checkpoint=new Job{Steps=new(){new(){skill="fish"}},RemainingSeconds=7,PartialReceipts=new(){"caught-before-pause"}};
-var restored=JsonSerializer.Deserialize<Job>(JsonSerializer.Serialize(checkpoint))!;
-Check(restored.RemainingSeconds==7 && restored.PartialReceipts.Count==1,"interrupted timed activity survives serialization without replaying captured partial result");
+var timedRestore=JsonSerializer.Deserialize<Job>(JsonSerializer.Serialize(checkpoint))!;
+Check(timedRestore.RemainingSeconds==7 && timedRestore.PartialReceipts.Count==1,"interrupted timed activity survives serialization without replaying captured partial result");
+
+var togetherReward=new SocialState();togetherReward.Relationship.Apply("joint-event","promise_kept",3);togetherReward.ObserveShared("joint-event","fish","Beach",3,true);
+Check(togetherReward.Relationship.Trust==36 && togetherReward.Relationship.Comfort==41,"keeping a promise and shared time have independent idempotent effects");
+var journal=new SocialState();
+journal.CloseDay(2,new[]{new Experience{Id="rest-proof",Day=2,Skill="rest",Location="Farm",PlayerParticipated=true,Summary="internal command result"},new Experience{Id="fish:partial",Day=2,Skill="fish",Summary="钓鱼进行了 5 秒，安排还未结束"}},Array.Empty<SharedProject>());
+Check(journal.Diary[0].Text.Contains("歇了一会儿") && journal.Diary[0].Text.Contains("安排还未结束") && !journal.Diary[0].Text.Contains("internal command"),"journal uses grounded natural language without turning partial work into completion");

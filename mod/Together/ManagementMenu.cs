@@ -4,6 +4,7 @@ using StardewValley;
 namespace Together;
 public sealed partial class CompanionMenu {
     private int selectedSeed;
+    private bool confirmForget;
     private SeedFact[] Seeds=>mod.Facts.Seeds.Where(s=>s.Seasons.Contains(mod.Facts.Season)).OrderBy(s=>s.Days).ToArray();
     private SeedFact? Seed=>Seeds.Length==0?null:Seeds[Math.Abs(selectedSeed)%Seeds.Length];
     private ProgressGoal[] Goals=>mod.Facts.Goals.Where(g=>!g.Complete).OrderBy(g=>g.Deadline<0?int.MaxValue:g.Deadline).ToArray();
@@ -13,6 +14,7 @@ public sealed partial class CompanionMenu {
         if(managePage==0) {
             Button(28,226,170,36,"换一种当季种子",()=>{selectedSeed++;Rebuild();});
             Button(212,226,228,36,"脚下划定 3×3 种植区",()=>{if(Seed!=null)mod.AddPlantingArea(Seed.Item);Rebuild();});
+            Button(454,226,270,36,mod.Data.FarmPolicy.ClearDesignatedPlots?"地块杂草树枝清理：开":"地块杂草树枝清理：关",()=>{mod.Data.FarmPolicy.ClearDesignatedPlots=!mod.Data.FarmPolicy.ClearDesignatedPlots;mod.RefreshManagement();Rebuild();});
             int row=0;foreach(var area in mod.Data.FarmPolicy.Areas.TakeLast(4)) {
                 string id=area.Id;Button(width-148,326+row++*54,120,30,"取消此地块",()=>{mod.RemoveArea(id);Rebuild();});
             }
@@ -40,7 +42,7 @@ public sealed partial class CompanionMenu {
     private void DrawManagement(SpriteBatch b) {
         if(managePage==0) {
             Text(b,Seed==null?"未读取到种子":$"{Seed.Name} · 生长 {Seed.Days} 天 · 季节 {string.Join("/",Seed.Seasons)}",28,282,Green,.8f);
-            int row=0;foreach(var area in mod.Data.FarmPolicy.Areas.TakeLast(4))Text(b,$"{area.Location} ({area.X},{area.Y}) {area.Width}×{area.Height} · {ItemRegistry.GetDataOrErrorItem(area.Seed).DisplayName}",28,330+row++*54,Ink,.76f);
+            int row=0;foreach(var area in mod.Data.FarmPolicy.Areas.TakeLast(4))Text(b,$"{SocialState.PlaceName(area.Location)} ({area.X},{area.Y}) {area.Width}×{area.Height} · {ItemRegistry.GetDataOrErrorItem(area.Seed).DisplayName}",28,330+row++*54,Ink,.76f);
             Text(b,Wrap("先站到地块左上角，再划定。伙伴从原料箱取种子，先翻空地再播种；临近换季不能成熟时会保留种子。",width-68),28,height-118,Gold,.76f);
         } else if(managePage==1) {
             Text(b,"每天最多花",28,247,Ink,.82f);Text(b,"至少留下",368,247,Ink,.82f);
@@ -55,7 +57,7 @@ public sealed partial class CompanionMenu {
             int row=0;foreach(var p in mod.Data.Projects.Where(p=>p.Status is "active" or "paused").TakeLast(3))Text(b,Wrap(p.Title,width-340),28,436+row++*45,Green,.73f);
         } else {
             int y=286;foreach(var n in mod.Data.Today.Skip(choiceIndex*4).Take(4)) {
-                Text(b,Wrap(n.Title+" · "+(n.Owner=="player"?"你来":n.Owner=="together"?"一起":n.Owner)+"\n"+n.Reason+(n.Location==""?"":" · "+n.Location),width-70),28,y,Ink,.78f);y+=76;
+                Text(b,Wrap(n.Title+" · "+(n.Owner=="player"?"你来":n.Owner=="together"?"一起":n.Owner)+"\n"+n.Reason+(n.Location==""?"":" · "+SocialState.PlaceName(n.Location)),width-70),28,y,Ink,.78f);y+=76;
             }
         }
     }
@@ -64,7 +66,7 @@ public sealed partial class CompanionMenu {
         for(int i=0;i<modes.Length;i++){var mode=modes[i];Button(28+i*184,180,174,36,(mod.Current.Social.Mode==mode.Item1?"● ":"")+mode.Item2,()=>{mod.SetSocialMode(mode.Item1);Rebuild();});}
         Button(28,226,140,34,"切换相处内容",()=>{choiceIndex=(choiceIndex+1)%4;Rebuild();});
         Button(184,226,148,34,"导出经历",()=>mod.ExportMemories());
-        Button(width-190,226,162,34,"清除这位的记忆",()=>{mod.ClearMemories();Rebuild();});
+        Button(width-190,226,162,34,confirmForget?"再次点击确认清除":"清除这位的记忆",()=>{if(confirmForget){mod.ClearMemories();confirmForget=false;}else confirmForget=true;Rebuild();});
         if(choiceIndex==1) {
             for(int i=0;i<mod.Current.Social.Habits.Count && i<3;i++) {
                 int index=i;var h=mod.Current.Social.Habits[i];
@@ -91,7 +93,7 @@ public sealed partial class CompanionMenu {
         }
         if(choiceIndex==2) {
             var challenge=s.Challenge;
-            Text(b,Wrap(challenge==null?"挑一个不用赶进度的小约定，一起收集点值得分享的东西。":$"状态 {challenge.Status} · 截止第 {challenge.Deadline+1} 天\n你钓到新图鉴：{(challenge.PlayerDone?"有":"还没有")} · 伙伴渔获：{(challenge.CompanionCatch==""?"还没有":ItemRegistry.GetDataOrErrorItem(challenge.CompanionCatch).DisplayName)}",width-70),28,416,Ink,.8f);
+            Text(b,Wrap(challenge==null?"挑一个不用赶进度的小约定，一起收集点值得分享的东西。":$"状态 {(challenge.Status=="active"?"进行中":challenge.Status=="fulfilled"?"已达成":challenge.Status=="expired"?"已到期":"已暂停")} · 截止第 {challenge.Deadline+1} 天\n你钓到新图鉴：{(challenge.PlayerDone?"有":"还没有")} · 伙伴渔获：{(challenge.CompanionCatch==""?"还没有":ItemRegistry.GetDataOrErrorItem(challenge.CompanionCatch).DisplayName)}",width-70),28,416,Ink,.8f);
         } else if(choiceIndex==3)Text(b,Wrap("点击每项调整。主动：多久考虑自己的安排；社交：陪伴和分享意愿；风险：对矿洞活动的倾向；耐心：疲惫时愿意商量多久；计划：共同项目与农场分工的优先级。具体接受或拒绝还会结合人设、关系和环境。",width-70),28,416,Ink,.8f);
         Text(b,"聊天输入“记住：……”记录偏好；“忘记：……”删除匹配偏好。",28,height-98,Green,.75f);
     }

@@ -31,13 +31,13 @@ public sealed partial class CompanionControl {
     };
     private Point? ShopCounter(ISquadMate mate,string shop) {
         var merchant=Merchant(shop);var l=mate.Npc.currentLocation;
-        if(l.Name!=merchant.Location || l.AreStoresClosedForFestival())return null;
+        if(l.Name!=merchant.Location || GameLocation.AreStoresClosedForFestival())return null;
         var owner=Game1.getCharacterFromName(merchant.Npc);if(owner?.currentLocation!=l)return null;
         // The merchant has to be serving at their real map shop action, not merely visiting.
         var layer=l.Map.GetLayer("Buildings");
         for(int y=0;y<layer.LayerHeight;y++)for(int x=0;x<layer.LayerWidth;x++) {
             string action=l.doesTileHaveProperty(x,y,"Action","Buildings")??"";
-            bool shopAction=action=="Shop "+shop || (shop=="SeedShop" && action=="SeedShop") || (shop=="AnimalShop" && action=="AnimalShop") || (shop=="Blacksmith" && action=="Blacksmith");
+            bool shopAction=action.StartsWith("OpenShop "+shop) || shop=="SeedShop" && action.StartsWith("Buy ") || action=="Shop "+shop || (shop=="SeedShop" && action=="SeedShop") || (shop=="AnimalShop" && action=="AnimalShop") || (shop=="Blacksmith" && action=="Blacksmith");
             if(shopAction && Vector2.Distance(owner.Tile,new Vector2(x,y))<=3) {
                 var stand=StandingSpot(mate,new Point(x,y));if(stand.HasValue)return stand;
             }
@@ -87,8 +87,8 @@ public sealed partial class CompanionControl {
             if(npc.TilePoint!=spot.Value){mod.FollowerManager.WalkAgent(r.Mate,spot.Value,slow,player);return;}
             r.Mate.Halt();npc.faceGeneralDirection(new Vector2(bin.tileX.Value,bin.tileY.Value)*64);
             r.WorkSeconds+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;if(r.WorkSeconds<.6)return;
-            var item=Pouch(r.Mate).FirstOrDefault(i=>i!=null && i.QualifiedItemId==r.Resources.Input && i.Quality==r.Resources.Quality);
-            if(!EconomyPending(r) || item is not StardewValley.Object o || !o.canBeShipped() || FreeCount(item)<r.ShipCount){Finish(r,"failed","sale_permission_or_reservation_changed");return;}
+            var item=r.ShipCargo;
+            if(!EconomyPending(r) || item==null || !Pouch(r.Mate).Contains(item) || item is not StardewValley.Object o || !o.canBeShipped() || FreeCount(item)<r.ShipCount){Finish(r,"failed","sale_permission_or_reservation_changed");return;}
             var copy=item.getOne();copy.Stack=r.ShipCount;farm.getShippingBin(player).Add(copy);Consume(r,item,r.ShipCount);
             farm.lastItemShipped=copy;farm.playSound("Ship");
             var ledger=Ledger();ledger.Entries.Add($"{ledger.Day}:ship:{r.Id}:{copy.QualifiedItemId}:{copy.Stack}:overnight");StoreLedger(ledger);
@@ -103,7 +103,7 @@ public sealed partial class CompanionControl {
             if(item==null || Pouch(r.Mate).Count(i=>i!=null)>=12){Finish(r,"failed","sale_cargo_unavailable");return;}
             r.ShipCount=Math.Min(99,FreeCount(item));var copy=item.getOne();copy.Stack=r.ShipCount;Pouch(r.Mate).Add(copy);
             item.Stack-=r.ShipCount;if(item.Stack==0)inventory.Remove(item);
-            r.Resources=new(){PickedUp=true,Input=copy.QualifiedItemId,Quality=copy.Quality};r.PickupTile=Tile(npc.TilePoint);return;
+            r.ShipCargo=copy;r.Resources=new(){PickedUp=true,Input=copy.QualifiedItemId,Quality=copy.Quality};r.PickupTile=Tile(npc.TilePoint);return;
         }
         var order=farmPolicy.Shopping.First(o=>o.Id==((ShoppingOrder)r.Source!).Id);
         var offer=Offer(order);var state=Ledger();

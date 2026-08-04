@@ -130,7 +130,7 @@ public static class WorldReader {
         }
         f.Progress=new(){["achievements"]=p.achievements.Count,["fish_species"]=p.fishCaught.Count(),["shipped_species"]=p.basicShipped.Count(),
             ["bundles_complete"]=f.Bundles.Count(b=>b.Complete),["quests_complete"]=p.questLog.Count(q=>q.completed.Value),
-            ["farming_level"]=p.FarmingLevel,["fishing_level"]=p.FishingLevel,["mining_level"]=p.MiningLevel};
+            ["farming_level"]=p.FarmingLevel,["fishing_level"]=p.FishingLevel,["mining_level"]=p.MiningLevel,["monster_kills"]=(int)p.stats.MonstersKilled};
         if(f.DryCrops>0)f.Alerts.Add($"还有 {f.DryCrops} 株作物需要浇水");
         if(f.RipeCrops>0)f.Alerts.Add($"{f.RipeCrops} 株成熟作物可以收获");
         if(f.AnimalsUnpetted>0)f.Alerts.Add($"{f.AnimalsUnpetted} 只动物还没被抚摸");

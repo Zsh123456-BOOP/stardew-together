@@ -71,7 +71,7 @@ public sealed partial class ModEntry {
     }
     private Situation SituationFor(string name,JsonElement actor,JsonElement world) {
         string location=actor.GetProperty("location").GetString()!;
-        var npc=Game1.getCharacterFromName(name);
+        var npc=FindCharacter(name);
         var candidates=actor.GetProperty("candidates").EnumerateArray().ToArray();
         var arrangement=Data.Projects.LastOrDefault(p=>p.Kind=="farm" && p.Status=="active");
         bool farmPermission=Data.FarmHelp && (arrangement==null || arrangement.Owner=="together" || arrangement.Owner==name);
@@ -89,11 +89,17 @@ public sealed partial class ModEntry {
             Mine=candidates.Count(c=>c.GetProperty("skill").GetString()=="mine"),Pace=Data.Pace,
             FarmProject=Data.Projects.Any(p=>p.Kind=="farm" && p.Status=="active" && (p.Owner==name || p.Owner=="together"))};
     }
+    private DateTime rejoinAt=DateTime.MinValue;
     private void TickLife() {
         RefreshFacts();var world=World();
+        if(DateTime.UtcNow>=rejoinAt && Minute<12*60) {
+            rejoinAt=DateTime.UtcNow.AddSeconds(10);
+            foreach(var person in Data.People.Where(p=>p.Value.DailyCompanion==true && !Actor(world,p.Key).HasValue))api?.ResumeDay(person.Key);
+            world=World();
+        }
         foreach(var pair in Data.People.ToArray()) {
             var actor=Actor(world,pair.Key);if(!actor.HasValue || actor.Value.TryGetProperty("returning_home",out var homeward) && homeward.GetBoolean())continue;
-            var s=SituationFor(pair.Key,actor.Value,world);var p=pair.Value;
+            var s=SituationFor(pair.Key,actor.Value,world);var p=pair.Value;p.DailyCompanion=true;
             p.Life.Tick(s.Day,s.Minute,s.NearPlayer,p.Profile);
             if(p.ProposalAutonomous && p.Proposal!=null && s.Minute>=p.ProposalExpires) {p.Proposal=null;p.ProposalAutonomous=false;}
 
@@ -110,7 +116,7 @@ public sealed partial class ModEntry {
         var people=Data.People.OrderBy(x=>x.Key).ToArray();if(people.Length==0)return;
         for(int i=0;i<people.Length;i++) {
             var pair=people[(autoCursor+i)%people.Length];var p=pair.Value;
-            if(p.Job?.Status is "active" or "waiting" or "paused" || p.Proposal!=null || Minute-p.Life.LastDecisionMinute<20)continue;
+            if(p.Job?.Status is "active" or "waiting" or "paused" || p.Proposal is {decision:"negotiate"} || Minute-p.Life.LastDecisionMinute<20)continue;
             var actor=Actor(world,pair.Key);if(!actor.HasValue || actor.Value.TryGetProperty("returning_home",out var homeward) && homeward.GetBoolean())continue;
             var options=OptionsFor(pair.Key,p,SituationFor(pair.Key,actor.Value,world),actor.Value);if(options.Count==0)continue;
             autoCursor=(autoCursor+i+1)%people.Length;p.Life.LastDecisionMinute=Minute;
@@ -129,7 +135,7 @@ public sealed partial class ModEntry {
         var p=Person(name);p.Life.Intent=option.Title;p.Life.Reason=option.Reason;
         var d=new Decision{decision="accept",title=option.Title,speech=speech??option.Reason,steps=option.Steps};
         StartFor(name,d,false,"autonomous",option.Id,option.Reason);
-        if(p.Social.CanOpen(Game1.Date.TotalDays) && Game1.getCharacterFromName(name)?.currentLocation==Game1.currentLocation) {
+        if(p.Social.CanOpen(Game1.Date.TotalDays) && FindCharacter(name)?.currentLocation==Game1.currentLocation) {
             OpenTopic(name,speech??(option.Id=="fish"?"我想在这里钓会儿鱼。你忙完了可以过来找我。":option.Title+"，你按自己的节奏来。"),"activity:"+p.Job?.Id);
             p.Life.LastSpeechMinute=Minute;
         }
@@ -183,7 +189,8 @@ public sealed partial class ModEntry {
     private void CheckpointJobs() {
         generation++;pending=null;
         foreach(var pair in Data.People) {
-            var p=pair.Value;p.Social.CloseDay(Game1.Date.TotalDays,p.Life.Experiences,Data.Projects);var job=p.Job;if(job==null || job.Status is not ("active" or "waiting"))continue;
+            var p=pair.Value;var job=p.Job;
+            if(job==null || job.Status is not ("active" or "waiting")){p.Social.CloseDay(Game1.Date.TotalDays,p.Life.Experiences,Data.Projects);continue;}
             try {
                 if(job.TravelCommand!=null){api?.CancelAction(job.TravelCommand);job.TravelCommand=null;}
                 if(job.Command!=null && api!=null) {
@@ -194,6 +201,7 @@ public sealed partial class ModEntry {
                 }
             } catch {job.Command=null;job.TravelCommand=null;}
             if(job.Status!="fulfilled"){job.Status="paused";job.Detail="过夜前暂停，醒来重新核对目标";}
+            p.Social.CloseDay(Game1.Date.TotalDays,p.Life.Experiences,Data.Projects);
         }
     }
     public string LifeSummary()=> $"现在想：{Current.Life.Intent}\n因为：{Current.Life.Reason}\n自己的心愿：{Current.Life.Wish}（{Current.Life.WishProgress}/{Current.Life.WishTarget}）\n兴趣需求 {(int)Current.Life.Interest} · 想找你 {(int)Current.Life.Company} · 想换换花样 {(int)Current.Life.Variety}\n被打断的安排 {Current.Life.Suspended.Count} 个\n随身物资："+string.Join(" / ",Facts.Stock.Where(s=>s.Location=="npc_pouch:"+Selected).Select(s=>s.Name+" ×"+s.Count));

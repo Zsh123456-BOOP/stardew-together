@@ -21,7 +21,7 @@ public sealed partial class ModEntry {
     private readonly Queue<double> measuredFrames=new();
     private object Performance() {
         var values=measuredFrames.OrderBy(v=>v).ToArray();
-        return new{samples=values.Length,mean_ms=values.Length==0?0:values.Average(),p95_ms=values.Length==0?0:values[(int)((values.Length-1)*.95)],max_ms=values.Length==0?0:values[^1],
+        return new{samples=values.Length,mean_ms=values.Length==0?0:values.Average(),p95_ms=values.Length==0?0:values[(int)((values.Length-1)*.95)],max_ms=values.Length==0?0:values[^1],p99_ms=values.Length==0?0:values[(int)((values.Length-1)*.99)],frames_over_16ms=values.Count(v=>v>16.667),
             scope="Together main-thread Update; adapter movement separately measured in bridge state; excludes vanilla baseline"};
     }
 }

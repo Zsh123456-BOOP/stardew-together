@@ -8,6 +8,8 @@ using StardewValley;
 
 namespace StardewAgent;
 
+public interface ITogetherLab {string RunScenario(string json);string GetDiagnostics();}
+
 public interface IGameControl {
     string GetState();
     string GetMap(string actorId);
@@ -156,6 +158,13 @@ public sealed class ModEntry : Mod {
             return Ok(state);
         }
         if (r.Method == "GET" && r.Path == "/map") return new(200, api.GetMap(r.Actor ?? "bot-1"));
+        if(r.Path=="/lab/together") {
+            if(!config.EnableLab || !Context.IsWorldReady || Game1.player.Name!="AgentLab")throw new InvalidOperationException("isolated_lab_required");
+            var together=Helper.ModRegistry.GetApi<ITogetherLab>("StardewAgent.Together")??throw new InvalidOperationException("together_api_missing");
+            if(r.Method=="GET")return new(200,together.GetDiagnostics());
+            RequireSession(r.Body);
+            return new(200,together.RunScenario(r.Body));
+        }
         if (r.Method == "POST" && r.Path == "/lab/reset") {
             RequireSession(r.Body);
             if (running.Count > 0) throw new InvalidOperationException("lab_has_active_commands");

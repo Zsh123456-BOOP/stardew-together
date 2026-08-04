@@ -23,7 +23,7 @@ public sealed partial class CompanionControl {
             resourceReservations=JsonSerializer.Deserialize<List<ResourceReservation>>(doc.RootElement.GetProperty("reservations"))??new();
             farmPolicy=JsonSerializer.Deserialize<FarmPolicy>(doc.RootElement.GetProperty("policy"))??new(){Enabled=false};
         }
-        return Json(new{configured=true});
+        reservationTick=-1;return Json(new{configured=true});
     }
     private static string PouchId(ISquadMate mate)=>$"Together_Pouch_{mate.RecruiterUniqueId}_{mate.Npc.Name}";
     private static Inventory Pouch(ISquadMate mate)=>Game1.player.team.GetOrCreateGlobalInventory(PouchId(mate));
@@ -32,24 +32,29 @@ public sealed partial class CompanionControl {
         .GroupBy(i=>i.QualifiedItemId+":"+i.Quality).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
     private static bool Matches(Item item,ResourceReservation r)=>item.Quality>=r.Quality &&
         (r.Item==item.QualifiedItemId || (int.TryParse(r.Item.Replace("(O)",""),out int category) && category<0 && item.Category==category));
+    private long reservationTick=-1;
+    private readonly Dictionary<Item,int> reservedCounts=new();
     private int FreeCount(Item item) {
-        // Allocate each reservation once, preferring the lowest adequate quality. Preserve references
-        // so moved stacks are re-evaluated against their actual current inventory, not stale copies.
-        var items=new List<Item>();items.AddRange(Game1.player.Items.Where(i=>i!=null));
-        void Visit(GameLocation l) {
-            foreach(var c in l.objects.Values.OfType<Chest>())items.AddRange(c.GetItemsForPlayer(Game1.player.UniqueMultiplayerID).Where(i=>i!=null));
-            foreach(var b in l.buildings)if(b.GetIndoors() is {} inside)Visit(inside);
-        }
-        Visit(Game1.getFarm());foreach(var m in Members)items.AddRange(Pouch(m).Where(i=>i!=null));
-        if(!items.Any(i=>ReferenceEquals(i,item)))return 0;
-        var remaining=items.Distinct().ToDictionary(i=>i,i=>i.Stack);
-        foreach(var r in resourceReservations.Where(r=>r.Count>0).OrderByDescending(r=>r.Quality)) {
-            int need=r.Count;
-            foreach(var stack in remaining.Keys.Where(i=>Matches(i,r)).OrderBy(i=>i.Quality).ToArray()) {
-                int keep=Math.Min(need,remaining[stack]);remaining[stack]-=keep;need-=keep;if(need<=0)break;
+        long tick=Game1.currentGameTime.TotalGameTime.Ticks;
+        if(reservationTick!=tick) {
+            reservationTick=tick;reservedCounts.Clear();
+            var items=new List<Item>();items.AddRange(Game1.player.Items.Where(i=>i!=null));
+            var visited=new HashSet<GameLocation>();
+            void Visit(GameLocation l) {
+                if(!visited.Add(l))return;
+                foreach(var c in l.objects.Values.OfType<Chest>())items.AddRange(c.GetItemsForPlayer(Game1.player.UniqueMultiplayerID).Where(i=>i!=null));
+                foreach(var b in l.buildings)if(b.GetIndoors() is {} inside)Visit(inside);
+            }
+            Visit(Game1.getFarm());foreach(var m in Members)items.AddRange(Pouch(m).Where(i=>i!=null));
+            foreach(var i in items.Distinct())reservedCounts[i]=0;
+            foreach(var r in resourceReservations.Where(r=>r.Count>0 && r.Item!="(O)-1").OrderByDescending(r=>r.Quality)) {
+                int need=r.Count;
+                foreach(var stack in reservedCounts.Keys.Where(i=>Matches(i,r)).OrderBy(i=>i.Quality).ToArray()) {
+                    int keep=Math.Min(need,Math.Max(0,stack.Stack-reservedCounts[stack]));reservedCounts[stack]+=keep;need-=keep;if(need<=0)break;
+                }
             }
         }
-        return remaining.GetValueOrDefault(item);
+        return reservedCounts.TryGetValue(item,out int reserved)?Math.Max(0,item.Stack-reserved):0;
     }
     private bool Reserved(Item item)=>FreeCount(item)<=0;
     private sealed record Take(Item Item,int Count);
@@ -111,7 +116,7 @@ public sealed partial class CompanionControl {
         r.WorkSeconds+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
         if(r.WorkSeconds<.5)return;
         r.WorkSeconds=0;
-        var pouch=Pouch(mate);
+        var pouch=Pouch(mate);reservationTick=-1;
         if(r.Skill is "deposit" or "gift") {
             if(r.Source is not Chest chest || Role(chest)!="output"){Finish(r,"failed","chest_permission_changed");return;}
             var item=pouch.FirstOrDefault(i=>i!=null && i.Stack>0 && (r.Skill!="gift" || (i.Category is -4 or -80 && FreeCount(i)>0)));if(item==null){Finish(r,"failed","pouch_empty");return;}
@@ -135,7 +140,7 @@ public sealed partial class CompanionControl {
                 var copy=take.Item.getOne();copy.Stack=take.Count;pouch.Add(copy);
                 take.Item.Stack-=take.Count;if(take.Item.Stack==0)inventory.Remove(take.Item);
             }
-            work.PickedUp=true;r.PickupTile=Tile(npc.TilePoint);return;
+            reservationTick=-1;work.PickedUp=true;r.PickupTile=Tile(npc.TilePoint);return;
         }
         if(work.Takes.Any(t=>!pouch.Any(i=>i!=null && i.QualifiedItemId==t.Item.QualifiedItemId && i.Quality==t.Item.Quality && FreeCount(i)>=t.Count))){Finish(r,"failed","supply_now_reserved");return;}
         var machine=(StardewValley.Object)r.Source!;

@@ -133,6 +133,7 @@ public sealed partial class CompanionControl {
         r.Mate.Halt();npc.faceGeneralDirection(r.Target.ToVector2()*64+new Vector2(32));
         if(r.WorkSeconds==0) {if(r.Skill=="till")TaskManager.AnimateMining(npc);else npc.shake(350);}
         r.WorkSeconds+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;if(r.WorkSeconds<.6)return;
+        reservationTick=-1;
         if(!ProductionPending(r)){Finish(r,"failed","production_permission_or_target_changed");return;}
         if(r.Skill=="till") {
             if(!r.Location.makeHoeDirt(r.Target.ToVector2())){Finish(r,"failed","soil_not_tillable");return;}
@@ -190,6 +191,6 @@ public sealed partial class CompanionControl {
             var copy=take.Item.getOne();copy.Stack=take.Count;Pouch(r.Mate).Add(copy);
             take.Item.Stack-=take.Count;if(take.Item.Stack<=0)inventory.Remove(take.Item);
         }
-        w.PickedUp=true;r.PickupTile=Tile(npc.TilePoint);
+        reservationTick=-1;w.PickedUp=true;r.PickupTile=Tile(npc.TilePoint);
     }
 }

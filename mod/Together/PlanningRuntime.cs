@@ -55,14 +55,14 @@ public sealed partial class ModEntry {
                 int till=0,plant=0;
                 for(int y=area.Y;y<area.Y+area.Height;y++)for(int x=area.X;x<area.X+area.Width;x++) {
                     var tile=new Vector2(x,y);if(location.objects.ContainsKey(tile))continue;
-                    if(!location.terrainFeatures.TryGetValue(tile,out var feature))till++;
+                    if(!location.terrainFeatures.TryGetValue(tile,out var feature) && location.doesTileHaveProperty(x,y,"Diggable","Back")!=null && location.CanItemBePlacedHere(tile))till++;
                     else if(feature is HoeDirt dirt && dirt.crop==null)plant++;
                 }
                 foreach(var step in new[]{("till",till),("plant",plant)})if(step.Item2>0)nodes.Add(new(){Id=area.Id+":"+step.Item1,Title=Decision.Labels[step.Item1]+seed.Name,Location=area.Location,Skill=step.Item1,Count=step.Item2,
                     Reason="已指定种植区；取实际种子，先检查换季能否成熟",DependsOn=step.Item1=="plant" && till>0?new(){area.Id+":till"}:new()});
             }
-            foreach(var order in Data.FarmPolicy.Shopping.Where(o=>o.Enabled))nodes.Add(new(){Id="buy:"+order.Id,Title="采购清单："+ItemRegistry.GetDataOrErrorItem(order.Item).DisplayName,
-                Location=order.Shop,Skill="buy",Count=order.Count,Reason="已授权购物清单，逐件核对原生价格和预算"});
+            foreach(var order in Data.FarmPolicy.Shopping.Where(o=>o.Enabled && o.Count>Facts.Purchased.GetValueOrDefault(o.Id)))nodes.Add(new(){Id="buy:"+order.Id,Title="采购清单："+ItemRegistry.GetDataOrErrorItem(order.Item).DisplayName,
+                Location=order.Shop,Skill="buy",Count=Math.Max(0,order.Count-Facts.Purchased.GetValueOrDefault(order.Id)),Reason="已授权购物清单，逐件核对原生价格和预算"});
         }
         foreach(var project in Data.Projects.Where(p=>p.Status=="active" && p.Kind!="farm")) {
             var goal=Facts.Goals.FirstOrDefault(g=>g.Id==project.Kind);
@@ -74,20 +74,37 @@ public sealed partial class ModEntry {
             nodes.Add(new(){Id=project.Id+":submit",Title=project.Title+" · 玩家交付",Owner="player",Status=project.Remaining==0?"ready":"waiting",
                 Reason=goal?.PlayerStep??"材料备齐后由玩家确认交付",DependsOn=project.Needs.Where(n=>n.Missing>0).Select(n=>project.Id+":"+n.Item).ToList()});
         }
+        string farmOwner=Data.Projects.LastOrDefault(p=>p.Kind=="farm" && p.Status=="active")?.Owner??"together";
+        foreach(var node in nodes.Where(n=>n.Skill is "water" or "harvest" or "collect" or "feed" or "pet" or "plant" or "till"))node.Owner=farmOwner;
+        foreach(var node in nodes.Where(n=>n.Status=="ready" && n.DependsOn.Count>0))
+            if(node.DependsOn.Any(id=>nodes.Any(p=>p.Id==id && p.Count>0)))node.Status="waiting";
         Data.Today=nodes.Take(120).ToList();
+    }
+    private static bool ShopOpen(string location) {
+        var merchant=location switch {"SeedShop"=>"Pierre","AnimalShop"=>"Marnie","Blacksmith"=>"Clint",_=>""};
+        var npc=Game1.getCharacterFromName(merchant);
+        if(npc?.currentLocation.Name!=location || npc.currentLocation.AreStoresClosedForFestival())return false;
+        return Game1.timeOfDay>=900 && Game1.timeOfDay<(location=="Blacksmith"?1600:1700);
     }
     private List<ActivityOption> OptionsFor(string name,Companion p,Situation s,JsonElement actor) {
         var options=LifePlanner.Options(p,s);
+        var reachable=actor.TryGetProperty("reachable_locations",out var routes)?routes.EnumerateArray().Select(x=>x.GetString()).ToHashSet():new HashSet<string?>{s.Location};
         if(p.Social.Mode=="holiday")options.RemoveAll(o=>o.Category=="shared");
         var counts=actor.GetProperty("candidates").EnumerateArray().GroupBy(c=>c.GetProperty("skill").GetString()!).ToDictionary(g=>g.Key,g=>g.Count());
-        if(Data.FarmHelp && p.Energy>=25 && p.Social.Mode!="holiday") {
+        if(s.FarmResponsibility && p.Energy>=25 && p.Social.Mode!="holiday") {
             foreach(string skill in new[]{"feed","tend","plant","till","forage","buy","ship"})if(counts.GetValueOrDefault(skill)>0) {
                 string id="work:"+skill;if(p.Life.RetryAfter.GetValueOrDefault(id)>s.Minute)continue;
                 options.Add(new(){Id=id,Title="去"+Decision.Labels[skill],Reason="真实目标可达，已在你的经营许可内",Category="shared",Score=skill=="feed"?90:skill=="plant"?83:skill=="till"?78:60,
                     Steps=new(){new(){skill=skill,count=Math.Min(5,counts[skill]),location=s.Location}}});
             }
+            if(s.Location!="Farm" && actor.TryGetProperty("cargo",out var cargo) && cargo.EnumerateObject().Any() && reachable.Contains("Farm")
+                && Facts.Containers.Any(c=>c.role=="output") && p.Life.RetryAfter.GetValueOrDefault("bring_home")<=s.Minute)
+                options.Add(new(){Id="bring_home",Title="把今天的收获带回家",Reason="随身携带了真实物品，农场有你指定的收货箱",Category="shared",Score=85,
+                    Steps=new(){new(){skill="deposit",count=3,location="Farm"}}});
             foreach(var node in Data.Today.Where(n=>n.Skill!="" && n.Owner!="player" && (n.Owner=="together" || n.Owner==name) && n.Status=="ready" && n.Count>0)) {
                 if(node.Location==s.Location || node.Location=="" && counts.GetValueOrDefault(node.Skill)==0)continue;
+                if(node.Location!="" && !reachable.Contains(node.Location))continue;
+                if(node.Skill=="buy" && !ShopOpen(node.Location))continue;
                 if(node.Location!="" && node.Location==s.Location && counts.GetValueOrDefault(node.Skill)==0)continue;
                 string id="plan:"+node.Id;if(p.Life.RetryAfter.GetValueOrDefault(id)>s.Minute)continue;
                 // Mine/fish deficits are pursued locally only when the corresponding affordance exists.
@@ -101,6 +118,8 @@ public sealed partial class ModEntry {
             options.Add(new(){Id="gift",Title="留一件小礼物",Reason="随身有未预留的鱼或花，也有你指定的收货箱",Category="personal",Score=100,Steps=new(){new(){skill="gift",location=s.Location}}});
         foreach(var o in options) {
             if(o.Category=="shared")o.Score+=(p.Profile.Temperament.Planning-50)*.15+p.Social.Relationship.Cooperation*.08;
+            if(o.Category=="personal" && p.Social.TheirTurn)o.Score+=30;
+            if(o.Id=="fish" && p.Social.Challenge?.Status=="active")o.Score+=25;
             if(o.Category=="care")o.Score+=(p.Profile.Temperament.Sociability-50)*.2;
             if(o.Id=="mine")o.Score+=(p.Profile.Temperament.RiskTolerance-50)*.4;
             if(p.Life.LastSkill==o.Steps.FirstOrDefault()?.skill)o.Score-=p.Life.Variety*.2;

@@ -10,12 +10,12 @@ namespace TheStardewSquad;
 public sealed partial class CompanionControl {
     private readonly HashSet<string> stay=new();
     // Map warps, unlocked doors, constructed building doors and actual mine stairs.
-    private static Warp? NextExit(GameLocation start,string destination) {
+    private static Warp? NextExit(GameLocation start,string destination,string? home=null) {
         var queue=new Queue<(GameLocation Location,Warp? First)>();
         var visited=new HashSet<string>{start.NameOrUniqueName};queue.Enqueue((start,null));
         while(queue.Count>0 && visited.Count<100) {
             var node=queue.Dequeue();
-            foreach(var edge in Exits(node.Location,destination)) {
+            foreach(var edge in Exits(node.Location,destination,home)) {
                 var next=Game1.getLocationFromName(edge.TargetName);
                 if(next==null || !visited.Add(next.NameOrUniqueName))continue;
                 var first=node.First??edge;
@@ -28,7 +28,7 @@ public sealed partial class CompanionControl {
     private bool Travel(ISquadMate mate,string destination,bool slow,Farmer player) {
         var location=mate.Npc.currentLocation;
         if(location.NameOrUniqueName==destination)return true;
-        var edge=NextExit(location,destination);
+        var edge=NextExit(location,destination,destination==mate.Npc.DefaultMap?destination:null);
         if(edge==null){mate.Halt();return false;}
         var tile=new Point(edge.X,edge.Y);
         // A map warp is activated at its boundary, never at the player's arbitrary tile.
@@ -48,6 +48,7 @@ public sealed partial class CompanionControl {
         var self=instance;var npc=mate.Npc;
         npc.speed=Math.Clamp((int)player.getMovementSpeed(),2,5);mate.IsCatchingUp=false;
         var active=self.records.Values.LastOrDefault(r=>r.Actor==Id(mate) && r.Status=="running");
+        if(active?.Skill=="dismiss"){self.DriveHome(active,slow,player);return true;}
         if(fast && active?.Skill!="travel") {
             var info=new LocationInfoWrapper(npc.currentLocation,npc);
             // Anchor defense to this NPC, including when the player works elsewhere.

@@ -26,9 +26,13 @@ def run():
         assert not any(c['target_id']==target['target_id'] for c in actor()['candidates'])
         results.append(result)
     leah=actor('Leah')
-    dismissed=send(leah['id'],'dismiss');assert dismissed['status']=='succeeded'
+    dismissed=send(leah['id'],'dismiss');end=time.monotonic()+310
+    while dismissed['status']=='running':
+        assert time.monotonic()<end,'homeward route timeout'
+        time.sleep(.2);dismissed=b.request('GET','/commands/'+dismissed['command_id'])
+    assert dismissed['status']=='succeeded',dismissed
     assert not any(a['name']=='Leah' for a in b.state()['actors'])
-    # Squad sends dismissed NPCs home. Remote recruitment must not teleport them back.
+    # The companion walks normal exits to its schedule destination. Remote recruitment must not teleport them back.
     try:send('Leah','recruit',trial=True)
     except BridgeError as e:assert str(e)=='recruitment_unavailable',str(e)
     else:raise AssertionError('remote recruitment should be rejected')

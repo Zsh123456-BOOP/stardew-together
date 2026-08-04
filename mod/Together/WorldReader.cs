@@ -5,6 +5,9 @@ using StardewValley.TerrainFeatures;
 namespace Together;
 
 public sealed class WorldFacts {
+    public int SpentToday {get;set;}
+    public Dictionary<string,int> Purchased {get;set;}=new();
+    public List<string> Transactions {get;set;}=new();
     public int FeedNeeded {get;set;}
     public int HayInSilo {get;set;}
     public List<ProgressGoal> Goals {get;set;}=new();
@@ -27,10 +30,14 @@ public sealed class WorldFacts {
     public List<object> Quests {get;set;}=new();
     public List<BundleFact> Bundles {get;set;}=new();
     public List<StockFact> Stock {get;set;}=new();
-    public List<object> Containers {get;set;}=new();
+    public List<ContainerFact> Containers {get;set;}=new();
     public List<string> Alerts {get;set;}=new();
     public Dictionary<string,int> Progress {get;set;}=new();
     public List<string> Errors {get;set;}=new();
+}
+public sealed class ContainerFact {
+    public string source {get;set;}="";
+    public string role {get;set;}="none";
 }
 public sealed class StockFact {
     public string Item {get;set;}="";
@@ -83,7 +90,7 @@ public static class WorldReader {
                 if(entry.Value is Chest chest) {
                     string source=location.NameOrUniqueName+":"+entry.Key.X+","+entry.Key.Y;
                     Stock(chest.GetItemsForPlayer(p.UniqueMultiplayerID),source);
-                    f.Containers.Add(new{source,role=chest.modData.TryGetValue("stardewagent.together/chest-role",out var role)?role:"none"});
+                    f.Containers.Add(new(){source=source,role=chest.modData.TryGetValue("stardewagent.together/chest-role",out var role)?role:"none"});
                 }
                 else if(entry.Value.bigCraftable.Value) {
                     var machine=entry.Value;
@@ -130,6 +137,14 @@ public static class WorldReader {
         if(f.MachinesReady>0)f.Alerts.Add($"{f.MachinesReady} 台机器可以收取");
         if(Game1.dayOfMonth>=25)f.Alerts.Add("临近换季：播种前需要核对剩余生长天数");
         ProgressReader.Read(f);
+        if(p.modData.TryGetValue("stardewagent.together/economy",out var ledger)) {
+            try {
+                using var document=System.Text.Json.JsonDocument.Parse(ledger);var root=document.RootElement;
+                f.SpentToday=root.GetProperty("Day").GetInt32()==f.Day?root.GetProperty("Spent").GetInt32():0;
+                f.Purchased=root.GetProperty("Purchased").EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
+                f.Transactions=root.GetProperty("Entries").EnumerateArray().Select(x=>x.GetString()??"").TakeLast(20).ToList();
+            }catch{f.Errors.Add("economy_ledger_unreadable");}
+        }
         return f;
     }
 }

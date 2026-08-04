@@ -9,6 +9,11 @@ public sealed partial class ModEntry {
         var social=p.Social;
         if(social.Mode=="holiday" && social.HolidayDay!=s.Day)social.Mode="normal";
         social.PlaySeconds+=1;
+        if(social.Challenge is {Status:"active"} challenge) {
+            challenge.PlayerDone=Facts.Progress.GetValueOrDefault("fish_species")>challenge.StartingFishSpecies;
+            if(challenge.PlayerDone && challenge.CompanionCatch!="")challenge.Status="fulfilled";
+            else if(s.Day>challenge.Deadline)challenge.Status="expired";
+        }
         if(p.Job?.Status=="active") {
             p.Job.ObservedSeconds+=1;
             // Presence is only co-presence, not proof the player helped with a particular harvest.
@@ -20,6 +25,19 @@ public sealed partial class ModEntry {
             social.Wishes=social.Wishes.TakeLast(8).ToList();
         }
         if(!Settings.Autonomy || !s.NearPlayer || Thinking || !social.CanOpen(s.Day))return;
+        var completedProject=Data.Projects.FirstOrDefault(project=>project.Status=="fulfilled" && !social.CelebratedProjects.Contains(project.Id));
+        if(completedProject!=null) {
+            social.CelebratedProjects.Add(completedProject.Id);social.TheirTurn=true;
+            OpenTopic(name,"“"+completedProject.Title+"”这件事，存档里真的完成了。折腾了这么些天，今天想把一小段时间留给我们自己。","project:"+completedProject.Id);return;
+        }
+        if(social.Challenge is {Status:"fulfilled",Celebrated:false} done) {
+            done.Celebrated=true;
+            OpenTopic(name,"我们的收获清单打勾啦。你钓到了新图鉴，我也真的带回了东西。各自的过程不一样，但都值得记一笔。",done.Id);return;
+        }
+        var oldPlace=p.Life.Experiences.LastOrDefault(e=>e.Location==s.Location && e.Day<s.Day-1 && e.PlayerParticipated && !social.Topics.Any(t=>t.EventId==e.Id));
+        if(oldPlace!=null && s.Minute<12*60 && p.Life.LastInvitationDay!=s.Day) {
+            p.Life.LastInvitationDay=s.Day;OpenTopic(name,"又走到这里了。想起那回我"+oldPlace.Summary+"，你也在旁边。",oldPlace.Id);return;
+        }
         var habit=social.Habits.FirstOrDefault(h=>h.Enabled && h.Confirmed && h.LastInvitedDay!=s.Day && h.Location==s.Location);
         if(habit!=null && p.Job?.Status is not ("active" or "waiting")) {
             habit.LastInvitedDay=s.Day;
@@ -51,6 +69,8 @@ public sealed partial class ModEntry {
     private void RememberResult(string name,Companion p,Job job,string skill,JsonElement result) {
         int day=Game1.Date.TotalDays;var social=p.Social;
         if(skill=="gift")social.GiftDay=day;
+        if(job.Origin=="player" && !job.Forced)social.TheirTurn=true;
+        else if(job.Origin=="autonomous" && job.OptionId is "fish" or "mine" or "beach_trip")social.TheirTurn=false;
         var experience=p.Life.Experiences.LastOrDefault();
         bool near=job.SharedSeconds>=5 && job.SharedSeconds>=job.ObservedSeconds*.5;
         string location=Game1.getCharacterFromName(name)?.currentLocation.NameOrUniqueName??"";
@@ -63,6 +83,8 @@ public sealed partial class ModEntry {
             else if(skill!="fish" && !wish.Evidence.Contains(job.Id))wish.Evidence.Add(job.Id);
             if(wish.Evidence.Count>=wish.Target)wish.Status="fulfilled";
         }
+        if(skill=="fish" && social.Challenge is {Status:"active"} challenge && result.TryGetProperty("evidence",out var proof)
+            && proof.TryGetProperty("caught_items",out var caught) && caught.GetArrayLength()>0)challenge.CompanionCatch=caught[0].GetString()??"";
         var activeWish=social.Wishes.LastOrDefault();
         if(activeWish!=null){p.Life.Wish=activeWish.Title;p.Life.WishProgress=activeWish.Evidence.Count;p.Life.WishTarget=activeWish.Target;}
     }
@@ -82,19 +104,34 @@ public sealed partial class ModEntry {
     public void ExportMemories() {
         var directory=Path.Combine(Helper.DirectoryPath,"memories");Directory.CreateDirectory(directory);
         string name=string.Concat(Selected.Where(char.IsLetterOrDigit));
-        File.WriteAllText(Path.Combine(directory,name+".json"),JsonSerializer.Serialize(new{npc=Selected,profile=Current.Profile,social=Current.Social,experiences=Current.Life.Experiences},jsonOptions));
+        File.WriteAllText(Path.Combine(directory,name+".json"),JsonSerializer.Serialize(new{save_id=Game1.uniqueIDForThisGame.ToString(),day=Game1.Date.TotalDays,npc=Selected,profile=Current.Profile,social=Current.Social,experiences=Current.Life.Experiences},jsonOptions));
         Notice="这位伙伴的经历已导出到 Mod 的 memories 文件夹。";
     }
     private bool HandleLocalConversation(string message) {
+        if(message.StartsWith("日记：") || message.StartsWith("日记:")) {
+            Current.Social.PlayerNotes[Game1.Date.TotalDays]=message[3..].Trim();
+            var entry=Current.Social.Diary.FirstOrDefault(d=>d.Day==Game1.Date.TotalDays);if(entry!=null)entry.PlayerNote=message[3..].Trim();
+            Notice="你写的话已记在今天日记的玩家留言里。";Persist();return true;
+        }
         if(message.StartsWith("记住：") || message.StartsWith("记住:")) {
             string preference=message[3..].Trim();if(preference.Length==0)return true;
             Current.Social.Preferences.Add(preference);Current.Social.Preferences=Current.Social.Preferences.TakeLast(24).ToList();
             AddLine(Current.Chat,"你",message);Say(Selected,"好，我记住你刚才说的了。以后想改，直接告诉我。");Persist();return true;
         }
         if(message.StartsWith("忘记：") || message.StartsWith("忘记:")) {
-            string value=message[3..].Trim();Current.Social.Preferences.RemoveAll(p=>p.Contains(value));
+            string value=message[3..].Trim();if(value.Length==0)return true;Current.Social.Preferences.RemoveAll(p=>p.Contains(value));
             Notice="已删除匹配的偏好记录。";Persist();return true;
         }
         return false;
+    }
+    public void StartChallenge() {
+        RefreshFacts(true);Current.Social.Challenge=new(){Day=Facts.Day,Deadline=Facts.Day+2,StartingFishSpecies=Facts.Progress.GetValueOrDefault("fish_species")};
+        Notice="三天小挑战：你钓一种新图鉴，伙伴带回一份真实渔获。各自分享，不比较效率。";Persist();
+    }
+    public void ChangeTrait(string name) {
+        var p=Current.Profile.Temperament;
+        int Next(int v)=>(Math.Clamp(v,0,100)+20)%120;
+        switch(name){case "主动":p.Initiative=Next(p.Initiative);break;case "社交":p.Sociability=Next(p.Sociability);break;case "风险":p.RiskTolerance=Next(p.RiskTolerance);break;case "耐心":p.Patience=Next(p.Patience);break;case "计划":p.Planning=Next(p.Planning);break;}
+        Persist();
     }
 }

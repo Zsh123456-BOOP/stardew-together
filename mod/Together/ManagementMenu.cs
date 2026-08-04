@@ -44,8 +44,8 @@ public sealed partial class CompanionMenu {
             Text(b,Wrap("先站到地块左上角，再划定。伙伴从原料箱取种子，先翻空地再播种；临近换季不能成熟时会保留种子。",width-68),28,height-118,Gold,.76f);
         } else if(managePage==1) {
             Text(b,"每天最多花",28,247,Ink,.82f);Text(b,"至少留下",368,247,Ink,.82f);
-            Text(b,"所选："+(Seed?.Name??"无")+" · 购物按清单总量购买，不会每天重复下单",28,348,Green,.74f);
-            int row=0;foreach(var order in mod.Data.FarmPolicy.Shopping.Where(o=>o.Enabled).TakeLast(3))Text(b,$"{ItemRegistry.GetDataOrErrorItem(order.Item).DisplayName} ×{order.Count} · 单价上限 {order.MaxUnitPrice}",28,404+row++*48,Ink,.76f);
+            Text(b,"所选："+(Seed?.Name??"无")+$" · 今日已花 {mod.Facts.SpentToday} 金；清单不会每天重复下单",28,348,Green,.74f);
+            int row=0;foreach(var order in mod.Data.FarmPolicy.Shopping.Where(o=>o.Enabled).TakeLast(3))Text(b,$"{ItemRegistry.GetDataOrErrorItem(order.Item).DisplayName} ×{order.Count}（已买 {mod.Facts.Purchased.GetValueOrDefault(order.Id)}） · 单价上限 {order.MaxUnitPrice}",28,404+row++*48,Ink,.76f);
             Text(b,Wrap("原料箱用于取料，收货箱用于存放，待售箱表示允许出售；用途在农场页切换。保留资金与项目预留物资优先。",width-68),28,height-112,Gold,.74f);
         } else if(managePage==2) {
             if(Goals.Length>0) {
@@ -62,7 +62,7 @@ public sealed partial class CompanionMenu {
     private void BuildSocial() {
         var modes=new[]{("normal","平常相处"),("quiet","安静陪着"),("holiday","放假一天")};
         for(int i=0;i<modes.Length;i++){var mode=modes[i];Button(28+i*184,180,174,36,(mod.Current.Social.Mode==mode.Item1?"● ":"")+mode.Item2,()=>{mod.SetSocialMode(mode.Item1);Rebuild();});}
-        Button(28,226,140,34,"日记 / 习惯",()=>{choiceIndex=choiceIndex==0?1:0;Rebuild();});
+        Button(28,226,140,34,"切换相处内容",()=>{choiceIndex=(choiceIndex+1)%4;Rebuild();});
         Button(184,226,148,34,"导出经历",()=>mod.ExportMemories());
         Button(width-190,226,162,34,"清除这位的记忆",()=>{mod.ClearMemories();Rebuild();});
         if(choiceIndex==1) {
@@ -70,6 +70,12 @@ public sealed partial class CompanionMenu {
                 int index=i;var h=mod.Current.Social.Habits[i];
                 Button(width-210,352+i*68,180,32,h.Confirmed?(h.Enabled?"暂停这个习惯":"恢复这个习惯"):"定为我们的小习惯",()=>{mod.ConfirmHabit(index);Rebuild();});
             }
+        } else if(choiceIndex==2) {
+            Button(28,350,240,38,"约一个三天收获小挑战",()=>{mod.StartChallenge();Rebuild();});
+            Button(284,350,172,38,"暂停小挑战",()=>{if(mod.Current.Social.Challenge is {} c)c.Status="cancelled";mod.Persist();Rebuild();});
+        } else if(choiceIndex==3) {
+            var t=mod.Current.Profile.Temperament;var values=new[]{("主动",t.Initiative),("社交",t.Sociability),("风险",t.RiskTolerance),("耐心",t.Patience),("计划",t.Planning)};
+            for(int i=0;i<values.Length;i++){var v=values[i];Button(28+i*150,348,140,36,v.Item1+" "+v.Item2,()=>{mod.ChangeTrait(v.Item1);Rebuild();});}
         }
     }
     private void DrawSocial(SpriteBatch b) {
@@ -77,12 +83,16 @@ public sealed partial class CompanionMenu {
         Text(b,$"信任 {r.Trust} · 相处舒适 {r.Comfort} · 合作默契 {r.Cooperation}",28,284,Green,.85f);
         int y=340;
         if(choiceIndex==0) {
-            foreach(var entry in s.Diary.TakeLast(3).Reverse()) {Text(b,Wrap($"第 {entry.Day+1} 天 · "+entry.Text,width-70),28,y,Ink,.76f);y+=76;}
+            foreach(var entry in s.Diary.TakeLast(3).Reverse()) {Text(b,Wrap($"第 {entry.Day+1} 天 · "+entry.Text+(entry.PlayerNote==""?"":" · 你的留言："+entry.PlayerNote),width-70),28,y,Ink,.76f);y+=76;}
             if(s.Diary.Count==0)Text(b,"今晚收工时，会根据真实经历记下一页日记。",28,y,Gold,.8f);
-        } else {
+        } else if(choiceIndex==1) {
             foreach(var h in s.Habits.Take(3)){Text(b,Wrap(h.Title+"\n已经有 "+h.Days.Count+" 天的共同相处记录",width-258),28,y,Ink,.78f);y+=68;}
             if(s.Habits.Count==0)Text(b,"自愿一起做些喜欢的事，之后可以定为小习惯。",28,y,Gold,.8f);
         }
+        if(choiceIndex==2) {
+            var challenge=s.Challenge;
+            Text(b,Wrap(challenge==null?"挑一个不用赶进度的小约定，一起收集点值得分享的东西。":$"状态 {challenge.Status} · 截止第 {challenge.Deadline+1} 天\n你钓到新图鉴：{(challenge.PlayerDone?"有":"还没有")} · 伙伴渔获：{(challenge.CompanionCatch==""?"还没有":ItemRegistry.GetDataOrErrorItem(challenge.CompanionCatch).DisplayName)}",width-70),28,416,Ink,.8f);
+        } else if(choiceIndex==3)Text(b,Wrap("点击每项调整。主动：多久考虑自己的安排；社交：陪伴和分享意愿；风险：对矿洞活动的倾向；耐心：疲惫时愿意商量多久；计划：共同项目与农场分工的优先级。具体接受或拒绝还会结合人设、关系和环境。",width-70),28,416,Ink,.8f);
         Text(b,"聊天输入“记住：……”记录偏好；“忘记：……”删除匹配偏好。",28,height-98,Green,.75f);
     }
 }

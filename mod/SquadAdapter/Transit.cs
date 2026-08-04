@@ -4,13 +4,29 @@ using StardewValley.Locations;
 
 namespace TheStardewSquad;
 public sealed partial class CompanionControl {
-    private static IEnumerable<Warp> Exits(GameLocation location,string destination) {
+    private static readonly Dictionary<string,(int Minute,int Buildings,string[] Names)> reachableCache=new();
+    private static string[] Reachable(GameLocation start) {
+        int minute=Game1.Date.TotalDays*3000+Game1.timeOfDay;
+        int buildings=Game1.getFarm().buildings.Count;
+        if(reachableCache.TryGetValue(start.NameOrUniqueName,out var known) && known.Minute==minute && known.Buildings==buildings)return known.Names;
+        var visited=new HashSet<string>{start.NameOrUniqueName};var queue=new Queue<GameLocation>();queue.Enqueue(start);
+        while(queue.Count>0 && visited.Count<100) {
+            var location=queue.Dequeue();
+            foreach(var warp in Exits(location,Game1.player.currentLocation.NameOrUniqueName)) {
+                if(visited.Contains(warp.TargetName))continue;
+                var target=Game1.getLocationFromName(warp.TargetName);if(target==null)continue;
+                if(visited.Add(target.NameOrUniqueName))queue.Enqueue(target);
+            }
+        }
+        var names=visited.ToArray();reachableCache[start.NameOrUniqueName]=(minute,buildings,names);return names;
+    }
+    private static IEnumerable<Warp> Exits(GameLocation location,string destination,string? home=null) {
         foreach(var warp in location.warps)yield return warp;
         foreach(var door in location.doors.Pairs) {
             var a=location.GetTilePropertySplitBySpaces("Action","Buildings",door.Key.X,door.Key.Y);
             if(a.Length<4 || a[0] is not ("Warp" or "LockedDoorWarp"))continue;
             if(!int.TryParse(a[1],out int x) || !int.TryParse(a[2],out int y))continue;
-            if(a[0]=="LockedDoorWarp" && !DoorOpen(location,a))continue;
+            if(a[0]=="LockedDoorWarp" && a[3]!=home && !DoorOpen(location,a))continue;
             yield return new Warp(door.Key.X,door.Key.Y,a[3],x,y,false);
         }
         foreach(var building in location.buildings) {

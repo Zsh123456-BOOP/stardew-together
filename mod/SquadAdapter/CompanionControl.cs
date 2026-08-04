@@ -75,11 +75,11 @@ public sealed partial class CompanionControl {
         mate.Npc.currentLocation, point, mate.Npc, null, validateReachability: true);
     private record Candidate(string Id, string Skill, Point Tile, object Source, Point Stand);
     private IEnumerable<Candidate> FindCandidates(ISquadMate mate) {
-        foreach(var candidate in EconomyCandidates(mate))yield return candidate;
-        foreach(var candidate in ProductionCandidates(mate))yield return candidate;
-        foreach(var candidate in ResourceCandidates(mate))yield return candidate;
+        foreach(var candidate in EconomyCandidates(mate).Take(8))yield return candidate;
+        foreach(var candidate in ProductionCandidates(mate).Take(12))yield return candidate;
+        foreach(var candidate in ResourceCandidates(mate).Take(12))yield return candidate;
         var entries = new List<(Vector2 Tile,object Source,string Skill)>();
-        if (mate.CanPerformTask(TaskType.Mining)) entries.AddRange(mate.Npc.currentLocation.objects.Pairs
+        if (mate.CanPerformTask(TaskType.Mining) && Pouch(mate).Count(i=>i!=null)<=8) entries.AddRange(mate.Npc.currentLocation.objects.Pairs
             .Where(p => p.Value.BaseName == "Stone").Select(p => (p.Key,(object)p.Value,"mine")));
         if(mate.CanPerformTask(TaskType.Petting))entries.AddRange(Game1.getFarm().getAllFarmAnimals()
             .Where(a=>a.currentLocation==mate.Npc.currentLocation && !a.wasPet.Value).Select(a=>(a.Tile,(object)a,"pet")));
@@ -87,7 +87,7 @@ public sealed partial class CompanionControl {
             .Select(p=>(p.Key,(object)p.Value,"collect")));
         foreach (var pair in mate.Npc.currentLocation.terrainFeatures.Pairs) {
             if (pair.Value is not HoeDirt dirt || dirt.crop == null || dirt.crop.dead.Value) continue;
-            if (dirt.readyForHarvest() && mate.CanPerformTask(TaskType.Harvesting)) entries.Add((pair.Key,dirt,"harvest"));
+            if (dirt.readyForHarvest() && HasHarvestRoom(mate) && mate.CanPerformTask(TaskType.Harvesting)) entries.Add((pair.Key,dirt,"harvest"));
             else if (dirt.state.Value == HoeDirt.dry && mate.CanPerformTask(TaskType.Watering)) entries.Add((pair.Key,dirt,"water"));
         }
         foreach (var entry in entries.OrderBy(p=>Vector2.DistanceSquared(p.Tile,mate.Npc.Tile)).Take(24)) {
@@ -124,7 +124,7 @@ public sealed partial class CompanionControl {
         return new { id = Id(mate), name = mate.Npc.Name, display_name = mate.Npc.displayName,
             location = mate.Npc.currentLocation?.NameOrUniqueName, tile = Tile(mate.Npc.TilePoint),
             task = mate.Task?.Type.ToString(), moving = mate.Npc.isMoving(), cooldown = mate.ActionCooldown,
-            managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
+            reachable_locations=Reachable(mate.Npc.currentLocation), returning_home=records.Values.Any(r=>r.Actor==Id(mate) && r.Skill=="dismiss" && r.Status=="running"), managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
             fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
             cargo = Counts(Pouch(mate)),
@@ -185,12 +185,12 @@ public sealed partial class CompanionControl {
             string target = root.GetProperty("target_id").GetString()!;
             var candidate = FindCandidates(mate).FirstOrDefault(c=>c.Id==target && c.Skill==skill)
                 ?? throw new InvalidOperationException("stale_target");
-            if (records.Values.Any(r => r.Status == "running" && ReferenceEquals(r.Source,candidate.Source))) throw new InvalidOperationException("target_claimed");
+            if (records.Values.Any(r => r.Status == "running" && (ReferenceEquals(r.Source,candidate.Source) || r.Location==mate.Npc.currentLocation && (r.Target==candidate.Tile || r.Stand==candidate.Stand)))) throw new InvalidOperationException("target_claimed");
             record.Target = candidate.Tile; record.Source=candidate.Source; record.Rock=candidate.Source as StardewValley.Object; record.TargetId = target;
             managed.Add(actor);stay.Add(actor);
             mod.FollowerManager.ClearMateTaskAndReset(mate);
             mate.IsCatchingUp = false;
-            record.Stand=candidate.Stand;
+            record.Stand=candidate.Stand;record.Duration=180;
             if(skill=="refill")record.Resources=SupplyFor(mate,(StardewValley.Object)candidate.Source)??throw new InvalidOperationException("supply_changed");
             if(skill=="plant")record.Resources=Ingredient(mate,((Plot)candidate.Source).Seed)??throw new InvalidOperationException("seed_missing");
             if(skill=="feed")record.Resources=Ingredient(mate,"(O)178");
@@ -200,7 +200,7 @@ public sealed partial class CompanionControl {
                 record.Assigned = mate.Task;
             }
         } else if (skill is "fish" or "guard" or "rest") {
-            record.Duration = root.TryGetProperty("seconds",out var duration) ? Math.Clamp(duration.GetInt32(),10,120) : 30;
+            record.Duration = root.TryGetProperty("seconds",out var duration) ? Math.Clamp(duration.GetInt32(),1,120) : 30;
             var fishing=skill=="fish" ? FishingTask(mate) ?? throw new InvalidOperationException("no_fishing_spot") : null;
             managed.Add(actor); if(skill!="guard")stay.Add(actor);else stay.Remove(actor); mod.FollowerManager.ClearMateTaskAndReset(mate);
             if (fishing!=null) {
@@ -209,9 +209,9 @@ public sealed partial class CompanionControl {
                 record.Assigned=mate.Task;
             }
         } else if(skill=="dismiss") {
-            mod.FollowerManager.ClearMateTaskAndReset(mate); managed.Remove(actor);stay.Remove(actor);
-            mod.RecruitmentManager.Dismiss(mate,isSilent:true);
-            Finish(record,"succeeded");
+            var home=mod.RecruitmentManager.GetTargetLocationForNow(mate.Npc);
+            record.Destination=home.Item1;record.Target=home.Item2;record.Duration=300;
+            managed.Add(actor);stay.Add(actor);mod.FollowerManager.ClearMateTaskAndReset(mate);
         } else {
             managed.Add(actor);stay.Remove(actor);
             mod.FollowerManager.ClearMateTaskAndReset(mate);
@@ -222,7 +222,7 @@ public sealed partial class CompanionControl {
     }
     private void Finish(Record r, string status, string? error = null) {
         if (ReferenceEquals(r.Mate.Task, r.Assigned)) mod.FollowerManager.ClearMateTaskAndReset(r.Mate);
-        r.Status = status; r.Error = error;
+        r.Status = status; r.Error = error;reservationTick=-1;
         r.CargoAfter=Counts(Pouch(r.Mate));
         r.AfterTile = Tile(r.Mate.Npc.TilePoint);
         r.TargetRemaining = r.Rock != null && r.Location.objects.ContainsKey(r.Target.ToVector2());
@@ -246,15 +246,16 @@ public sealed partial class CompanionControl {
             if (!Context.IsPlayerFree || (!Game1.game1.IsActive && Game1.options.pauseWhenOutOfFocus)) dt=0;
             bool combat=r.Mate.Task?.Type==TaskType.Attacking;
             if (combat) r.CombatPaused=true;
-            if (!combat) r.ActiveSeconds+=dt;
+            if (!combat && r.Skill!="dismiss") r.ActiveSeconds+=dt;
             if(!combat && r.Skill is "buy" or "ship" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
                 r.StallSeconds=r.LastPosition==r.Mate.Npc.TilePoint && !r.Mate.IsOnCooldown()?r.StallSeconds+dt:0;
                 r.LastPosition=r.Mate.Npc.TilePoint;
             }
             if (!Members.Contains(r.Mate)) Finish(r, "failed", "actor_dismissed");
-            else if (r.Skill!="travel" && r.Mate.Npc.currentLocation != r.Location) Finish(r, "failed", "location_changed");
+            else if (r.Skill is not ("travel" or "dismiss") && r.Mate.Npc.currentLocation != r.Location) Finish(r, "failed", "location_changed");
             else if (combat) { /* Keep goal while Squad handles fast combat. */ }
             else if(r.Skill=="pet" && r.Source is FarmAnimal animal && animal.TilePoint!=r.Target && !r.EffectByActor)Finish(r,"failed","target_moved");
+            else if(r.Skill=="dismiss") {if(r.ActiveSeconds>300)Finish(r,"failed","home_route_unavailable");}
             else if(r.Skill=="travel") {
                 if(r.Mate.Npc.currentLocation.NameOrUniqueName==r.Destination)Finish(r,"succeeded");
                 else if(r.ActiveSeconds>r.Duration)Finish(r,"failed","route_timeout");
@@ -305,7 +306,7 @@ public sealed partial class CompanionControl {
             follow_mode_enabled = r.Skill == "follow" && r.Status == "succeeded" } };
     public void Reset() {
         foreach (var r in records.Values.Where(r => r.Status == "running").ToArray()) Finish(r, "cancelled", "session_reset");
-        records.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();resourceReservations.Clear();plotTargets.Clear();farmPolicy=new(){Enabled=false};
+        records.Clear();reachableCache.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();resourceReservations.Clear();plotTargets.Clear();farmPolicy=new(){Enabled=false};
     }
     public string PrepareLab() {
         if (Context.IsMultiplayer || Game1.player.Name != "AgentLab") throw new InvalidOperationException("lab_save_required");

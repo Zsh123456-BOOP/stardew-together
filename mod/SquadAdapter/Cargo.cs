@@ -12,6 +12,7 @@ public sealed partial class CompanionControl {
         public void Dispose(){outputOwner=previous;}
     }
     public static IDisposable OwnOutput(ISquadMate mate)=>new OutputScope(mate);
+    public static bool HasHarvestRoom(ISquadMate mate) => !IsManaged(mate) || Pouch(mate).Count(i=>i!=null)<=9;
     public static bool? CargoAccept(Item item,bool add) {
         if(outputOwner==null)return null;
         var inventory=Pouch(outputOwner);
@@ -42,12 +43,25 @@ public sealed partial class CompanionControl {
             if(r!=null){r.Catches.Add(item.QualifiedItemId);r.ResourceChanges[item.QualifiedItemId+":"+item.Quality]=r.ResourceChanges.GetValueOrDefault(item.QualifiedItemId+":"+item.Quality)+item.Stack;}
         }
     }
+    private static bool CaptureObjectDrop(object[] __args) {
+        if(outputOwner==null || __args[0] is not string id)return true;
+        var location=__args.OfType<GameLocation>().FirstOrDefault()??outputOwner.Npc.currentLocation;
+        if(location!=outputOwner.Npc.currentLocation)return true;
+        var item=ItemRegistry.Create(id);
+        if(__args.Length==7 && __args[4] is int quality)item.Quality=quality;
+        if(CargoAccept(item,true)!=true)return true;
+        var r=instance?.records.Values.LastOrDefault(r=>r.Actor==Id(outputOwner) && r.Status=="running");
+        if(r!=null){r.Catches.Add(item.QualifiedItemId);string key=item.QualifiedItemId+":"+item.Quality;r.ResourceChanges[key]=r.ResourceChanges.GetValueOrDefault(key)+item.Stack;}
+        return false;
+    }
     private static void PatchCargo() {
         if(cargoPatched)return;
         var harmony=new Harmony("stardewagent.together.cargo");
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.addItemToInventoryBool),new[]{typeof(Item),typeof(bool)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptInventory)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.couldInventoryAcceptThisItem),new[]{typeof(Item)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptCapacity)));
         harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createItemDebris)),postfix:new HarmonyMethod(typeof(CompanionControl),nameof(CollectOwnDebris)));
+        foreach(var method in typeof(Game1).GetMethods().Where(m=>m.Name==nameof(Game1.createObjectDebris) && m.GetParameters().Length!=4 || m.Name==nameof(Game1.createObjectDebris) && m.GetParameters()[3].ParameterType==typeof(long)))
+            harmony.Patch(method,prefix:new HarmonyMethod(typeof(CompanionControl),nameof(CaptureObjectDrop)));
         cargoPatched=true;
     }
 }

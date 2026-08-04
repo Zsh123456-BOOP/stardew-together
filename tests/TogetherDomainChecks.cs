@@ -56,3 +56,27 @@ Check(LifePlanner.Select(worker,farmSituation)!.Id=="deposit","leftover physical
 var episodes=new List<Experience>{new(){Day=1,Minute=900,Summary="在海边钓鱼，收获0件"},new(){Day=20,Minute=800,Summary="浇水两次"},new(){Day=22,Minute=800,Summary="未来尚未发生的钓鱼"}};
 var recall=MemoryRecall.Select(episodes,"还记得那次空军钓鱼吗",20,1);
 Check(recall.Count==1 && recall[0].Day==1,"older relevant experience beats unrelated recent work and excludes future history");
+
+
+var relation=new RelationshipState();relation.Apply("promise-1","promise_kept",1);relation.Apply("promise-1","promise_kept",1);
+Check(relation.Trust==36 && relation.Cooperation==36,"replayed promise result cannot duplicate relationship reward");
+var comfort=relation.Comfort;relation.Apply("quiet-1","quiet",1);relation.Apply("decline-1","declined",1);relation.Apply("fail-1","external_failure",1);
+Check(relation.Comfort==comfort,"quiet mode, refusal and external failure do not penalise friendship");
+relation.Apply("force-1","forced",1);relation.Apply("force-1","forced",1);
+Check(relation.Comfort==comfort-2,"forced commitment affects relationship once, not once per action");
+var social=new SocialState();social.Open(1,"hello","source-1");social.PlaySeconds=179;
+Check(!social.CanOpen(1),"ordinary sharing cannot interrupt again before three minutes of active play");
+social.PlaySeconds=180;Check(social.CanOpen(1),"sharing resumes after real active-play interval");social.Open(1,"second","source-2");
+social.PlaySeconds=360;social.Open(1,"third","source-3");social.PlaySeconds=1000;Check(!social.CanOpen(1),"ordinary proactive openings capped at three per day");
+social.Mode="quiet";Check(!social.CanOpen(2),"quiet mode persists across days without stopping autonomous work");
+social.ObserveShared("a","fish","Beach",1,true);social.ObserveShared("a","fish","Beach",1,true);social.ObserveShared("b","fish","Beach",2,false);
+Check(social.Habits.Count==1 && social.Habits[0].Days.Count==1 && !social.Habits[0].Confirmed,"only voluntary distinct-day participation suggests a habit; confirmation is separate");
+social.PlayerNotes[1]="今天很开心";social.CloseDay(1,new[]{new Experience{Id="real-event",Day=1,Summary="收了一株作物"}},Array.Empty<SharedProject>());
+social.CloseDay(1,Array.Empty<Experience>(),Array.Empty<SharedProject>());
+Check(social.Diary.Count==1 && social.Diary[0].Sources.SequenceEqual(new[]{"real-event"}) && social.Diary[0].PlayerNote=="今天很开心","diary is sourced, idempotent and separates player notes");
+social.Forget();Check(social.Topics.Count+social.Habits.Count+social.Diary.Count+social.Preferences.Count+social.PlayerNotes.Count==0,"forget clears derived memories as well as raw topics");
+var migrated=JsonSerializer.Deserialize<SaveData>("{\"SchemaVersion\":2,\"People\":{\"Abigail\":{\"Energy\":70}}}")!;
+Check(migrated.People["Abigail"].Social.Relationship.Trust==35 && migrated.FarmPolicy.DailyBudget==0,"old saves gain safe social defaults and no spending permission");
+var checkpoint=new Job{Steps=new(){new(){skill="fish"}},RemainingSeconds=7,PartialReceipts=new(){"caught-before-pause"}};
+var restored=JsonSerializer.Deserialize<Job>(JsonSerializer.Serialize(checkpoint))!;
+Check(restored.RemainingSeconds==7 && restored.PartialReceipts.Count==1,"interrupted timed activity survives serialization without replaying captured partial result");

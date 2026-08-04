@@ -77,7 +77,7 @@ public sealed partial class CompanionControl {
         return r.Source is Chest chest && Role(chest)=="sell" && r.Location.objects.Values.Contains(chest);
     }
     private void DriveEconomy(Record r,bool slow,Farmer player) {
-        var npc=r.Mate.Npc;
+        var npc=r.Mate.Npc;reservationTick=-1;
         if(r.Skill=="ship" && r.Resources?.PickedUp==true) {
             var farm=(Farm)r.Location;
             var bin=farm.buildings.FirstOrDefault(b=>b.buildingType.Value=="Shipping Bin" && b.daysOfConstructionLeft.Value==0);

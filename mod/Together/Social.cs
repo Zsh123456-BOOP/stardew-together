@@ -48,6 +48,17 @@ public sealed class DiaryEntry {
     public int Day {get;set;}
     public string Text {get;set;}="";
     public List<string> Sources {get;set;}=new();
+    public string PlayerNote {get;set;}="";
+}
+public sealed class SharedChallenge {
+    public string Id {get;set;}=Guid.NewGuid().ToString("N");
+    public int Day {get;set;}
+    public int Deadline {get;set;}
+    public int StartingFishSpecies {get;set;}
+    public bool PlayerDone {get;set;}
+    public string CompanionCatch {get;set;}="";
+    public bool Celebrated {get;set;}
+    public string Status {get;set;}="active";
 }
 public sealed class PersonalWish {
     public string Id {get;set;}=Guid.NewGuid().ToString("N");
@@ -59,6 +70,10 @@ public sealed class PersonalWish {
     public List<string> Evidence {get;set;}=new();
 }
 public sealed class SocialState {
+    public SharedChallenge? Challenge {get;set;}
+    public bool TheirTurn {get;set;}
+    public List<string> CelebratedProjects {get;set;}=new();
+    public Dictionary<int,string> PlayerNotes {get;set;}=new();
     public int GiftDay {get;set;}=-1;
     public int HolidayDay {get;set;}=-1;
     public string Mode {get;set;}="normal"; // quiet, holiday, normal
@@ -104,7 +119,7 @@ public sealed class SocialState {
         string text=facts.Length==0?"今天没有记下已经完成的活动。":string.Join("；",facts.TakeLast(3).Select(e=>e.Summary));
         var promises=projects.Where(p=>p.Status=="active").Take(2).Select(p=>p.Title+"："+p.Detail).ToArray();
         if(promises.Length>0)text+="。还惦记着："+string.Join("；",promises);
-        Diary.Add(new(){Day=day,Text=text,Sources=facts.Select(e=>e.Id).ToList()});Diary=Diary.TakeLast(28).ToList();
+        Diary.Add(new(){Day=day,Text=text,Sources=facts.Select(e=>e.Id).ToList(),PlayerNote=PlayerNotes.GetValueOrDefault(day,"")});Diary=Diary.TakeLast(28).ToList();
     }
-    public void Forget() {Topics.Clear();Habits.Clear();Diary.Clear();Wishes.Clear();Preferences.Clear();SharedResults.Clear();}
+    public void Forget() {Topics.Clear();Habits.Clear();Diary.Clear();Wishes.Clear();Preferences.Clear();SharedResults.Clear();PlayerNotes.Clear();Challenge=null;CelebratedProjects.Clear();}
 }

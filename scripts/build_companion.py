@@ -85,7 +85,10 @@ def build():
     behavior=stage/'Framework/Behaviors/NpcTaskBehavior.cs'
     replace_once(behavior,'public bool ExecuteTask(ISquadMate mate)',
         'public bool ExecuteTask(ISquadMate mate) { if (CompanionControl.WaitForImpact(mate)) return false; bool pending = CompanionControl.BeforeTask(mate); bool result = ExecuteTaskCore(mate); CompanionControl.AfterTask(mate, pending); return result; }\n\n        private bool ExecuteTaskCore(ISquadMate mate)')
+    interaction = stage / 'Framework/Behaviors/NpcInteractionBehavior.cs'
+    replace_once(interaction, '_stateHelper.PrepareForDismissal(npc);', '_stateHelper.PrepareForDismissal(npc);\n                if (CompanionControl.KeepDismissalPosition(npc)) return;')
     task = stage / 'Framework/TaskManager.cs'
+    replace_once(task, 'public static bool ExecuteHarvestingTask(ISquadMate mate, Point tile)\n        {', 'public static bool ExecuteHarvestingTask(ISquadMate mate, Point tile)\n        {\n            if (!CompanionControl.HasHarvestRoom(mate)) return false;')
     replace_once(task, 'fish = location.getFish(',
         'fish = CompanionControl.IsManagedNpc(npc) && location.Name is ("Beach" or "Farm" or "Town" or "Forest" or "Mountain" or "Woods")\n'
         '                        ? GameLocation.GetFishFromLocationData(location.Name, waterTile.ToVector2(), FishingConstants.WaterDepth, player, isTutorialCatch: false, isInherited: false, location: location) ?? ItemRegistry.Create("(O)168")\n'

@@ -49,6 +49,8 @@ public sealed class Line {
     public int Day {get;set;}
 }
 public sealed class Job {
+    public int? RemainingSeconds {get;set;}
+    public List<string> PartialReceipts {get;set;}=new();
     public string Id {get;set;}=Guid.NewGuid().ToString("N");
     public string Title {get;set;}="";
     public string Origin {get;set;}="player";
@@ -72,7 +74,7 @@ public sealed class Job {
     public List<string> SkippedTargets {get;set;}=new();
     public int RecoveryAttempts {get;set;}
     public bool Advance() {
-        Completed++; DoneInStep++; Command=null; WaitingSeconds=0;RecoveryAttempts=0;
+        Completed++; DoneInStep++; Command=null; WaitingSeconds=0;RecoveryAttempts=0;RemainingSeconds=null;
         if(DoneInStep>=Steps[Index].count){Index++;DoneInStep=0;}
         if(Index>=Steps.Count){Status="fulfilled";return true;}
         return false;
@@ -95,7 +97,7 @@ public sealed class Companion {
     public int FriendshipReward {get;set;}
     public string Mood=>Energy<25?"累了，想被照顾一下":Energy<50?"有点累，想换个轻松的活动":Bond>=50?"和你在一起很放松":"心情不错，也有自己的主意";
     public void Outcome(string skill,bool forced) {
-        Energy=Math.Clamp(Energy+(skill is "fish" or "rest"?12:skill=="follow"?0:-7),0,100);
+        Energy=Math.Clamp(Energy+(skill=="rest"?18:skill=="follow"?-1:skill=="mine"?-9:skill=="fish"?-5:skill is "pet" or "collect"?-2:-4),0,100);
 
     }
     public void NewDay(int day) {
@@ -107,7 +109,7 @@ public sealed class Companion {
 public sealed class SaveData {
     public FarmPolicy FarmPolicy {get;set;}=new();
     public List<PlanNode> Today {get;set;}=new();
-    public int SchemaVersion {get;set;}=2;
+    public int SchemaVersion {get;set;}=3;
     public string Pace {get;set;}="balanced";
     public bool FarmHelp {get;set;}=true;
     public List<SharedProject> Projects {get;set;}=new();

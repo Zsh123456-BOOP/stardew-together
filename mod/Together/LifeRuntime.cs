@@ -73,16 +73,18 @@ public sealed partial class ModEntry {
         string location=actor.GetProperty("location").GetString()!;
         var npc=Game1.getCharacterFromName(name);
         var candidates=actor.GetProperty("candidates").EnumerateArray().ToArray();
+        var arrangement=Data.Projects.LastOrDefault(p=>p.Kind=="farm" && p.Status=="active");
+        bool farmPermission=Data.FarmHelp && (arrangement==null || arrangement.Owner=="together" || arrangement.Owner==name);
         return new(){Day=Game1.Date.TotalDays,Minute=Minute,Location=location,PlayerLocation=Game1.currentLocation.NameOrUniqueName,
             NearPlayer=npc?.currentLocation==Game1.currentLocation && Vector2.Distance(npc.Tile,Game1.player.Tile)<9,
             Threat=actor.GetProperty("in_combat").GetBoolean() || (npc?.currentLocation==Game1.currentLocation && world.GetProperty("threats").GetArrayLength()>0),
             Fishing=actor.GetProperty("fishing_available").GetBoolean(),
-            CanReachBeach=actor.TryGetProperty("can_reach_beach",out var beachRoute) && beachRoute.GetBoolean(),FarmWater=Facts.DryCrops,FarmHarvest=Facts.RipeCrops,CanReachFarm=Data.FarmHelp && actor.TryGetProperty("can_reach_farm",out var route) && route.GetBoolean(),
-            Water=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="water"):0,
-            Harvest=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="harvest"):0,
-            Pet=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="pet"):0,
-            Collect=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="collect"):0,
-            Refill=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="refill"):0,
+            CanReachBeach=actor.TryGetProperty("can_reach_beach",out var beachRoute) && beachRoute.GetBoolean(),FarmWater=Facts.DryCrops,FarmHarvest=Facts.RipeCrops,FarmResponsibility=farmPermission,CanReachFarm=farmPermission && actor.TryGetProperty("can_reach_farm",out var route) && route.GetBoolean(),
+            Water=farmPermission?candidates.Count(c=>c.GetProperty("skill").GetString()=="water"):0,
+            Harvest=farmPermission?candidates.Count(c=>c.GetProperty("skill").GetString()=="harvest"):0,
+            Pet=farmPermission?candidates.Count(c=>c.GetProperty("skill").GetString()=="pet"):0,
+            Collect=farmPermission?candidates.Count(c=>c.GetProperty("skill").GetString()=="collect"):0,
+            Refill=farmPermission?candidates.Count(c=>c.GetProperty("skill").GetString()=="refill"):0,
             Deposit=Data.FarmHelp?candidates.Count(c=>c.GetProperty("skill").GetString()=="deposit"):0,
             Mine=candidates.Count(c=>c.GetProperty("skill").GetString()=="mine"),Pace=Data.Pace,
             FarmProject=Data.Projects.Any(p=>p.Kind=="farm" && p.Status=="active" && (p.Owner==name || p.Owner=="together"))};
@@ -90,7 +92,7 @@ public sealed partial class ModEntry {
     private void TickLife() {
         RefreshFacts();var world=World();
         foreach(var pair in Data.People.ToArray()) {
-            var actor=Actor(world,pair.Key);if(!actor.HasValue)continue;
+            var actor=Actor(world,pair.Key);if(!actor.HasValue || actor.Value.TryGetProperty("returning_home",out var homeward) && homeward.GetBoolean())continue;
             var s=SituationFor(pair.Key,actor.Value,world);var p=pair.Value;
             p.Life.Tick(s.Day,s.Minute,s.NearPlayer,p.Profile);
             if(p.ProposalAutonomous && p.Proposal!=null && s.Minute>=p.ProposalExpires) {p.Proposal=null;p.ProposalAutonomous=false;}
@@ -109,15 +111,16 @@ public sealed partial class ModEntry {
         for(int i=0;i<people.Length;i++) {
             var pair=people[(autoCursor+i)%people.Length];var p=pair.Value;
             if(p.Job?.Status is "active" or "waiting" or "paused" || p.Proposal!=null || Minute-p.Life.LastDecisionMinute<20)continue;
-            var actor=Actor(world,pair.Key);if(!actor.HasValue)continue;
+            var actor=Actor(world,pair.Key);if(!actor.HasValue || actor.Value.TryGetProperty("returning_home",out var homeward) && homeward.GetBoolean())continue;
             var options=OptionsFor(pair.Key,p,SituationFor(pair.Key,actor.Value,world),actor.Value);if(options.Count==0)continue;
             autoCursor=(autoCursor+i+1)%people.Length;p.Life.LastDecisionMinute=Minute;
+            autoAt=DateTime.UtcNow.AddSeconds(Math.Clamp(Settings.AutoIntervalSeconds*(1.5-p.Profile.Temperament.Initiative/100.0),15,600));
             EnsureBudget();
             string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
             if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100) || !File.Exists(file)) {p.Life.DecisionSource="local-budget-or-offline";StartOption(pair.Key,options[0]);return;}
             pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
-            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=p.Social,today=Data.Today,
-                options,projects=Data.Projects.Where(x=>x.Status=="active"),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
+            var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=PromptSocial(p),today=Data.Today.Take(12),
+                options=options.Take(12),projects=Data.Projects.Where(x=>x.Status=="active").Take(8),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};
             Data.Calls++;RecordUsage();pending=ModelClient.Ask(file,Settings.Model,context,true);return;
         }
@@ -148,9 +151,9 @@ public sealed partial class ModEntry {
         string mode=root.TryGetProperty("decision",out var modeField)?modeField.GetString()??"":"";
         p.Life.DecisionSource="model";p.Life.LastDecisionError="";
         if(mode=="negotiate") {
-            if(p.Life.LastInvitationDay==Game1.Date.TotalDays){StartOption(pendingName,fresh);return true;}
+            if(p.Life.LastInvitationDay==Game1.Date.TotalDays || !p.Social.CanOpen(Game1.Date.TotalDays)){StartOption(pendingName,fresh);return true;}
             p.Life.LastInvitationDay=Game1.Date.TotalDays;p.ProposalAutonomous=true;p.ProposalExpires=Minute+30;p.Proposal=new(){decision="negotiate",title=fresh.Title,speech=speech??fresh.Title,steps=fresh.Steps};
-            Say(pendingName,p.Proposal.speech);
+            OpenTopic(pendingName,p.Proposal.speech,"invitation:"+id+":"+Game1.Date.TotalDays);
         } else if(mode=="accept")StartOption(pendingName,fresh,speech);
         else if(mode=="chat") {if(!string.IsNullOrWhiteSpace(speech))OpenTopic(pendingName,speech,"model:"+Guid.NewGuid().ToString("N"));p.Life.LastSpeechMinute=Minute;}
         else throw new InvalidOperationException("自主决策类型无效。");
@@ -164,6 +167,7 @@ public sealed partial class ModEntry {
             if(existing.Command!=null) {
                 using var receipt=JsonDocument.Parse(api!.CancelAction(existing.Command));
                 if(receipt.RootElement.GetProperty("status").GetString()=="succeeded")ApplyResult(name,p,receipt.RootElement);
+                else RecordInterrupted(p,existing,receipt.RootElement);
                 existing.Command=null;
             }
             if(existing.FollowMode)existing.Status="cancelled";
@@ -185,6 +189,7 @@ public sealed partial class ModEntry {
                 if(job.Command!=null && api!=null) {
                     using var result=JsonDocument.Parse(api.CancelAction(job.Command));
                     if(result.RootElement.GetProperty("status").GetString()=="succeeded")ApplyResult(pair.Key,p,result.RootElement);
+                    else RecordInterrupted(p,job,result.RootElement);
                     job.Command=null;
                 }
             } catch {job.Command=null;job.TravelCommand=null;}

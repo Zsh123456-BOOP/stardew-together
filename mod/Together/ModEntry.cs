@@ -158,7 +158,8 @@ public sealed partial class ModEntry:Mod {
         generation++;pending=null;canPersist=true;api?.Reset();
         try{Data=Helper.Data.ReadSaveData<SaveData>("together-v2") ?? (File.Exists(SavePath)?JsonSerializer.Deserialize<SaveData>(File.ReadAllText(SavePath))??new():new());}
         catch{Data=new();canPersist=false;Notice="同行记录无法读取，本次暂停写入以保留原文件。";return;}
-        factsMinute=-1;RefreshFacts(true);
+        if(Data.SchemaVersion>3){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
+        Data.SchemaVersion=3;factsMinute=-1;RefreshFacts(true);
         foreach(var p in Data.People.Values) if(p.Job?.Status is "active" or "waiting") {p.Job.Status="paused";p.Job.Command=null;p.Job.TravelCommand=null;p.Job.Detail="上次的小约定还在；点继续后重新检查环境。";}
         foreach(var p in Data.People.Values)p.NewDay(Game1.Date.TotalDays);
         // Reclaim previously managed companions after Squad restores its saved team.
@@ -207,7 +208,7 @@ public sealed partial class ModEntry:Mod {
         catch(Exception){Notice="暂时无法邀请：请靠近角色，并检查队伍人数与角色日程。";}
     }
     public void Dismiss() {
-        Cancel();try{var a=Actor(World(),Selected);if(a.HasValue)Request(a.Value.GetProperty("id").GetString()!,"dismiss");Notice="先各忙各的，下次见。";}catch{Notice="暂时不能结束同行。";}
+        Cancel();try{var a=Actor(World(),Selected);if(a.HasValue)Request(a.Value.GetProperty("id").GetString()!,"dismiss");Notice="伙伴开始沿路返回自己的日程地点，到达后结束同行。";}catch{Notice="暂时不能结束同行。";}
     }
     public void Send(string message,bool autonomous=false) {
         if(!Context.IsWorldReady || !Connected || string.IsNullOrWhiteSpace(message))return;
@@ -222,7 +223,7 @@ public sealed partial class ModEntry:Mod {
         var context=new {event_type=autonomous?"idle":"player_message",player_message=message,npc=Selected,profile=person.Profile,
             mood=person.Mood,energy=person.Energy,bond=person.Bond,actor,world=new{location=world.GetProperty("location").GetString(),time=Game1.timeOfDay,
                 health=Game1.player.health,season=Game1.currentSeason,raining=Game1.isRaining,threats=world.GetProperty("threats")},
-            farm=Facts,projects=Data.Projects,today=Data.Today,social=person.Social,needs=person.Life.ModelState(),pace=Data.Pace,
+            farm=PromptFarm(),projects=Data.Projects.Where(p=>p.Status=="active").Take(8),today=Data.Today.Take(12),social=PromptSocial(person),needs=person.Life.ModelState(),pace=Data.Pace,
             recalled_experiences=MemoryRecall.Select(person.Life.Experiences,message,Game1.Date.TotalDays),
             memories=person.Memories.TakeLast(5).ToArray(),conversation=person.Chat.TakeLast(5).ToArray(),current_promise=person.Job,
             note="bond是本Mod亲近感，actor.relationship是真实好感。没有招募时可以聊天，行动需先邀请。"};
@@ -231,7 +232,7 @@ public sealed partial class ModEntry:Mod {
         pending=ModelClient.Ask(file,Settings.Model,context);Notice="正在想怎么回答你…";Persist();
     }
     private void CompleteReply() {
-        if(pending==null || !pending.IsCompleted)return;
+        if(pending==null || !pending.IsCompleted || !Context.IsPlayerFree)return;
         var task=pending;pending=null;
         if(pendingGeneration!=generation)return;
         try {
@@ -276,6 +277,7 @@ public sealed partial class ModEntry:Mod {
             if(job.Command!=null)try{
                 using var result=JsonDocument.Parse(api!.CancelAction(job.Command));
                 if(result.RootElement.GetProperty("status").GetString()=="succeeded")ApplyResult(Selected,Current,result.RootElement);
+                else RecordInterrupted(Current,job,result.RootElement);
             }catch{}
             if(job.Status!="fulfilled") {
                 job.Status="cancelled";job.Command=null;job.Detail="由玩家结束";
@@ -291,6 +293,10 @@ public sealed partial class ModEntry:Mod {
         "paused"=>"等待继续 · "+job.Title,"waiting"=>"暂时等待 · "+job.Detail,
         _=>job.Index<job.Steps.Count?$"{job.Title} · {Decision.Labels[job.Steps[job.Index].skill]} {job.DoneInStep}/{job.Steps[job.Index].count}":job.Title};
     private void Update(object? sender,UpdateTickedEventArgs e) {
+        long started=System.Diagnostics.Stopwatch.GetTimestamp();
+        try {UpdateCore(sender,e);}finally {ProfileFrame((System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency);}
+    }
+    private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null)return;
         CompleteReply();
         foreach(var pair in Data.People.Where(p=>p.Value.Job?.Command!=null).ToArray())Poll(pair.Key,pair.Value);
@@ -334,7 +340,7 @@ public sealed partial class ModEntry:Mod {
             }
             if(step.skill=="fish" && !a.GetProperty("fishing_available").GetBoolean()){Wait(name,person,"带我到附近能站稳的水边吧。");return;}
             if(a.GetProperty("in_combat").GetBoolean()){Wait(name,person,"先应对眼前的怪物，再继续约定。");return;}
-            var result=Request(a.GetProperty("id").GetString()!,step.skill,target,step.skill=="rest"?20:30);
+            var result=Request(a.GetProperty("id").GetString()!,step.skill,target,job.RemainingSeconds??(step.skill=="rest"?20:30));
             job.Command=result.GetProperty("command_id").GetString();job.Status="active";job.Detail="";job.WaitingSeconds=0;Persist();
             ApplyResult(name,person,result);
         }catch(Exception){Wait(name,person,"暂时无法行动，先靠近我，或换个位置。");}
@@ -416,7 +422,7 @@ public sealed partial class ModEntry:Mod {
         list.Add(new Line{Who=who,Text=text,Day=Game1.Date.TotalDays});
         if(list.Count>60)list.RemoveRange(0,list.Count-60);
     }
-    public string StatusJson()=>JsonSerializer.Serialize(new{selected=Selected,thinking=Thinking,notice=Notice,person=Current,people=Data.People,projects=Data.Projects,facts=Facts,reservations=Data.Reservations,pace=Data.Pace,calls=Data.Calls,tokens=Data.Tokens});
+    public string StatusJson()=>JsonSerializer.Serialize(new{selected=Selected,thinking=Thinking,notice=Notice,person=Current,people=Data.People,projects=Data.Projects,facts=Facts,today=Data.Today,farm_policy=Data.FarmPolicy,performance=Performance(),reservations=Data.Reservations,pace=Data.Pace,calls=Data.Calls,tokens=Data.Tokens});
     private void Capture() {
         if(recordingFrame>=0 && DateTime.UtcNow>=recordingAt && Context.IsWorldReady) {
             try {

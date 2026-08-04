@@ -103,6 +103,7 @@ public sealed class Situation {
     public int Refill {get;set;}
     public int Deposit {get;set;}
     public int Mine {get;set;}
+    public bool FarmResponsibility {get;set;}=true;
     public bool FarmProject {get;set;}
     public string Pace {get;set;}="balanced";
 }

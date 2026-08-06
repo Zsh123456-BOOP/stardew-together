@@ -79,6 +79,17 @@ public sealed class KnowledgeIndex {
     }
 }
 public static class KnowledgeRules {
+    public static string[] Wrap(string text,float width,Func<char,float> measure) {
+        var lines=new List<string>();var line=new StringBuilder();float used=0;
+        foreach(char c in text) {
+            if(c=='\r')continue;
+            if(c=='\n'){lines.Add(line.ToString());line.Clear();used=0;continue;}
+            float next=measure(c);
+            if(line.Length>0 && used+next>width){lines.Add(line.ToString());line.Clear();used=0;}
+            line.Append(c);used+=next;
+        }
+        lines.Add(line.ToString());return lines.ToArray();
+    }
     public static string Season(string s)=>s.ToLowerInvariant() switch {"spring"=>"春","summer"=>"夏","fall"=>"秋","winter"=>"冬",_=>s};
     public static string Kind(string s)=>s switch {"item"=>"物品","fish"=>"鱼类","crop"=>"种植","npc"=>"人物","recipe"=>"配方","machine"=>"机器","location"=>"地点","guide"=>"机制","goal"=>"目标",_=>s};
     public static string Field(string[] parts,int i)=>i>=0 && i<parts.Length?parts[i]:"";

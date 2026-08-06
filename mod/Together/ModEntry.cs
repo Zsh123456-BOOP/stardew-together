@@ -160,8 +160,8 @@ public sealed partial class ModEntry:Mod {
         ResetKnowledge();
         try{Data=Helper.Data.ReadSaveData<SaveData>("together-v2") ?? (File.Exists(SavePath)?JsonSerializer.Deserialize<SaveData>(File.ReadAllText(SavePath))??new():new());}
         catch{Data=new();canPersist=false;Notice="同行记录无法读取，本次暂停写入以保留原文件。";return;}
-        if(Data.SchemaVersion>3){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
-        Data.SchemaVersion=3;factsMinute=-1;RefreshFacts(true);
+        if(Data.SchemaVersion>4){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
+        Data.SchemaVersion=4;factsMinute=-1;RefreshFacts(true);
         foreach(var p in Data.People.Values) if(p.Job?.Status is "active" or "waiting") {p.Job.Status="paused";p.Job.Command=null;p.Job.TravelCommand=null;p.Job.Detail="上次的小约定还在；点继续后重新检查环境。";}
         foreach(var p in Data.People.Values){p.DailyCompanion??=p.Job!=null;p.NewDay(Game1.Date.TotalDays);}
         // Reclaim previously managed companions after Squad restores its saved team.

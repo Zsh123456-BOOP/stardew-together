@@ -19,6 +19,8 @@ public sealed class EncyclopediaMenu:IClickableMenu {
     private readonly Stack<string> history=new();
     private string previewId="";
     private Item? previewItem;
+    private string lastBody="";
+    private string[] wrapped=Array.Empty<string>();
     private static readonly Color Paper=new(248,239,216),Ink=new(43,65,57),Green=new(65,109,86),Gold=new(150,104,45);
     // Lookup Anything's documented optional custom-menu compatibility.
     public Item? HoveredItem {get;private set;}
@@ -106,7 +108,8 @@ public sealed class EncyclopediaMenu:IClickableMenu {
         var p=packet;string body=p==null?"左侧搜索或点击上方日历。\n\n输入名字、别名或少量错字；范围默认随探索解锁。\n\n下方输入问题让伙伴解释，也可以留下自己的便签。":
             p.Observed+"\n"+(p==mod.LastKnowledge && mod.KnowledgeAnswer.Length>0?"伙伴说："+mod.KnowledgeAnswer+"\n\n":"")+
             string.Join("\n\n",p.Facts.Select(f=>f.Label+"\n"+f.Value+"\n依据："+f.Source+(f.Support=="partial"?" · 部分支持":"")));
-        string[] lines=Game1.parseText(body,mod.Font,(int)((width-362)/.78f)).Split('\n');int visible=Math.Max(3,(height-330)/23);
+        if(lastBody!=body){lastBody=body;wrapped=KnowledgeRules.Wrap(body,(width-362)/.78f,c=>mod.Font.MeasureString(c.ToString()).X);}
+        string[] lines=wrapped;int visible=Math.Max(3,(height-330)/23);
         scroll=Math.Clamp(scroll,0,Math.Max(0,lines.Length-visible));
         for(int i=0;i<visible && scroll+i<lines.Length;i++)Text(b,lines[scroll+i],324,155+i*23,Ink,.78f);
         foreach(var f in new[]{search,question,note})f.Draw(b,false);

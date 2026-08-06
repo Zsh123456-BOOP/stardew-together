@@ -14,13 +14,19 @@ public sealed class EncyclopediaMenu:IClickableMenu {
     private KnowledgePacket? packet;
     private string previous="",kind="all",selected="";
     private int offset,scroll,revision=-1;
-    private bool favorites;
+    private bool favorites,followingAnswer;
     private DateTime searchAt=DateTime.MinValue;
     private readonly Stack<string> history=new();
+    private string previewId="";
+    private Item? previewItem;
     private static readonly Color Paper=new(248,239,216),Ink=new(43,65,57),Green=new(65,109,86),Gold=new(150,104,45);
     // Lookup Anything's documented optional custom-menu compatibility.
     public Item? HoveredItem {get;private set;}
     public NPC? HoveredNpc {get;private set;}
+    internal KnowledgePacket? Evidence=>packet;
+    internal void CheckButton(string label) {
+        var button=buttons.First(b=>b.Label==label);receiveLeftClick(button.Rect.Center.X,button.Rect.Center.Y,false);
+    }
     public EncyclopediaMenu(ModEntry mod,string query=""):base(0,0,Math.Min(1120,Game1.uiViewport.Width-24),Math.Min(760,Game1.uiViewport.Height-24),false) {
         this.mod=mod;xPositionOnScreen=(Game1.uiViewport.Width-width)/2;yPositionOnScreen=(Game1.uiViewport.Height-height)/2;
         search=Input(22,106,274,query,120);question=Input(324,height-143,width-458,"",240);note=Input(324,height-92,width-458,"",240);
@@ -33,7 +39,7 @@ public sealed class EncyclopediaMenu:IClickableMenu {
         buttons.Clear();Button(width-58,16,36,"×",()=>exitThisMenu());Button(22,60,90,"同行",()=>{exitThisMenu();mod.Open();});
         Button(122,60,90,"日历",()=>Show("guide:calendar"));Button(222,60,90,"农场",()=>Show("guide:growth"));Button(322,60,90,"献祭",()=>Show("guide:bundle"));
         Button(422,60,108,favorites?"全部条目":"我的收藏",()=>{favorites=!favorites;offset=0;Search();});
-        Button(542,60,170,mod.Data.Knowledge.DiscoveredOnly?"范围：随探索解锁":"范围：完整资料",()=>{mod.ToggleKnowledgeMode();selected="";packet=null;scroll=0;Search();Rebuild();});
+        Button(542,60,170,mod.Data.Knowledge.DiscoveredOnly?"范围：随探索解锁":"范围：完整资料",()=>{mod.ToggleKnowledgeMode();selected="";packet=null;followingAnswer=false;scroll=0;Search();Rebuild();});
         Button(724,60,90,"刷新",()=>{mod.RefreshKnowledgeFacts();Search();if(selected!="")Show(selected,false);});
         Button(824,60,90,"最近",()=>{results=mod.Data.Knowledge.Recent.Select(id=>mod.Knowledge.Index.Get(id)).Where(e=>e!=null && mod.Knowledge.Visible(e)).Select(e=>new KnowledgeHit(e!,1,"最近查阅")).ToArray();offset=0;});
         Button(22,156,130,KnowledgeRules.Kind(kind)=="all"?"全部分类":KnowledgeRules.Kind(kind),()=>{var kinds=new[]{"all","item","crop","fish","npc","recipe","machine","location","guide"};kind=kinds[(Array.IndexOf(kinds,kind)+1)%kinds.Length];offset=0;Search();Rebuild();});
@@ -54,18 +60,20 @@ public sealed class EncyclopediaMenu:IClickableMenu {
     }
     private void Show(string id,bool push=true) {
         var entry=mod.Knowledge.Index.Get(id);if(entry==null || !mod.Knowledge.Visible(entry))return;
+        followingAnswer=false;
         if(push && selected!="" && id!=selected)history.Push(selected);
         selected=id;packet=mod.Knowledge.Query(entry.Name,id);mod.Data.Knowledge.Visit(id);note.Text=mod.Data.Knowledge.Notes.GetValueOrDefault(id,"");scroll=0;
     }
     private void Ask() {
         string q=question.Text.Trim();if(q.Length==0)q=selected==""?search.Text:"请解释这个条目和我们今天有什么关系。";
         if(q.Length==0)return;
-        mod.AskKnowledge(q,selected.Length==0?null:selected);packet=mod.LastKnowledge;scroll=0;question.Text="";
+        mod.AskKnowledge(q,selected.Length==0?null:selected);packet=mod.LastKnowledge;followingAnswer=true;scroll=0;question.Text="";
     }
     private void SaveNote(){if(selected=="")return;mod.Data.Knowledge.Note(selected,note.Text);Show(selected,false);}
     public override void update(GameTime time) {
         base.update(time);foreach(var f in new[]{search,question,note})f.Update();
-        if(revision!=mod.Knowledge.Revision){revision=mod.Knowledge.Revision;Search();if(selected!="")Show(selected,false);}
+        if(followingAnswer && mod.LastKnowledge!=null && packet!=mod.LastKnowledge){packet=mod.LastKnowledge;scroll=0;}
+        if(revision!=mod.Knowledge.Revision){revision=mod.Knowledge.Revision;packet=null;Search();if(selected!="")Show(selected,false);}
         if(previous!=search.Text && DateTime.UtcNow>=searchAt){Search();searchAt=DateTime.UtcNow.AddMilliseconds(250);}
     }
     public override void receiveLeftClick(int x,int y,bool playSound=true) {
@@ -91,7 +99,7 @@ public sealed class EncyclopediaMenu:IClickableMenu {
             b.Draw(Game1.staminaRect,rect,hit.Entry.Id==selected?new Color(212,227,201):hover?new Color(233,227,207):new Color(242,234,215));
             Text(b,Short((mod.Data.Knowledge.Favorites.Contains(hit.Entry.Id)?"★ ":"")+hit.Entry.Name,256),30,211+i*57);
             Text(b,KnowledgeRules.Kind(hit.Entry.Kind)+" · "+hit.Reason,30,235+i*57,Gold,.58f);
-            if(hover){if(hit.Entry.Id.StartsWith("("))HoveredItem=ItemRegistry.Create(hit.Entry.Id);if(hit.Entry.Id.StartsWith("npc:"))HoveredNpc=Game1.getCharacterFromName(hit.Entry.Id[4..]);}
+            if(hover){if(hit.Entry.Id.StartsWith("(")){if(previewId!=hit.Entry.Id){previewId=hit.Entry.Id;previewItem=KnowledgeCatalog.PreviewItem(previewId);}HoveredItem=previewItem;}if(hit.Entry.Id.StartsWith("npc:"))HoveredNpc=Game1.getCharacterFromName(hit.Entry.Id[4..]);}
         }
         if(results.Count==0)Text(b,"未找到条目，可试名称或分类。",22,215,Gold,.7f);
         Text(b,$"{Math.Min(offset+1,results.Count)}–{Math.Min(offset+PageSize,results.Count)} / {results.Count}",100,height-47,Gold,.7f);

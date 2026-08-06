@@ -3,6 +3,13 @@ using StardewValley;
 namespace Together;
 
 public static class KnowledgeCatalog {
+    // Native Object construction randomises sprite flipping. Preview on the game thread
+    // with a separate stream so merely hovering or inspecting a gift cannot alter play.
+    public static Item PreviewItem(string id) {
+        var original=Game1.random;
+        try{Game1.random=new Random(7331);return ItemRegistry.Create(id);}
+        finally{Game1.random=original;}
+    }
     public static string ItemName(string id)=>ItemRegistry.GetDataOrErrorItem(id).DisplayName;
     // Enumerated in bounded batches on the game thread. Patched content is the source of truth.
     public static IEnumerable<KnowledgeEntry> Read() {
@@ -64,7 +71,7 @@ public static class KnowledgeCatalog {
         yield return Guide("machine","机器为什么不工作","先看是否已有产物、是否还在加工，再检查原料、燃料与机器条件。百科不会试投材料；自定义机器只展示能读取的规则。","机器","不工作","加工","原料","酿酒");
         yield return Guide("fishing","钓鱼条件与概率","可捕获条件与钓获概率不同。地图、季节、时间、天气、技能、装备及特殊解锁都可能影响结果。手册不调用实际钓鱼过程，不保证下一竿钓到。","钓鱼","钓不到","鱼饵","鱼竿");
         yield return Guide("bundle","献祭与任务材料","库存足够不等于已经交付。质量、数量、替代槽位和原生计数都要核对；同一件物品不能同时满足多项预留。特殊交付仍由玩家完成。","献祭","任务","缺什么","社区中心","材料","成就");
-        yield return Guide("calendar","农事与日历","日历结合当前季节、已认识人物生日、节日、作物实际阶段和库存。未来天气只显示游戏已提供的预报，不预测全年。","日历","今天","安排","生日","节日","天气","种什么");
+        yield return Guide("calendar","农事与日历","日历结合当前季节、所选资料范围内的人物生日、节日、作物实际阶段和库存。未来天气只显示游戏已提供的预报，不预测全年。","日历","今天","安排","生日","节日","天气","种什么");
     }
     private static KnowledgeEntry Guide(string id,string name,string description,params string[] tags)=>new(){Id="guide:"+id,Kind="guide",Name=name,Description=description,Tags=tags.ToList(),Source="Together 自编机制说明；具体状态见实时证据"};
 }

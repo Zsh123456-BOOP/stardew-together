@@ -36,6 +36,7 @@ public sealed partial class ModEntry {
     private void CancelKnowledge(){if(pendingKnowledge){generation++;pending=null;}pendingKnowledge=false;LastKnowledge=null;KnowledgeAnswer="";}
     public bool IsKnowledgeQuestion(string text) {
         if(text.StartsWith("百科") || text.StartsWith("查一下") || text.StartsWith("查资料"))return true;
+        if(new[]{"帮我去","陪我去","我们去","一起去","帮我浇","帮我挖","帮我收","帮我钓"}.Any(text.StartsWith))return false;
         bool question=new[]{"怎么","如何","哪里","什么","多少","几天","何时","时候","为什么","能不能","是否","吗","?","？","比较","对比"}.Any(text.Contains);
         bool topic=new[]{"献祭","成熟","种子","作物","配方","材料","天气","日历","生日","礼物","钓到","捕获","机器","百科","成就","季节","生长"}.Any(text.Contains);
         return question && (topic || Knowledge.Ready && Knowledge.Search(text,limit:1).Any(h=>h.Score>=650));
@@ -66,6 +67,10 @@ public sealed partial class ModEntry {
     }
     private bool CompleteKnowledgeReply(ModelReply reply) {
         if(!pendingKnowledge)return false;
+        if(Settings.EnableLab && Game1.player.Name=="AgentLab") {
+            Directory.CreateDirectory(Path.Combine(Helper.DirectoryPath,"diagnostics"));
+            File.WriteAllText(Path.Combine(Helper.DirectoryPath,"diagnostics","knowledge-reply.json"),reply.Json);
+        }
         if(knowledgeRevision!=Knowledge.Revision){KnowledgeFailure("资料刚刚变化，请重新查询。");return true;}
         if(knowledgePlanning) {
             using var doc=JsonDocument.Parse(reply.Json);string query=doc.RootElement.GetProperty("query").GetString()??"";

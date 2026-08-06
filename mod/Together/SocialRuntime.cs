@@ -99,6 +99,7 @@ public sealed partial class ModEntry {
         Notice=h.Enabled?"记住这个小习惯了。到时候会偶尔邀请，不强求。":"这个习惯先放下，不会影响关系。";Persist();
     }
     public void ClearMemories() {
+        CancelKnowledge();
         generation++;pending=null;Current.Social.Forget();Current.Chat.Clear();Current.Memories.Clear();Current.Life.Experiences.Clear();Current.LastDecision=null;Current.Proposal=null;Current.ProposalAutonomous=false;bubbles.Remove(Selected);
         Notice="已清除这位伙伴的聊天、经历、话题、偏好、习惯和日记；关系与正在执行的工作保留。";Persist();
     }

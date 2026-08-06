@@ -100,7 +100,7 @@ public sealed partial class ModEntry:Mod {
         };
         helper.Events.Display.Rendered+=(_,_)=>Capture();
         helper.ConsoleCommands.Add("together_open","Open Together panel.",(_,_)=>Open());
-        helper.ConsoleCommands.Add("together_close","Close Together panel.",(_,_)=>{if(Game1.activeClickableMenu is CompanionMenu)Game1.exitActiveMenu();});
+        helper.ConsoleCommands.Add("together_close","Close Together panel.",(_,_)=>{if(Game1.activeClickableMenu is CompanionMenu or EncyclopediaMenu)Game1.exitActiveMenu();});
         helper.ConsoleCommands.Add("together_auto","Toggle autonomous proposals.",(_,_)=>ToggleAuto());
         helper.ConsoleCommands.Add("together_export","Write sanitized state for local integration checks.",(_,_)=>{
             if(Context.IsWorldReady){RefreshFacts(true);Directory.CreateDirectory(Path.Combine(Helper.DirectoryPath,"diagnostics"));File.WriteAllText(Path.Combine(Helper.DirectoryPath,"diagnostics","state.json"),StatusJson());}
@@ -252,7 +252,7 @@ public sealed partial class ModEntry:Mod {
             else Notice="聊完啦，继续一起玩。";
             Persist();
         }catch(Exception e){
-            if(pendingKnowledge){KnowledgeFailure();return;}
+            if(pendingKnowledge){KnowledgeFailure(e is InvalidOperationException?e.Message:"模型回复格式无法核对，显示本地资料。");return;}
             if(pendingAutonomous) {
                 var world=World();var actor=Actor(world,pendingName);var p=Person(pendingName);
                 if(actor.HasValue && p.Job?.Status is not ("active" or "waiting" or "paused")) {

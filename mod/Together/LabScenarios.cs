@@ -27,6 +27,10 @@ public sealed partial class ModEntry {
             case "knowledge_query":return JsonSerializer.Serialize(Knowledge.Query(Arg("query"),Arg("id")==""?null:Arg("id")),jsonOptions);
             case "knowledge_ask":AskKnowledge(Arg("query"),Arg("id")==""?null:Arg("id"));break;
             case "knowledge_book":OpenKnowledge(Arg("query"));break;
+            case "knowledge_button":
+                if(Game1.activeClickableMenu is not EncyclopediaMenu bookMenu)throw new InvalidOperationException("encyclopedia_menu_required");
+                bookMenu.CheckButton(Arg("label"));return JsonSerializer.Serialize(bookMenu.Evidence,jsonOptions);
+            case "knowledge_invalidate":Knowledge.Invalidate();break;
             case "knowledge_mode":Data.Knowledge.DiscoveredOnly=Arg("value")!="all";CancelKnowledge();break;
             case "knowledge_pin":PinKnowledge(Arg("id"));break;
             case "knowledge_note":Data.Knowledge.Note(Arg("id"),Arg("text"));break;
@@ -165,7 +169,7 @@ public sealed partial class ModEntry {
                 Game1.currentLocation.answerDialogueAction("Sleep_Yes",null);break;
             }
             case "panel":Game1.activeClickableMenu=new CompanionMenu(this,Num("tab",5),Num("page"),Num("choice"));break;
-            case "close":if(Game1.activeClickableMenu is CompanionMenu)Game1.exitActiveMenu();break;
+            case "close":if(Game1.activeClickableMenu is CompanionMenu or EncyclopediaMenu)Game1.exitActiveMenu();break;
             default:throw new InvalidOperationException("unknown_lab_scenario");
         }
         RefreshFacts(true);return StatusJson();

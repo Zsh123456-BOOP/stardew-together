@@ -19,6 +19,7 @@ public sealed partial class ModEntry {
             var crop=Knowledge.Query("", "(O)472");Check(crop.Status=="ok" && crop.Facts.Any(f=>f.Label=="播种日历"),"crop contains live planting calculation");
             var fish=Knowledge.Query("", "(O)145");Check(fish.Facts.Any(f=>f.Support=="partial" && f.Source.Contains("Data/Locations")),"fish eligibility preserves spatial uncertainty");
             Check(Knowledge.Query("日历","guide:calendar").Facts.Any(f=>f.Value.Contains("明日农场预报")),"calendar uses native weather forecast");
+            Check(Knowledge.Query("春天种什么").EntityIds.Any(id=>Knowledge.Index.Get(id)?.Kind=="crop"),"structured season crop query returns real crop entities");
             Check(Knowledge.Query("献祭","guide:bundle").Facts.Any(f=>f.Source=="原生献祭状态"),"bundle uses real slot progress");
             var npc=Knowledge.Query("", "npc:Abigail");Check(npc.EntityIds.Contains("npc:Abigail"),"NPC lookup resolves stable identity");
             Check(Knowledge.Search("Parsnip Seeds").FirstOrDefault()?.Entry.Id=="(O)472","English canonical name works in localized game");
@@ -36,6 +37,7 @@ public sealed partial class ModEntry {
             }
             perf.Sort();results.Add(new{pass=perf[(int)(perf.Count*.95)]<50,label="warm search p95 < 50ms",p95_ms=perf[(int)(perf.Count*.95)],max_ms=perf.Last()});
             Check(before==Before(),"read-only lookup preserves money, inventory, quests, fish counters and achievements");
+            KnowledgeCatalog.PreviewItem("(O)145");KnowledgeCatalog.PreviewItem("(BC)12");
             Check(Game1.random.Next()==new Random(82519).Next(),"lookup does not advance game random stream");
         }finally {Game1.random=random;Data.Knowledge=JsonSerializer.Deserialize<KnowledgeNotebook>(notebook)!;}
         return JsonSerializer.Serialize(new{scope="isolated AgentLab runtime contract checks",results},jsonOptions);

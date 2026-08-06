@@ -52,8 +52,18 @@ public sealed class KnowledgeService {
     public KnowledgePacket Query(string query,string? id=null) {
         mod.RefreshKnowledgeFacts();
         var packet=new KnowledgePacket{Query=query,Observed=$"第{Game1.year}年 {KnowledgeRules.Season(Game1.currentSeason)}{Game1.dayOfMonth}日 {Game1.timeOfDay/100}:{Game1.timeOfDay%100:00}",Save=Game1.uniqueIDForThisGame+":"+Game1.player.UniqueMultiplayerID};
+        packet.Facts.Add(new("query-scope","资料范围",mod.Data.Knowledge.DiscoveredOnly?"随探索解锁：条目已按当前玩家的观察和已知记录筛选。":"完整资料模式：资料可能涉及尚未认识的人物或尚未探索的地点，不能称为玩家已知经历。","玩家选择的百科范围"));
         if(!Ready){packet.Status="loading";packet.Facts.Add(new("catalog","资料状态",Status,"Together 索引"));return packet;}
         var hits=id!=null?Index.Get(id) is {} entry && Visible(entry)?new[]{new KnowledgeHit(entry,1000,"选中条目")}:Array.Empty<KnowledgeHit>():Search(query,limit:8).ToArray();
+        if(id==null && (hits.Length==0 || hits[0].Score<650)) {
+            var filtered=ConditionCandidates(query);
+            if(filtered!=null) {
+                if(filtered.Count==0){packet.Status="not_found";packet.Facts.Add(new("filter-empty","筛选结果","在当前可见资料中未找到符合已支持筛选条件的条目；未探索内容和动态规则不包含在结果内。","结构化筛选"));return packet;}
+                packet.Facts.Add(new("filter","筛选口径","以下是按资料中的季节、天气或献祭需求筛出的候选，不是当前一定能获取的保证；详情继续核对当前时段、地点和附加限制。最多展示前五项。","结构化筛选","partial"));
+                foreach(var candidate in filtered.Take(5))Append(packet,candidate);
+                return packet;
+            }
+        }
         if(hits.Length==0){packet.Status="not_found";packet.Facts.Add(new("missing","没有匹配资料","可尝试具体名称、别名或类型；随探索模式会隐藏未发现条目。","检索结果"));return packet;}
         foreach(var h in hits)packet.Candidates.Add(h.Entry.Name+" ["+h.Entry.Id+"] · "+h.Reason);
         // Tied exact names and all fuzzy guesses require a user choice; never silently bind an entity.
@@ -104,7 +114,7 @@ public sealed class KnowledgeService {
         int days=c.DaysInPhase.Sum(),date=Game1.dayOfMonth+days;
         bool season=c.Seasons.Any(s=>s.ToString().Equals(Game1.currentSeason,StringComparison.OrdinalIgnoreCase));
         string text=!season?"当前农场季节不在该作物的生长季节中。":date<=28?$"今天播种、每天正常生长，按基础阶段预计本季 {date} 日首次成熟。":$"基础生长期 {days} 天，本季剩余 {28-Game1.dayOfMonth} 个过夜生长机会；需核对跨季存活或加速条件。";
-        add("播种日历",text+" 这里按无加速、露天普通土壤计算；肥料、职业、水稻、温室和自定义规则不包含在此预测。","Data/Crops + 当前日期","partial");
+        add("播种日历",text+" 原生每季到28日结束；若首次成熟日期不晚于28日，且每日正常浇水、无额外规则阻碍，就能在本季收获。这里按无加速、露天普通土壤计算；肥料、职业、水稻、温室和自定义规则不包含在此预测。","Data/Crops + 当前日期","partial");
         foreach(string row in FarmRows(c.HarvestItemId))add("已种作物",row,"实例阶段（已含种下时的生长调整）","verified");
     }
     public IEnumerable<string> FarmRows(string? harvest=null) {
@@ -136,7 +146,7 @@ public sealed class KnowledgeService {
         foreach(var s in mod.Facts.Stock.DistinctBy(s=>s.Item).Take(120)) {
             if(!s.Item.StartsWith("(O)"))continue;
             if(mod.Data.Knowledge.DiscoveredOnly && !Game1.player.hasGiftTasteBeenRevealed(npc,s.Item[3..]))continue;
-            var item=ItemRegistry.Create(s.Item);int taste=npc.getGiftTasteForThisItem(item);
+            var item=KnowledgeCatalog.PreviewItem(s.Item);int taste=npc.getGiftTasteForThisItem(item);
             if(taste is 0 or 2)gifts.Add(s.Name+(taste==0?"（最爱）":"（喜欢）")+(mod.Data.Reservations.GetValueOrDefault(s.Item)>0?"，已有计划预留":""));
         }
         add("手头礼物",gifts.Count==0?"已观察库存中没有已知喜欢的礼物；未知偏好不猜测。":string.Join("、",gifts.Take(10)),"游戏礼物判断 + 偏好发现记录","verified");
@@ -155,6 +165,11 @@ public sealed class KnowledgeService {
         foreach(var pair in Game1.characterData.Where(p=>p.Value.BirthSeason?.ToString().ToLowerInvariant()==Game1.currentSeason && p.Value.BirthDay>=Game1.dayOfMonth).OrderBy(p=>p.Value.BirthDay))
             if(Index.Get("npc:"+pair.Key) is {} e && Visible(e))rows.Add(e.Name+"生日："+pair.Value.BirthDay+"日");
         foreach(var f in DataLoader.Festivals_FestivalDates(Game1.content).Where(f=>f.Key.StartsWith(Game1.currentSeason)))rows.Add("节日："+f.Value+"（"+f.Key.Replace(Game1.currentSeason,KnowledgeRules.Season(Game1.currentSeason))+"）");
+        foreach(var f in DataLoader.PassiveFestivals(Game1.content).Where(f=>f.Value.ShowOnCalendar && f.Value.Season.ToString().ToLowerInvariant()==Game1.currentSeason)) {
+            bool active=Game1.netWorldState.Value.ActivePassiveFestivals.Contains(f.Key);
+            if(mod.Data.Knowledge.DiscoveredOnly && !active && !string.IsNullOrEmpty(f.Value.Condition))continue;
+            rows.Add("活动："+StardewValley.TokenizableStrings.TokenParser.ParseText(f.Value.DisplayName)+$" {f.Value.StartDay}–{f.Value.EndDay}日，{f.Value.StartTime/100}:{f.Value.StartTime%100:00} 开始"+(active?"（游戏确认当前已开启）":string.IsNullOrEmpty(f.Value.Condition)?"":"（附加开放条件未计算）"));
+        }
         rows.Add($"农场：待浇 {mod.Facts.DryCrops} 株、成熟 {mod.Facts.RipeCrops} 株；待抚摸 {mod.Facts.AnimalsUnpetted} 只、食槽缺草 {mod.Facts.FeedNeeded} 份；机器可收 {mod.Facts.MachinesReady} 台。");
         rows.AddRange(FarmRows().Take(6));return rows;
     }
@@ -166,7 +181,8 @@ public sealed class KnowledgeService {
         int rows=0;
         foreach(var pair in Game1.locationData.Where(p=>p.Key!="Default")) {
             if(Index.Get("location:"+pair.Key) is {} le && !Visible(le))continue;
-            var rules=(pair.Value.Fish??new()).Concat(Game1.locationData.GetValueOrDefault("Default")?.Fish??new()).Where(s=>(ItemRegistry.QualifyItemId(s.ItemId??"")??s.ItemId)==e.Id);
+            Game1.locationData.TryGetValue("Default",out var defaults);
+            var rules=(pair.Value.Fish??new()).Concat(defaults?.Fish??new()).Where(s=>(ItemRegistry.QualifyItemId(s.ItemId??"")??s.ItemId)==e.Id);
             foreach(var rule in rules) {
                 var missing=new List<string>();var unknown=new List<string>();
                 var location=Game1.getLocationFromName(pair.Key);string season=location==null?Game1.currentSeason:Game1.GetSeasonForLocation(location).ToString().ToLowerInvariant();
@@ -196,5 +212,27 @@ public sealed class KnowledgeService {
             }
         }
         if(rows==0)add(e.Name+" · 地点","当前可见地图中未找到静态鱼种规则；动态查询、未探索地点及特殊地点需要单独适配。","运行时鱼类规则","partial");
+    }
+    private List<KnowledgeEntry>? ConditionCandidates(string query) {
+        string? season=new[]{("春","spring"),("夏","summer"),("秋","fall"),("冬","winter")}.Where(p=>query.Contains(p.Item1)||query.Contains(p.Item2,StringComparison.OrdinalIgnoreCase)).Select(p=>p.Item2).FirstOrDefault();
+        bool fish=query.Contains("鱼") || query.Contains("fish",StringComparison.OrdinalIgnoreCase);
+        bool crop=query.Contains("种") || query.Contains("作物");
+        bool rain=query.Contains("下雨") || query.Contains("雨天"),sun=query.Contains("晴天");
+        bool bundle=query.Contains("献祭")||query.Contains("社区中心");
+        if(!fish && !crop || season==null && !rain && !sun && !bundle)return null;
+        var result=Index.Entries.Where(e=>Visible(e)&&e.Kind==(fish?"fish":"crop"));
+        if(bundle) {var ids=mod.Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Select(n=>n.Item).ToHashSet();result=result.Where(e=>ids.Contains(e.Id));}
+        if(crop && !fish && season!=null)result=result.Where(e=>DataLoader.Crops(Game1.content).TryGetValue(e.Id[3..],out var c) && c.Seasons.Any(s=>s.ToString().Equals(season,StringComparison.OrdinalIgnoreCase)));
+        if(fish) {
+            var data=DataLoader.Fish(Game1.content);
+            if(rain||sun)result=result.Where(e=>data.TryGetValue(e.Id[3..],out var raw) && KnowledgeRules.Field(raw.Split('/'),1)!="trap" && (KnowledgeRules.Field(raw.Split('/'),7)=="both" || KnowledgeRules.Field(raw.Split('/'),7)==(rain?"rainy":"sunny")));
+            if(season!=null) {
+                var ids=Game1.locationData.Where(p=>p.Key=="Default" || Index.Get("location:"+p.Key) is {} e && Visible(e)).SelectMany(p=>p.Value.Fish??new())
+                    .Where(f=>f.Season.HasValue && f.Season.Value.ToString().Equals(season,StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(f.Condition))
+                    .Select(f=>ItemRegistry.QualifyItemId(f.ItemId??"")??f.ItemId).ToHashSet();
+                result=result.Where(e=>ids.Contains(e.Id));
+            }
+        }
+        return result.Take(5).ToList();
     }
 }

@@ -128,7 +128,7 @@ public sealed partial class ModEntry {
             var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=PromptSocial(p),today=Data.Today.Take(12),
                 options=options.Take(12),projects=Data.Projects.Where(x=>x.Status=="active").Take(8),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};
-            Data.Calls++;RecordUsage();pending=ModelClient.Ask(file,Settings.Model,context,true);return;
+            Data.Calls++;RecordUsage();pendingKnowledge=false;pending=ModelClient.Ask(file,Settings.Model,context,true);return;
         }
     }
     private void StartOption(string name,ActivityOption option,string? speech=null) {

@@ -23,6 +23,14 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "knowledge_suite":return KnowledgeContracts();
+            case "knowledge_query":return JsonSerializer.Serialize(Knowledge.Query(Arg("query"),Arg("id")==""?null:Arg("id")),jsonOptions);
+            case "knowledge_ask":AskKnowledge(Arg("query"),Arg("id")==""?null:Arg("id"));break;
+            case "knowledge_book":OpenKnowledge(Arg("query"));break;
+            case "knowledge_mode":Data.Knowledge.DiscoveredOnly=Arg("value")!="all";CancelKnowledge();break;
+            case "knowledge_pin":PinKnowledge(Arg("id"));break;
+            case "knowledge_note":Data.Knowledge.Note(Arg("id"),Arg("text"));break;
+            case "knowledge_export":return JsonSerializer.Serialize(new{ready=Knowledge.Ready,status=Knowledge.Status,entries=Knowledge.Index.Entries.Count,answer=KnowledgeAnswer,packet=LastKnowledge,book=Data.Knowledge},jsonOptions);
             case "forget":ClearMemories();break;
             case "performance_reset":measuredFrames.Clear();break;
             case "event_fixture": {

@@ -109,6 +109,7 @@ public sealed class Companion {
     }
 }
 public sealed class SaveData {
+    public KnowledgeNotebook Knowledge {get;set;}=new();
     public FarmPolicy FarmPolicy {get;set;}=new();
     public List<PlanNode> Today {get;set;}=new();
     public int SchemaVersion {get;set;}=3;

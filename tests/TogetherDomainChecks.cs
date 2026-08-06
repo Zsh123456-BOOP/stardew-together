@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Together;
 
+KnowledgeChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 void Check(bool value,string label){if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);}
 void Reject(string json){try{Decision.Parse(json);throw new Exception("Invalid decision accepted");}catch(InvalidOperationException){}}
 Reject("{\"decision\":\"accept\",\"speech\":\"好\",\"steps\":[]}");

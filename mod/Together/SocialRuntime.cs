@@ -25,6 +25,7 @@ public sealed partial class ModEntry {
             social.Wishes=social.Wishes.TakeLast(8).ToList();
         }
         if(!Settings.Autonomy || !s.NearPlayer || Thinking || !social.CanOpen(s.Day))return;
+        if(TryKnowledgeShare(name,p,s))return;
         var completedProject=Data.Projects.FirstOrDefault(project=>project.Status=="fulfilled" && !social.CelebratedProjects.Contains(project.Id));
         if(completedProject!=null) {
             social.CelebratedProjects.Add(completedProject.Id);social.TheirTurn=true;

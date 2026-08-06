@@ -57,6 +57,7 @@ public sealed partial class ModEntry:Mod {
     }
     public override void Entry(IModHelper helper) {
         Settings=helper.ReadConfig<Config>();
+        SetupKnowledge();
         helper.Events.GameLoop.GameLaunched+=(_,_)=>{
             api=helper.ModRegistry.GetApi<ICompanionControl>("ThaliaFawnheart.TheStardewSquad");
             Notice=api==null?"需要带同行接口的 Squad 版本。":"同行已准备好，按 F8 打开。";
@@ -64,7 +65,7 @@ public sealed partial class ModEntry:Mod {
         helper.Events.GameLoop.SaveLoaded+=(_,_)=>Load();
         helper.Events.GameLoop.DayEnding+=(_,_)=>CheckpointJobs();
         helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist)Helper.Data.WriteSaveData("together-v2",Data);};
-        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{generation++;pending=null;api?.Reset();Data=new();};
+        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
             EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
@@ -156,6 +157,7 @@ public sealed partial class ModEntry:Mod {
     }
     private void Load() {
         generation++;pending=null;canPersist=true;api?.Reset();
+        ResetKnowledge();
         try{Data=Helper.Data.ReadSaveData<SaveData>("together-v2") ?? (File.Exists(SavePath)?JsonSerializer.Deserialize<SaveData>(File.ReadAllText(SavePath))??new():new());}
         catch{Data=new();canPersist=false;Notice="同行记录无法读取，本次暂停写入以保留原文件。";return;}
         if(Data.SchemaVersion>3){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
@@ -213,6 +215,7 @@ public sealed partial class ModEntry:Mod {
     }
     public void Send(string message,bool autonomous=false) {
         if(!Context.IsWorldReady || !Connected || string.IsNullOrWhiteSpace(message))return;
+        if(!autonomous && IsKnowledgeQuestion(message)){AskKnowledge(message);return;}
         if(HandleLocalConversation(message))return;
         if(Thinking){Notice="等我把这句话想完，或点停止。";return;}
         if(message.Length>400){Notice="一句话最多 400 字。";return;}
@@ -230,14 +233,15 @@ public sealed partial class ModEntry:Mod {
             note="bond是本Mod亲近感，actor.relationship是真实好感。没有招募时可以聊天，行动需先邀请。"};
         Data.Calls++;RecordUsage();pendingName=Selected;pendingGeneration=generation;
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        pending=ModelClient.Ask(file,Settings.Model,context);Notice="正在想怎么回答你…";Persist();
+        pendingKnowledge=false;pending=ModelClient.Ask(file,Settings.Model,context);Notice="正在想怎么回答你…";Persist();
     }
     private void CompleteReply() {
-        if(pending==null || !pending.IsCompleted || !Context.IsPlayerFree)return;
+        if(pending==null || !pending.IsCompleted || (!Context.IsPlayerFree && Game1.activeClickableMenu is not EncyclopediaMenu))return;
         var task=pending;pending=null;
         if(pendingGeneration!=generation)return;
         try {
             var result=task.GetAwaiter().GetResult();Data.Tokens+=result.Tokens;RecordUsage();
+            if(CompleteKnowledgeReply(result))return;
             if(HandleAutonomousReply(result))return;
             var decision=Decision.Parse(result.Json);var person=Person(pendingName);person.LastDecision=decision;
             if(pendingName==Selected){if(decision.project=="farm")AddFarmProject();else if(decision.project=="bundle")AddBundleProject();}
@@ -248,6 +252,7 @@ public sealed partial class ModEntry:Mod {
             else Notice="聊完啦，继续一起玩。";
             Persist();
         }catch(Exception e){
+            if(pendingKnowledge){KnowledgeFailure();return;}
             if(pendingAutonomous) {
                 var world=World();var actor=Actor(world,pendingName);var p=Person(pendingName);
                 if(actor.HasValue && p.Job?.Status is not ("active" or "waiting" or "paused")) {
@@ -270,7 +275,7 @@ public sealed partial class ModEntry:Mod {
     private void Start(Decision d,bool forced) => StartFor(Selected,d,forced);
     public void Decline(){Current.Proposal=null;Say(Selected,"好，那就换个时候。陪着也挺好的。");Persist();}
     public void Cancel() {
-        generation++;pending=null;Current.Proposal=null;Current.ProposalAutonomous=false;
+        generation++;pending=null;pendingKnowledge=false;Current.Proposal=null;Current.ProposalAutonomous=false;
         var job=Current.Job;
         Current.Life.Suspended.Clear();Current.Life.LastDecisionMinute=Minute;
         if(job?.TravelCommand!=null){api!.CancelAction(job.TravelCommand);job.TravelCommand=null;}
@@ -299,6 +304,7 @@ public sealed partial class ModEntry:Mod {
     }
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null || !canPersist)return;
+        Knowledge.Tick();
         CompleteReply();
         foreach(var pair in Data.People.Where(p=>p.Value.Job?.Command!=null).ToArray())Poll(pair.Key,pair.Value);
         slowTick+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;

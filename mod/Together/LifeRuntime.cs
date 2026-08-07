@@ -64,10 +64,10 @@ public sealed partial class ModEntry {
                 foreach(var need in project.Needs)Data.Reservations[need.Item]=Data.Reservations.GetValueOrDefault(need.Item)+need.Count;
             }
         }
-        UpdateDevelopmentProjects();BuildToday();
+        UpdateDevelopmentProjects();UpdateSharedGoals();BuildToday();
         if(Data.Projects.Count>40)Data.Projects=Data.Projects.TakeLast(40).ToList();
         Data.FarmPolicy.Enabled=Data.FarmHelp;
-        api?.ConfigureFarm(JsonSerializer.Serialize(new{reservations=Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).Select(n=>new{n.Item,n.Quality,n.Count}),policy=Data.FarmPolicy}));
+        api?.ConfigureFarm(JsonSerializer.Serialize(new{reservations=AllReservations().Select(n=>new{n.Item,n.Quality,n.Count}),policy=Data.FarmPolicy}));
     }
     private Situation SituationFor(string name,JsonElement actor,JsonElement world) {
         string location=actor.GetProperty("location").GetString()!;
@@ -126,7 +126,7 @@ public sealed partial class ModEntry {
             if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100) || !File.Exists(file)) {p.Life.DecisionSource="local-budget-or-offline";StartOption(pair.Key,options[0]);return;}
             pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
             var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=PromptSocial(p),today=Data.Today.Take(12),
-                options=options.Take(12),projects=Data.Projects.Where(x=>x.Status=="active").Take(8),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
+                shared_goals=GoalContext(),options=options.Take(12),projects=Data.Projects.Where(x=>x.Status=="active").Take(8),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};
             Data.Calls++;RecordUsage();pendingKnowledge=false;pending=ModelClient.Ask(file,Settings.Model,context,true);return;
         }
@@ -180,14 +180,14 @@ public sealed partial class ModEntry {
             if(existing.Status is not ("fulfilled" or "cancelled")) {existing.Status="paused";if(p.Life.Suspended.Count<3)p.Life.Suspended.Add(existing);else{Notice="已有三个待继续的安排，请先处理它们。";return;}}
         }
         if(!Actor(World(),name).HasValue){Notice="先邀请同行，再开始约定。";return;}
-        p.Job=new(){Title=d.title,Steps=d.steps.Select(s=>new Step{skill=s.skill,count=s.count,location=s.location}).ToList(),Forced=forced,Origin=origin,OptionId=optionId,Reason=reason};
+        p.Job=new(){Title=d.title,Steps=d.steps.Select(s=>new Step{skill=s.skill,count=s.count,location=s.location,target_item=s.target_item}).ToList(),Forced=forced,Origin=origin,OptionId=optionId,Reason=reason};
         p.Proposal=null;p.ProposalAutonomous=false;p.Life.Intent=d.title;p.Life.Reason=reason;
         if(forced){p.Bond=Math.Max(0,p.Bond-1);p.Social.Relationship.Apply(p.Job.Id,"forced",Game1.Date.TotalDays);} // once per forced commitment, never once per crop
         AddLine(p.Memories,origin=="autonomous"?"自己的安排":"约定",d.title+"："+d.PlanText());
         Notice="安排开始；关闭面板后会行动。";
     }
     private void CheckpointJobs() {
-        generation++;pending=null;
+        generation++;pending=null;pendingGoalWork=null;
         foreach(var pair in Data.People) {
             var p=pair.Value;var job=p.Job;
             if(job==null || job.Status is not ("active" or "waiting")){p.Social.CloseDay(Game1.Date.TotalDays,p.Life.Experiences,Data.Projects);continue;}

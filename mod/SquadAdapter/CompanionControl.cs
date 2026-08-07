@@ -94,7 +94,18 @@ public sealed partial class CompanionControl {
         }
     }
     private object[] Candidates(ISquadMate mate) => FindCandidates(mate).Select(c=>(object)new {
-        target_id=c.Id, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId }).ToArray();
+        target_id=c.Id, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
+    private static string[] CandidateOutputs(Candidate c) {
+        if(c.Skill=="harvest" && c.Source is HoeDirt dirt && dirt.crop!=null)return new[]{ItemRegistry.QualifyItemId(dirt.crop.indexOfHarvest.Value)??""};
+        if(c.Source is not StardewValley.Object item)return Array.Empty<string>();
+        if(c.Skill=="forage")return new[]{item.QualifiedItemId};
+        if(c.Skill=="collect" && item.heldObject.Value!=null)return new[]{item.heldObject.Value.QualifiedItemId};
+        // Known vanilla resource nodes only. This identifies an attempt, not guaranteed drop quantities.
+        if(c.Skill=="mine")return item.ItemId switch {
+            "751"=>new[]{"(O)378"},"290"=>new[]{"(O)380"},"764"=>new[]{"(O)384"},"765"=>new[]{"(O)386"},
+            "32" or "38" or "40" or "42" or "48" or "50" or "52" or "54" or "56" or "58"=>new[]{"(O)390"},_=>Array.Empty<string>()};
+        return Array.Empty<string>();
+    }
     private readonly Dictionary<string,(string Location,DateTime Until,bool Available)> fishingAvailability=new();
     private bool FishingAvailable(ISquadMate mate) {
         string id=Id(mate),location=mate.Npc.currentLocation.NameOrUniqueName;

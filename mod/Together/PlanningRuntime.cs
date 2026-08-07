@@ -121,6 +121,12 @@ public sealed partial class ModEntry {
         }
         if(counts.GetValueOrDefault("gift")>0 && p.Social.GiftDay!=s.Day && p.Social.Relationship.Comfort>=40 && p.Social.Mode!="quiet")
             options.Add(new(){Id="gift",Title="留一件小礼物",Reason="随身有未预留的鱼或花，也有你指定的收货箱",Category="personal",Score=100,Steps=new(){new(){skill="gift",location=s.Location}}});
+        if(Data.FarmHelp && p.Energy>=25 && p.Social.Mode!="holiday" && s.Minute<23*60 && !s.Threat) {
+            foreach(var (goal,node) in GoalWork(name)) {
+                var option=GoalOption(name,goal,node,actor);
+                if(option!=null && p.Life.RetryAfter.GetValueOrDefault(option.Id)<=s.Minute)options.Add(option);
+            }
+        }
         foreach(var o in options) {
             if(o.Category=="shared")o.Score+=(p.Profile.Temperament.Planning-50)*.15+p.Social.Relationship.Cooperation*.08;
             if(o.Category=="personal" && p.Social.TheirTurn)o.Score+=30;

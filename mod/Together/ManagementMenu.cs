@@ -29,6 +29,7 @@ public sealed partial class CompanionMenu {
         } else if(managePage==2) {
             Button(28,228,140,36,"上个目标",()=>{choiceIndex=Math.Max(0,choiceIndex-1);Rebuild();});
             Button(182,228,140,36,"下个目标",()=>{choiceIndex++;Rebuild();});
+            Button(534,228,200,36,"心愿与材料分工",()=>mod.OpenGoals());
             Button(336,228,180,36,"加入共同安排",()=>{if(Goals.Length>0)mod.AddProgressProject(Goals[choiceIndex%Goals.Length].Id);Rebuild();});
             int row=0;foreach(var project in mod.Data.Projects.Where(p=>p.Status is "active" or "paused").TakeLast(3)) {
                 string id=project.Id;Button(width-300,432+row*45,140,30,"分工："+(project.Owner=="player"?"我":project.Owner=="together"?"一起":project.Owner),()=>{mod.AssignProject(id);Rebuild();});

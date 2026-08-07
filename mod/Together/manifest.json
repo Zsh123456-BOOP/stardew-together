@@ -1,7 +1,7 @@
 {
   "Name": "同行 · Together",
   "Author": "Stardew Agent Project",
-  "Version": "0.5.0",
+  "Version": "0.6.0",
   "Description": "Companion with shared farm projects, memories and a live searchable encyclopedia. Press F8.",
   "UniqueID": "StardewAgent.Together",
   "EntryDll": "Together.dll",

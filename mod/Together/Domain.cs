@@ -18,6 +18,7 @@ public sealed class Profile {
     };
 }
 public sealed class Step {
+    public string? target_item {get;set;}
     public string skill {get;set;}="follow";
     public int count {get;set;}=1;
     public string? location {get;set;}
@@ -109,10 +110,11 @@ public sealed class Companion {
     }
 }
 public sealed class SaveData {
+    public List<SharedGoal> SharedGoals {get;set;}=new();
     public KnowledgeNotebook Knowledge {get;set;}=new();
     public FarmPolicy FarmPolicy {get;set;}=new();
     public List<PlanNode> Today {get;set;}=new();
-    public int SchemaVersion {get;set;}=4;
+    public int SchemaVersion {get;set;}=5;
     public string Pace {get;set;}="balanced";
     public bool FarmHelp {get;set;}=true;
     public List<SharedProject> Projects {get;set;}=new();

@@ -53,6 +53,7 @@ public sealed class EncyclopediaMenu:IClickableMenu {
         Button(640,106,108,"相关条目",()=>{
             if(mod.Knowledge.Index.Get(selected) is {} e){var links=e.Links.Concat(mod.Knowledge.Index.Entries.Where(x=>x.Links.Contains(e.Id)).Select(x=>x.Id));results=links.Distinct().Select(id=>mod.Knowledge.Index.Get(id)).Where(x=>x!=null&&mod.Knowledge.Visible(x)).Select(x=>new KnowledgeHit(x!,1,"关联资料")).ToArray();offset=0;}
         });
+        Button(760,106,130,"共同心愿",()=>mod.OpenGoals());
         Button(width-124,height-143,100,"问问伙伴",Ask);Button(width-124,height-92,100,"保存便签",SaveNote);
     }
     private int PageSize=>Math.Max(3,(height-265)/57);

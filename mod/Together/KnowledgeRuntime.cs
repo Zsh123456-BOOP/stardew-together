@@ -26,7 +26,7 @@ public sealed partial class ModEntry {
             if(Context.IsWorldReady && args.Length==1 && args[0] is "discovered" or "all"){Data.Knowledge.DiscoveredOnly=args[0]=="discovered";CancelKnowledge();}
         });
     }
-    private void ResetKnowledge(){pendingKnowledge=false;knowledgePlanning=false;LastKnowledge=null;KnowledgeAnswer="";Knowledge?.Invalidate();}
+    private void ResetKnowledge(){pendingGoalWork=null;goalRecipeRevision=-1;pendingKnowledge=false;knowledgePlanning=false;LastKnowledge=null;KnowledgeAnswer="";Knowledge?.Invalidate();}
     public void RefreshKnowledgeFacts(){RefreshFacts(true);Knowledge.Observe();}
     public void OpenKnowledge(string query="") {
         if(!Context.IsWorldReady)return;
@@ -96,10 +96,11 @@ public sealed partial class ModEntry {
             string kind="bundle:"+needs.Id;
             if(!Data.Projects.Any(p=>p.Kind==kind && p.Status=="active"))Data.Projects.Add(new(){Kind=kind,Title="一起准备："+needs.Name,CreatedDay=Facts.Day,Owner="together"});
             UpdateProjects();Notice="已加入这项献祭准备；原有预算和物资权限保持有效。";
-        } else if(id.StartsWith("craft:")){AddProgressProject(id);}
+        } else if(id.StartsWith("craft:") || id.StartsWith("(O)") || id.StartsWith("(BC)")){AddSharedGoal(id);}
         else {Data.Knowledge.Note(id,"想一起了解或准备："+e.Name);Notice="已收藏并记下心愿；尚未派工，具体活动可以再与伙伴商量。";}
     }
     private bool TryKnowledgeShare(string name,Companion person,Situation s) {
+        if(TryGoalShare(name,person,s))return true;
         var book=Data.Knowledge;
         if(!Knowledge.Ready || book.SharedDay==s.Day || person.Social.Mode!="normal" || s.Threat || person.Job?.Status is "active" or "waiting")return false;
         foreach(string id in book.Favorites) {

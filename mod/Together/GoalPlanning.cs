@@ -12,6 +12,7 @@ public sealed class SharedGoal {
     public string Status {get;set;}="active";
     public string Owner {get;set;}="together";
     public Dictionary<string,string> Assignments {get;set;}=new();
+    public HashSet<string> DirectGather {get;set;}=new();
     public List<GoalNode> Nodes {get;set;}=new();
     public List<GoalEvent> History {get;set;}=new();
     public List<Requirement> Reserved {get;set;}=new();
@@ -70,6 +71,14 @@ public sealed class GoalLedger {
     }
 }
 public static class GoalPlanner {
+    public static string WorkSpeech(string speech,string mode,string location) {
+        // A one-node attempt cannot promise quantities or a future delivery time.
+        bool promise=System.Text.RegularExpressions.Regex.IsMatch(speech,@"(?:\d+|[一二两三四五六七八九十百]+)\s*[个份块根条颗]")
+            || new[]{"下午","明天","今晚","保证","一定带","全交给我","全包","上午","中午"}.Any(speech.Contains);
+        bool wrongMine=!location.StartsWith("UndergroundMine") && new[]{"地下","矿洞","矿井","下矿"}.Any(speech.Contains);
+        if(!promise && !wrongMine)return speech;
+        return mode=="refuse"?"这一步我现在不太想接，我们换个分工好吗？":mode=="negotiate"?"我可以先试一趟，之后我们再商量怎么分担，好吗？":"好，我先试着收集这份材料，回来一起看看还缺多少。";
+    }
     public static void Rebuild(SharedGoal goal,IReadOnlyDictionary<string,GoalRecipe> recipes,GoalLedger ledger,int day,
         Func<string,string> name,int crafted=0,GoalLedger? processing=null) {
         if(goal.Status!="active"){goal.Reserved.Clear();return;}
@@ -83,7 +92,9 @@ public static class GoalPlanner {
             if(node.Missing==0){node.Status="ready";node.Reason="这份目标已分配到足量库存";return path;}
             node.InProgress=processing?.Take(item,node.Missing)??0;
             if(node.ToPrepare==0){node.Status="processing";node.Reason="原生机器中已有对应产物，等待加工或收取；还不算已获得。";return path;}
-            var alternatives=recipes.Values.Where(r=>r.Item==item).ToArray();
+            if(goal.DirectGather.Contains(path)){node.Reason="你选择直接收集成品，暂不展开制作链；购买仍按已有清单和预算。";return path;}
+            // Building a whole new processing facility is not an implicit prerequisite for collecting a common resource.
+            var alternatives=recipes.Values.Where(r=>r.Item==item && (r.Kind!="process" || r.Known || depth==0)).ToArray();
             var recipe=selected??alternatives.OrderByDescending(r=>r.Known).ThenBy(r=>r.Kind=="craft"?0:1).ThenBy(r=>r.Output).ThenBy(r=>r.Id,StringComparer.Ordinal).FirstOrDefault();
             if(recipe==null){node.Reason=alternatives.Length>1?"存在多种制作途径，请从百科选择具体配方":"先收集；没有已核实的制作配方，可查百科或请玩家处理获取条件";return path;}
             node.Kind=recipe.Kind;node.Source=recipe.Source;

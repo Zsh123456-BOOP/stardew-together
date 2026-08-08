@@ -17,11 +17,13 @@ public sealed partial class ModEntry {
         foreach(var pair in DataLoader.CraftingRecipes(Game1.content)) {
             var fields=pair.Value.Split('/');if(fields.Length<5)continue;
             var output=fields[2].Split(' ',StringSplitOptions.RemoveEmptyEntries);
-            if(output.Length!=2 || !int.TryParse(output[1],out int quantity) || quantity<1)continue;
+            int quantity=1;
+            if(output.Length is <1 or >2 || output.Length==2 && (!int.TryParse(output[1],out quantity) || quantity<1))continue;
             string item=output[0].StartsWith("(")?output[0]:(fields[3]=="true"?"(BC)":"(O)")+output[0];
             if(ItemRegistry.GetDataOrErrorItem(item).IsErrorItem)continue;
             var recipe=new CraftingRecipe(pair.Key,false);
-            string unlock=fields[4];var tokens=unlock.Split(' ');
+            string unlock=fields[4];var tokens=unlock.Split(' ',StringSplitOptions.RemoveEmptyEntries);
+            if(tokens.Length==3 && tokens[0]=="s")tokens=tokens.Skip(1).ToArray();
             var skills=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){["Farming"]="耕种",["Fishing"]="钓鱼",["Mining"]="采矿",["Foraging"]="采集",["Combat"]="战斗"};
             if(tokens.Length==2 && skills.TryGetValue(tokens[0],out var skill) && int.TryParse(tokens[1],out var level))unlock=$"原生配方条件：{skill} {level} 级；以配方实际进入制作栏为准。";
             else unlock="原生解锁条件代码："+unlock+"；特殊事件或商店条件需在游戏中确认。";
@@ -67,7 +69,7 @@ public sealed partial class ModEntry {
         foreach(var need in Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).OrderByDescending(n=>n.Quality))ledger.Take(need.Item,need.Count,need.Quality);
         var processing=new GoalLedger(processingStock);
         foreach(var goal in Data.SharedGoals)GoalPlanner.Rebuild(goal,goalRecipes,ledger,Facts.Day,
-            id=>KnowledgeCatalog.IngredientName(id),goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):0,processing);
+            id=>KnowledgeCatalog.IngredientName(id.StartsWith("(O)-")?id[3..]:id),goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):0,processing);
     }
     public void OpenGoals() {if(Context.IsWorldReady){RefreshFacts(true);Game1.activeClickableMenu=new SharedGoalsMenu(this);}}
     public void AddSharedGoal(string entity,int count=1) {
@@ -92,17 +94,25 @@ public sealed partial class ModEntry {
         var prefix=prefixes.FirstOrDefault(message.StartsWith);if(prefix==null)return false;
         if(Thinking){Notice="等我说完这句话，再一起安排。";return true;}
         string query=message[prefix.Length..].Trim(' ',':','：','。','!','！');
+        int count=1;
+        var quantity=System.Text.RegularExpressions.Regex.Match(query,@"^(\d{1,2}|[一二两三四五六七八九十])\s*[个台份组把]");
+        if(quantity.Success){string raw=quantity.Groups[1].Value;count=int.TryParse(raw,out var n)?n:raw=="两"?2:"一二三四五六七八九十".IndexOf(raw,StringComparison.Ordinal)+1;query=query[quantity.Length..].Trim();}
         if(query.Length==0){OpenGoals();return true;}
         var hits=Knowledge.Search(query,limit:8).Where(h=>h.Score>=650 && (h.Entry.Id.StartsWith("craft:")||h.Entry.Id.StartsWith("(O)")||h.Entry.Id.StartsWith("(BC)"))).ToArray();
         ReadGoalRecipes();
         var choices=hits.GroupBy(h=>goalRecipes.TryGetValue(h.Entry.Id,out var r)?r.Item:h.Entry.Id).ToArray();
-        if(choices.Length==1){AddLine(Current.Chat,"你",message);AddSharedGoal(choices[0].OrderByDescending(h=>h.Entry.Id.StartsWith("craft:")).First().Entry.Id);}
+        if(choices.Length==1){AddLine(Current.Chat,"你",message);AddSharedGoal(choices[0].OrderByDescending(h=>h.Entry.Id.StartsWith("craft:")).First().Entry.Id,count);}
         else {OpenKnowledge(query);Notice="一起在手册选准具体物品，再点加入计划；我不会猜一个高级物品替你决定。";}
         return true;
     }
     public void ChangeGoalCount(string id,int change) {
         var g=Data.SharedGoals.FirstOrDefault(g=>g.Id==id && g.Status=="active");if(g==null)return;
         g.Count=Math.Clamp(g.Count+change,1,99);UpdateProjects();Persist();
+    }
+    public void ToggleGoalRoute(string id,string node) {
+        var g=Data.SharedGoals.FirstOrDefault(g=>g.Id==id && g.Status=="active");if(g==null)return;
+        if(!g.DirectGather.Add(node))g.DirectGather.Remove(node);UpdateProjects();Persist();
+        Notice=g.DirectGather.Contains(node)?"这项材料改为直接寻找成品，保留其他分工。":"重新按当前配方与设备展开准备路线。";
     }
     public void ToggleSharedGoal(string id) {
         var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);if(goal==null || goal.Status=="fulfilled")return;
@@ -158,6 +168,7 @@ public sealed partial class ModEntry {
         if(mode is not ("accept" or "refuse" or "negotiate") || speech.Length is 0 or >400)throw new InvalidOperationException("分工回复无效，保留原来的安排。");
         var option=FreshGoalOption(id,pendingName);
         if(option==null){Notice="材料或位置刚刚变化，先重新核对这一步。";return true;}
+        speech=GoalPlanner.WorkSpeech(speech,mode,option.Steps[0].location??"");
         var p=Person(pendingName);Say(pendingName,speech);
         p.Proposal=new(){decision=mode,speech=speech,title=option.Title,steps=option.Steps,option_id=id};p.ProposalAutonomous=false;
         if(mode=="accept" && pendingName==Selected)AcceptProposal(false);
@@ -165,7 +176,7 @@ public sealed partial class ModEntry {
         Persist();return true;
     }
     private object GoalContext()=>new {
-        observed=$"{Facts.Day}日 {Facts.Time}",goals=Data.SharedGoals.Where(g=>g.Status=="active").Take(6).Select(g=>new {
+        observed=$"第{Facts.Day+1}天 {Facts.Time}",goals=Data.SharedGoals.Where(g=>g.Status=="active").Take(6).Select(g=>new {
             g.Id,g.Title,g.Count,g.Summary,steps=g.Nodes.Where(n=>n.Missing>0).Take(16).ToArray(),history=g.History.TakeLast(3).ToArray()}).ToArray(),
         note="来自原生配方与实际库存；数量已经扣除其他目标预留。未解锁仍可备料；无对应可执行选项时讨论分工或查资料，不能编造动作或完成。"};
     private bool TryGoalShare(string name,Companion p,Situation s) {

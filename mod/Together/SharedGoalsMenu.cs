@@ -34,6 +34,7 @@ public sealed class SharedGoalsMenu:IClickableMenu {
         Button(460,height-125,150,"商量交给伙伴",()=>mod.RequestGoalWork(goal.Id,node.Id));
         Button(622,height-125,120,"强制这一步",()=>mod.RequestGoalWork(goal.Id,node.Id,true));
         Button(754,height-125,100,"查材料",()=>mod.OpenKnowledge(node.Name));
+        Button(562,height-80,230,goal.DirectGather.Contains(node.Id)?"此项改回制作准备":"此项改为直接收集",()=>{mod.ToggleGoalRoute(goal.Id,node.Id);selected=0;Rebuild();});
         if(mod.Current.Proposal?.option_id?.StartsWith("goal:")==true) {
             Button(256,height-80,150,"同意伙伴提议",()=>{mod.AcceptProposal(false);Rebuild();});
             Button(418,height-80,120,"换个安排",()=>{mod.Decline();Rebuild();});
@@ -62,7 +63,7 @@ public sealed class SharedGoalsMenu:IClickableMenu {
                 Text(b,Fit($"{node.Name}：{node.Owned}/{node.Required}（加工中 {node.InProgress}） · {status} · {owner}",width-55),28,y);
                 Text(b,Fit(node.Reason,width-55,.64f),28,y+28,.64f);row++;
             }
-            var last=goal.History.LastOrDefault();if(last!=null)Text(b,Fit($"共同记录 · 第 {last.Day} 天：{last.Text}",width-50,.66f),24,height-170,.66f);
+            var last=goal.History.LastOrDefault();if(last!=null)Text(b,Fit($"共同记录 · 第 {last.Day+1} 天：{last.Text}",width-50,.66f),24,height-170,.66f);
         } else Text(b,"去共同手册选一个想获得的物品，点“加入计划”。也可以聊天说“我想要……” 。",24,140,.7f);
         foreach(var button in buttons){b.Draw(Game1.staminaRect,button.Rect,new Color(218,222,192));Text(b,button.Label,button.Rect.X-xPositionOnScreen+7,button.Rect.Y-yPositionOnScreen+6,.66f);}
         Text(b,Fit(mod.Current.Proposal?.option_id?.StartsWith("goal:")==true?mod.Current.Proposal.speech:mod.Notice,width-48,.65f),24,height-35,.65f);

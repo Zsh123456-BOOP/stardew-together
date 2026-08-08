@@ -102,8 +102,7 @@ public sealed partial class CompanionControl {
         if(c.Skill=="collect" && item.heldObject.Value!=null)return new[]{item.heldObject.Value.QualifiedItemId};
         // Known vanilla resource nodes only. This identifies an attempt, not guaranteed drop quantities.
         if(c.Skill=="mine")return item.ItemId switch {
-            "751"=>new[]{"(O)378"},"290"=>new[]{"(O)380"},"764"=>new[]{"(O)384"},"765"=>new[]{"(O)386"},
-            "32" or "38" or "40" or "42" or "48" or "50" or "52" or "54" or "56" or "58"=>new[]{"(O)390"},_=>Array.Empty<string>()};
+            "751"=>new[]{"(O)378"},"290"=>new[]{"(O)380"},"764"=>new[]{"(O)384"},"765"=>new[]{"(O)386"},_=>Array.Empty<string>()};
         return Array.Empty<string>();
     }
     private IEnumerable<object> ResourceSites(ISquadMate mate) {

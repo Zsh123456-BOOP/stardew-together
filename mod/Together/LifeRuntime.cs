@@ -134,6 +134,7 @@ public sealed partial class ModEntry {
         }
     }
     private void StartOption(string name,ActivityOption option,string? speech=null) {
+        if(option.Id.StartsWith("goal:") && speech!=null)speech=GoalPlanner.WorkSpeech(speech,"accept",option.Steps[0].location??"");
         var p=Person(name);p.Life.Intent=option.Title;p.Life.Reason=option.Reason;
         var d=new Decision{decision="accept",title=option.Title,speech=speech??option.Reason,steps=option.Steps};
         StartFor(name,d,false,"autonomous",option.Id,option.Reason);

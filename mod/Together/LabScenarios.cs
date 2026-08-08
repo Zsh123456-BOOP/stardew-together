@@ -23,6 +23,7 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "goal_recipes":ReadGoalRecipes();return JsonSerializer.Serialize(goalRecipes.Values,jsonOptions);
             case "goal_suite":return GoalContracts();
             case "goal_add":AddSharedGoal(Arg("id"),Num("count",1));break;
             case "goal_menu":OpenGoals();break;

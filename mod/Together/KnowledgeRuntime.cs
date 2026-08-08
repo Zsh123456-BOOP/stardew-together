@@ -53,7 +53,7 @@ public sealed partial class ModEntry {
     private void StartKnowledgeCall(bool plan) {
         EnsureBudget();
         if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100)){KnowledgeAnswer="今日模型额度已用完，仍可查看下面的本地资料。";pendingKnowledge=false;Notice=KnowledgeAnswer;return;}
-        pendingKnowledge=true;knowledgePlanning=plan;pendingName=Selected;pendingGeneration=generation;knowledgeRevision=Knowledge.Revision;
+        pendingGoalWork=null;pendingKnowledge=true;knowledgePlanning=plan;pendingName=Selected;pendingGeneration=generation;knowledgeRevision=Knowledge.Revision;
         Data.Calls++;RecordUsage();
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         var evidence=LastKnowledge!;

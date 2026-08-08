@@ -59,14 +59,15 @@ public sealed partial class ModEntry {
     private void UpdateSharedGoals() {
         if(Knowledge==null)return;
         ReadGoalRecipes();
-        var machines=new HashSet<string>();
-        void Scan(GameLocation location){foreach(var o in location.objects.Values)if(o.bigCraftable.Value)machines.Add(o.QualifiedItemId);foreach(var b in location.buildings)if(b.GetIndoors() is {} inside)Scan(inside);}
+        var machines=new HashSet<string>();var processingStock=new List<GoalStock>();
+        void Scan(GameLocation location){foreach(var o in location.objects.Values)if(o.bigCraftable.Value){machines.Add(o.QualifiedItemId);if(o.heldObject.Value is {} output)processingStock.Add(new(){Item=output.QualifiedItemId,Count=output.Stack,Category=output.Category,Quality=output.Quality});}foreach(var b in location.buildings)if(b.GetIndoors() is {} inside)Scan(inside);}
         Scan(Game1.getFarm());
         foreach(var r in goalRecipes.Values)r.Known=r.Kind=="craft"?Game1.player.craftingRecipes.ContainsKey(r.Id[6..]):machines.Contains(r.Facility);
         var ledger=new GoalLedger(Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Category=s.Category,Quality=s.Quality}));
         foreach(var need in Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).OrderByDescending(n=>n.Quality))ledger.Take(need.Item,need.Count,need.Quality);
+        var processing=new GoalLedger(processingStock);
         foreach(var goal in Data.SharedGoals)GoalPlanner.Rebuild(goal,goalRecipes,ledger,Facts.Day,
-            id=>KnowledgeCatalog.IngredientName(id),goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):0);
+            id=>KnowledgeCatalog.IngredientName(id),goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):0,processing);
     }
     public void OpenGoals() {if(Context.IsWorldReady){RefreshFacts(true);Game1.activeClickableMenu=new SharedGoalsMenu(this);}}
     public void AddSharedGoal(string entity,int count=1) {
@@ -99,6 +100,10 @@ public sealed partial class ModEntry {
         else {OpenKnowledge(query);Notice="一起在手册选准具体物品，再点加入计划；我不会猜一个高级物品替你决定。";}
         return true;
     }
+    public void ChangeGoalCount(string id,int change) {
+        var g=Data.SharedGoals.FirstOrDefault(g=>g.Id==id && g.Status=="active");if(g==null)return;
+        g.Count=Math.Clamp(g.Count+change,1,99);UpdateProjects();Persist();
+    }
     public void ToggleSharedGoal(string id) {
         var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);if(goal==null || goal.Status=="fulfilled")return;
         goal.Status=goal.Status=="paused"?"active":"paused";UpdateProjects();Persist();
@@ -109,17 +114,22 @@ public sealed partial class ModEntry {
         goal.Assignments[nodeId]=owner;UpdateProjects();Persist();
     }
     private IEnumerable<(SharedGoal Goal,GoalNode Node)> GoalWork(string name)=>Data.SharedGoals.Where(g=>g.Status=="active")
-        .SelectMany(g=>g.Nodes.Where(n=>n.Missing>0 && n.Kind=="gather" && (n.Owner=="together" || n.Owner==name)).Select(n=>(g,n)));
+        .SelectMany(g=>g.Nodes.Where(n=>n.Missing>0 && (n.Owner=="together" || n.Owner==name)).Select(n=>(g,n)));
     private ActivityOption? GoalOption(string name,SharedGoal goal,GoalNode node,JsonElement actor) {
-        if(goal.Status!="active" || node.Missing==0 || node.Kind!="gather")return null;
+        if(goal.Status!="active" || node.Missing==0)return null;
         // Only observed outputs, never a generic mining action mislabelled as the desired material.
         var candidates=actor.GetProperty("candidates").EnumerateArray().Where(c=>CandidateMatches(c,node.Item)).ToArray();
+        string location=actor.GetProperty("location").GetString()!;
+        if(candidates.Length==0 && actor.TryGetProperty("resource_sites",out var sites)) {
+            candidates=sites.EnumerateArray().Where(c=>CandidateMatches(c,node.Item)).Take(1).ToArray();
+            if(candidates.Length>0)location=candidates[0].GetProperty("location").GetString()!;
+        }
         if(candidates.Length==0)return null;
         string skill=candidates[0].GetProperty("skill").GetString()!;
         if(!new[]{"mine","forage","harvest","collect"}.Contains(skill))return null;
         return new(){Id="goal:"+goal.Id+":"+node.Id,Title="为"+goal.Title+"准备"+node.Name,Category="shared",Score=Data.Pace=="focused"?105:76,
-            Reason=$"这项共同心愿还缺 {node.Missing} 份{node.Name}，当前位置有对应目标；行动后按实际库存重新核算，不保证单次产量。",
-            Steps=new(){new(){skill=skill,count=1,location=actor.GetProperty("location").GetString(),target_item=node.Item}}};
+            Reason=$"这项共同心愿还缺 {node.Missing} 份{node.Name}，{SocialState.PlaceName(location)}有已观察的对应目标，到达后再核对路线与物品；行动后按实际库存重新核算，不保证单次产量。",
+            Steps=new(){new(){skill=skill,count=1,location=location,target_item=node.Item}}};
     }
     private static bool CandidateMatches(JsonElement candidate,string item)=>candidate.TryGetProperty("expected_items",out var outputs)
         && outputs.ValueKind==JsonValueKind.Array && outputs.EnumerateArray().Any(e=>e.GetString()==item);
@@ -156,7 +166,7 @@ public sealed partial class ModEntry {
     }
     private object GoalContext()=>new {
         observed=$"{Facts.Day}日 {Facts.Time}",goals=Data.SharedGoals.Where(g=>g.Status=="active").Take(6).Select(g=>new {
-            g.Id,g.Title,g.Count,g.Summary,steps=g.Nodes.Where(n=>n.Missing>0).Take(16),history=g.History.TakeLast(3)}),
+            g.Id,g.Title,g.Count,g.Summary,steps=g.Nodes.Where(n=>n.Missing>0).Take(16).ToArray(),history=g.History.TakeLast(3).ToArray()}).ToArray(),
         note="来自原生配方与实际库存；数量已经扣除其他目标预留。未解锁仍可备料；无对应可执行选项时讨论分工或查资料，不能编造动作或完成。"};
     private bool TryGoalShare(string name,Companion p,Situation s) {
         if(p.Social.Mode!="normal" || s.Threat)return false;

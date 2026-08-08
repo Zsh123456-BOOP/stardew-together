@@ -88,6 +88,9 @@ public sealed class KnowledgeService {
             var related=Index.Entries.Where(r=>r.Kind=="recipe" && r.Links.Contains(e.Id)&&Visible(r)).Take(8).ToArray();
             if(related.Length>0)Add("已知配方用途",string.Join("、",related.Select(r=>r.Name)),"当前已知配方");
         }
+        foreach(var goal in mod.Data.SharedGoals.Where(g=>g.Entity==e.Id || g.Item==e.Id || g.Nodes.Any(n=>n.Item==e.Id)).Take(4))
+            Add("我们的心愿："+goal.Title,goal.Summary+"；"+string.Join("；",goal.Nodes.Where(n=>n.Item==e.Id || gIsRoot(n)).Take(6).Select(n=>$"{n.Name} 已分配 {n.Owned}/{n.Required}，{n.Reason}")),"Together 共同心愿与库存分配");
+        static bool gIsRoot(GoalNode n)=>n.Id=="root";
         if(e.Kind=="crop")Crop(e,Add);
         if(e.Kind=="fish")Fish(e,Add);
         if(e.Kind=="recipe")Recipe(e,Add);

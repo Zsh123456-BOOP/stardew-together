@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Together;
 
+GoalChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 KnowledgeChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 void Check(bool value,string label){if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);}

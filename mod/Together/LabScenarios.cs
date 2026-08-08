@@ -23,6 +23,24 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "goal_suite":return GoalContracts();
+            case "goal_add":AddSharedGoal(Arg("id"),Num("count",1));break;
+            case "goal_menu":OpenGoals();break;
+            case "goal_button":if(Game1.activeClickableMenu is SharedGoalsMenu goalsMenu)goalsMenu.CheckButton(Arg("label"));else throw new InvalidOperationException("goals_menu_required");break;
+            case "goal_assign":AssignGoalNode(Arg("id"),Arg("node"),Arg("owner","player"));break;
+            case "goal_work":RequestGoalWork(Arg("id"),Arg("node"),Num("forced")==1);break;
+            case "goal_accept":AcceptProposal(Num("forced")==1);break;
+            case "goal_pause":ToggleSharedGoal(Arg("id"));break;
+            case "goal_options": {RefreshFacts(true);var world=World();var actor=Actor(world,Selected);return JsonSerializer.Serialize(actor.HasValue?OptionsFor(Selected,Current,SituationFor(Selected,actor.Value,world),actor.Value):new(),jsonOptions);}
+            case "goal_fixture": {
+                Cancel();api!.PrepareLab();Settings.Autonomy=false;Data.SharedGoals.Clear();Data.Projects.Clear();Data.FarmPolicy=new();Data.FarmHelp=true;
+                Data.Knowledge.DiscoveredOnly=false;
+                foreach(var c in farm.objects.Values.OfType<Chest>())c.Items.Clear();
+                foreach(var name in Data.People.Keys)Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{name}").Clear();
+                for(int i=0;i<Game1.player.Items.Count;i++)if(Game1.player.Items[i] is StardewValley.Object)Game1.player.Items[i]=null;
+                foreach(var point in new[]{new Vector2(47,26),new Vector2(49,26)}) {var ore=ItemRegistry.Create<StardewValley.Object>("(O)751");ore.TileLocation=point;ore.MinutesUntilReady=2;farm.objects[point]=ore;}
+                break;
+            }
             case "knowledge_suite":return KnowledgeContracts();
             case "knowledge_query":return JsonSerializer.Serialize(Knowledge.Query(Arg("query"),Arg("id")==""?null:Arg("id")),jsonOptions);
             case "knowledge_ask":AskKnowledge(Arg("query"),Arg("id")==""?null:Arg("id"));break;
@@ -169,7 +187,7 @@ public sealed partial class ModEntry {
                 Game1.currentLocation.answerDialogueAction("Sleep_Yes",null);break;
             }
             case "panel":Game1.activeClickableMenu=new CompanionMenu(this,Num("tab",5),Num("page"),Num("choice"));break;
-            case "close":if(Game1.activeClickableMenu is CompanionMenu or EncyclopediaMenu)Game1.exitActiveMenu();break;
+            case "close":if(Game1.activeClickableMenu is CompanionMenu or EncyclopediaMenu or SharedGoalsMenu)Game1.exitActiveMenu();break;
             default:throw new InvalidOperationException("unknown_lab_scenario");
         }
         RefreshFacts(true);return StatusJson();

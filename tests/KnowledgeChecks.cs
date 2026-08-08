@@ -20,7 +20,7 @@ public static class KnowledgeChecks {
         var book=new KnowledgeNotebook();for(int n=0;n<40;n++)book.Visit(n.ToString());book.Visit("39");book.Note("39",new string('文',300));
         check(book.Recent.Count==24 && book.Recent.Distinct().Count()==24 && book.Notes["39"].Length==240,"knowledge notebook bounded and deduplicated");
         var saved=JsonSerializer.Deserialize<SaveData>(JsonSerializer.Serialize(new SaveData{Knowledge=book}))!;
-        check(saved.Knowledge.Recent.SequenceEqual(book.Recent) && saved.Knowledge.DiscoveredOnly && saved.SchemaVersion==4,"knowledge save persistence, downgrade protection and spoiler-safe default");
+        check(saved.Knowledge.Recent.SequenceEqual(book.Recent) && saved.Knowledge.DiscoveredOnly && saved.SchemaVersion==5,"knowledge save persistence, downgrade protection and spoiler-safe default");
         check(JsonSerializer.Deserialize<SaveData>("{}")!.Knowledge.DiscoveredOnly,"knowledge migration from pre-encyclopedia saves");
         var packet=new KnowledgePacket{Facts=new(){new("f","库存","有 3 件。","游戏")}};
         check(KnowledgeRules.ValidateAnswer("{\"speech\":\"我们有3件。\",\"evidence_ids\":[\"f\"]}",packet).Contains("3"),"knowledge grounded reply accepted");

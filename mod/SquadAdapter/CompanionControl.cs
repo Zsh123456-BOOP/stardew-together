@@ -106,6 +106,23 @@ public sealed partial class CompanionControl {
             "32" or "38" or "40" or "42" or "48" or "50" or "52" or "54" or "56" or "58"=>new[]{"(O)390"},_=>Array.Empty<string>()};
         return Array.Empty<string>();
     }
+    private IEnumerable<object> ResourceSites(ISquadMate mate) {
+        foreach(string name in Reachable(mate.Npc.currentLocation).Take(12)) {
+            if(name==mate.Npc.currentLocation.NameOrUniqueName)continue;
+            var location=Game1.getLocationFromName(name);if(location==null)continue;
+            int emitted=0;
+            foreach(var pair in location.objects.Pairs.Take(256)) {
+                var item=pair.Value;string skill=item.BaseName=="Stone"?"mine":item.bigCraftable.Value&&item.readyForHarvest.Value?"collect":item.IsSpawnedObject?"forage":"";
+                if(skill=="" || skill=="mine"&&!mate.CanPerformTask(TaskType.Mining))continue;
+                var outputs=CandidateOutputs(new("",skill,pair.Key.ToPoint(),item,pair.Key.ToPoint()));if(outputs.Length==0)continue;
+                yield return new{location=name,skill,expected_items=outputs};if(++emitted==12)break;
+            }
+            if(!mate.CanPerformTask(TaskType.Harvesting))continue;
+            foreach(var pair in location.terrainFeatures.Pairs.Take(256))if(pair.Value is HoeDirt dirt && dirt.crop!=null && dirt.readyForHarvest()) {
+                yield return new{location=name,skill="harvest",expected_items=CandidateOutputs(new("","harvest",pair.Key.ToPoint(),dirt,pair.Key.ToPoint()))};if(++emitted>=16)break;
+            }
+        }
+    }
     private readonly Dictionary<string,(string Location,DateTime Until,bool Available)> fishingAvailability=new();
     private bool FishingAvailable(ISquadMate mate) {
         string id=Id(mate),location=mate.Npc.currentLocation.NameOrUniqueName;
@@ -119,7 +136,7 @@ public sealed partial class CompanionControl {
             task = mate.Task?.Type.ToString(), moving = mate.Npc.isMoving(), cooldown = mate.ActionCooldown,
             registered_location=mate.Npc.currentLocation is not StardewValley.Locations.MineShaft mine || StardewValley.Locations.MineShaft.activeMines.Contains(mine),
             path_preview=mate.Path.Take(6).Select(Tile).ToArray(),reachable_locations=Reachable(mate.Npc.currentLocation), returning_home=records.Values.Any(r=>r.Actor==Id(mate) && r.Skill=="dismiss" && r.Status=="running"), managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
-            fishing_available = FishingAvailable(mate),
+            resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
             cargo = Counts(Pouch(mate)),
             in_combat = mate.Task?.Type == TaskType.Attacking,

@@ -66,6 +66,8 @@ public sealed partial class ModEntry {
         }
         UpdateDevelopmentProjects();UpdateSharedGoals();BuildToday();
         if(Data.Projects.Count>40)Data.Projects=Data.Projects.TakeLast(40).ToList();
+        Data.Reservations.Clear();
+        foreach(var n in AllReservations())Data.Reservations[n.Item]=Data.Reservations.GetValueOrDefault(n.Item)+n.Count;
         Data.FarmPolicy.Enabled=Data.FarmHelp;
         api?.ConfigureFarm(JsonSerializer.Serialize(new{reservations=AllReservations().Select(n=>new{n.Item,n.Quality,n.Count}),policy=Data.FarmPolicy}));
     }
@@ -124,7 +126,7 @@ public sealed partial class ModEntry {
             EnsureBudget();
             string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
             if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100) || !File.Exists(file)) {p.Life.DecisionSource="local-budget-or-offline";StartOption(pair.Key,options[0]);return;}
-            pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
+            pendingGoalWork=null;pendingName=pair.Key;pendingGeneration=generation;pendingAutonomous=true;pendingOptions=options;
             var context=new{event_type="autonomous_choice",npc=pair.Key,profile=p.Profile,needs=p.Life.ModelState(),energy=p.Energy,social=PromptSocial(p),today=Data.Today.Take(12),
                 shared_goals=GoalContext(),options=options.Take(12),projects=Data.Projects.Where(x=>x.Status=="active").Take(8),recent=MemoryRecall.Select(p.Life.Experiences,string.Join("，",options.Take(3).Select(o=>o.Title)),Game1.Date.TotalDays,4),
                 note="从 options 选一个 option_id，用 accept 直接开始自己的安排，steps=[]。只有邀请玩家参与才 negotiate。允许安静地做事。"};

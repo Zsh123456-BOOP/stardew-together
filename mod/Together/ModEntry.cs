@@ -187,7 +187,7 @@ public sealed partial class ModEntry:Mod {
     }
     public void Select(string name) {
         if(!Context.IsWorldReady || !Names().Contains(name))return;
-        generation++;Data.Selected=name;Persist();
+        generation++;pendingGoalWork=null;Data.Selected=name;Persist();
     }
     public void Open(){if(Context.IsWorldReady && Game1.activeClickableMenu==null){RefreshFacts(true);Game1.activeClickableMenu=new CompanionMenu(this);}}
     public void SetPreset(string name){if(!Context.IsWorldReady)return;Current.Profile=Profile.Preset(name);Current.Life.WishDay=-1;Current.Life.Tick(Game1.Date.TotalDays,Minute,true,Current.Profile);Notice="人设已更新，下一句话就会生效。";Persist();}
@@ -222,7 +222,7 @@ public sealed partial class ModEntry:Mod {
         if(message.Length>400){Notice="一句话最多 400 字。";return;}
         EnsureBudget();if(Data.Calls>=Math.Clamp(Settings.MaxCallsPerDay,1,100)){Notice="今天的聊天额度用完啦，仍可继续约定和使用快捷活动。";return;}
         JsonElement world;try{world=World();}catch{Notice="游戏状态暂不可用。";return;}
-        RefreshFacts();pendingAutonomous=false;pendingOptions.Clear();
+        RefreshFacts();pendingGoalWork=null;pendingAutonomous=false;pendingOptions.Clear();
         var person=Current; var actor=Actor(world,Selected);
         if(!autonomous){AddLine(person.Chat,"你",message);person.Social.Reply(message,Game1.Date.TotalDays);}
         var context=new {event_type=autonomous?"idle":"player_message",player_message=message,npc=Selected,profile=person.Profile,
@@ -395,15 +395,6 @@ public sealed partial class ModEntry:Mod {
             Fail(name,person,error);return;
         }
         var step=job.Steps[job.Index];
-        if(job.OptionId.StartsWith("goal:") && job.Command==null) {
-            RefreshFacts(true);
-            var goal=Data.SharedGoals.FirstOrDefault(g=>job.OptionId.StartsWith("goal:"+g.Id+":"));
-            var node=goal?.Nodes.FirstOrDefault(n=>job.OptionId=="goal:"+goal.Id+":"+n.Id);
-            if(goal?.Status!="active" || node==null || node.Missing==0 || (node.Owner!="together" && node.Owner!=name)) {
-                if(job.TravelCommand!=null)api?.CancelAction(job.TravelCommand);
-                job.TravelCommand=null;job.Status="cancelled";job.Detail="共同目标或分工已变化，停止这一步，保留实际成果。";return;
-            }
-        }
         if(step.skill=="follow" && job.Origin=="player" && job.Steps.Count==1) {
             job.Command=null;job.FollowMode=true;job.Status="active";job.Detail="持续跟随，直到你改变安排";return;
         }

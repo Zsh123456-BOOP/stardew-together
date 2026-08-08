@@ -128,6 +128,7 @@ public sealed partial class ModEntry {
             }
         }
         foreach(var o in options) {
+            if(o.Id.StartsWith("goal:") && o.Steps.FirstOrDefault()?.skill is {} goalSkill && p.Profile.Dislikes.Contains(Decision.Labels[goalSkill]))o.Score-=45;
             if(o.Category=="shared")o.Score+=(p.Profile.Temperament.Planning-50)*.15+p.Social.Relationship.Cooperation*.08;
             if(o.Category=="personal" && p.Social.TheirTurn)o.Score+=30;
             if(o.Id=="fish" && p.Social.Challenge?.Status=="active")o.Score+=25;

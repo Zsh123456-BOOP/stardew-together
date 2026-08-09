@@ -61,7 +61,7 @@ public sealed partial class ModEntry {
         var facts=new List<KnowledgeFact>();int chars=0;
         foreach(var f in evidence.Facts){if(chars+f.Value.Length>6500 || facts.Count==28)break;facts.Add(f);chars+=f.Value.Length;}
         evidence.Facts=facts;
-        pending=ModelClient.AskKnowledge(file,Settings.Model,new{question=knowledgeQuestion,profile=Current.Profile,evidence,
+        pending=ModelClient.AskKnowledge(file,Settings.Model,new{question=knowledgeQuestion,profile=Current.Profile,evidence,memory_owner=Selected,
             memories=MemoryRecall.Select(Current.Life.Experiences,knowledgeQuestion,Game1.Date.TotalDays,2)},plan);
         Notice=plan?"正在整理查询条件…":"正在根据手册回答…";
     }

@@ -111,7 +111,7 @@ public sealed class KnowledgeService {
         }
         if(mod.Data.Knowledge.Notes.TryGetValue(e.Id,out var note))Add("你的便签",note,"玩家手写便签（不是游戏事实）");
         var memories=MemoryRecall.Select(mod.Current.Life.Experiences,e.Name,Game1.Date.TotalDays);
-        Add("相处记录",string.Join("；",memories.Take(2).Select(m=>m.Summary)),"真实伙伴行动记录，不证明玩家亲自完成");
+        Add("相处记录",string.Join("；",memories.Take(2).Select(m=>"伙伴 "+mod.Selected+" 的行动："+m.Summary)),"真实伙伴行动记录，不证明玩家亲自完成");
     }
     private void Crop(KnowledgeEntry e,Action<string,string,string,string> add) {
         if(!DataLoader.Crops(Game1.content).TryGetValue(e.Id[3..],out var c))return;

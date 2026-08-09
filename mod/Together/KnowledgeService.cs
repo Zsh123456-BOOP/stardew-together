@@ -70,7 +70,8 @@ public sealed class KnowledgeService {
         if(id==null && ((hits[0].Score>=400 && hits[0].Score<650) || (hits.Length>1 && hits[0].Score==hits[1].Score && hits[0].Score>=700))) {
             packet.Status="ambiguous";packet.Facts.Add(new("choices","请先选择",string.Join("；",packet.Candidates),"名称匹配"));return packet;
         }
-        foreach(var h in hits.Take(id==null?3:1))Append(packet,h.Entry);
+        // An explicit entity match must not be diluted by unrelated recipes which only share a tag like "materials".
+        foreach(var h in hits.Where(h=>hits[0].Score<650 || h.Score>=650).Take(id==null?3:1))Append(packet,h.Entry);
         if(query.Contains("比较") || query.Contains("对比"))packet.Facts.Add(new("comparison","比较口径","以上基础售价不是净利润；种子售价、品质、职业与劳务未统一，不据此声称某项最赚钱。","Together 比较边界","partial"));
         return packet;
     }

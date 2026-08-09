@@ -170,6 +170,8 @@ public sealed partial class ModEntry {
         if(option==null){Notice="材料或位置刚刚变化，先重新核对这一步。";return true;}
         speech=GoalPlanner.WorkSpeech(speech,mode,option.Steps[0].location??"");
         var p=Person(pendingName);Say(pendingName,speech);
+        if(mode=="refuse")p.Life.RetryAfter[id]=Minute+120;
+        else if(mode=="accept")p.Life.RetryAfter.Remove(id);
         p.Proposal=new(){decision=mode,speech=speech,title=option.Title,steps=option.Steps,option_id=id};p.ProposalAutonomous=false;
         if(mode=="accept" && pendingName==Selected)AcceptProposal(false);
         else Notice="伙伴提出了自己的想法；可以同意、换分工，或明确强制。";

@@ -44,6 +44,8 @@ def main():
     call('goal_assign', id=g['Id'], node=node['Id'], owner='player')
     check(not any(o['Id']=='goal:'+g['Id']+':'+node['Id'] for o in call('goal_options')), 'player-owned step excluded from model options')
     call('goal_assign', id=g['Id'], node=node['Id'], owner='together')
+    refusal=call('goal_refusal')
+    check(refusal['pass'], refusal['label'])
     if args.models:
         call('preset', name='冒险搭子')
         before=state()['calls']

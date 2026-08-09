@@ -25,6 +25,7 @@ public sealed partial class ModEntry {
         switch(scenario) {
             case "goal_recipes":ReadGoalRecipes();return JsonSerializer.Serialize(goalRecipes.Values,jsonOptions);
             case "goal_suite":return GoalContracts();
+            case "goal_refusal":return GoalRefusalContract();
             case "goal_add":AddSharedGoal(Arg("id"),Num("count",1));break;
             case "goal_menu":OpenGoals();break;
             case "goal_button":if(Game1.activeClickableMenu is SharedGoalsMenu goalsMenu)goalsMenu.CheckButton(Arg("label"));else throw new InvalidOperationException("goals_menu_required");break;

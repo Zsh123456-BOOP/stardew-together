@@ -124,7 +124,11 @@ public sealed partial class ModEntry {
         if(Data.FarmHelp && p.Energy>=25 && p.Social.Mode!="holiday" && s.Minute<23*60 && !s.Threat) {
             foreach(var (goal,node) in GoalWork(name)) {
                 var option=GoalOption(name,goal,node,actor);
-                if(option!=null && p.Life.RetryAfter.GetValueOrDefault(option.Id)<=s.Minute)options.Add(option);
+                if(option!=null && p.Life.RetryAfter.GetValueOrDefault(option.Id)<=s.Minute) {
+                    // A visible needed ore node gives mining a concrete purpose. Keep other interests and rest available.
+                    if(option.Steps[0].skill=="mine")options.RemoveAll(o=>o.Id=="mine");
+                    options.Add(option);
+                }
             }
         }
         foreach(var o in options) {

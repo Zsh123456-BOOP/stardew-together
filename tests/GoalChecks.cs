@@ -43,6 +43,12 @@ public static class GoalChecks {
         var circular=new Dictionary<string,GoalRecipe>{["craft:a"]=new(){Id="craft:a",Item="a",Known=true,Inputs=new(){new(){Item="b",Count=1}}},["craft:b"]=new(){Id="craft:b",Item="b",Known=true,Inputs=new(){new(){Item="a",Count=1}}}};
         g=new(){Entity="craft:a",Item="a"};GoalPlanner.Rebuild(g,circular,Ledger(),1,id=>id);
         check(g.Nodes.Count==3 && g.Nodes.Any(n=>n.Status=="blocked"),"cyclic mod recipes stop instead of infinite expansion");
+        var wide=new Dictionary<string,GoalRecipe>{["craft:a"]=new(){Id="craft:a",Item="a",Known=true,Inputs=Enumerable.Range(0,90).Select(i=>new Requirement{Item="part"+i,Count=1}).ToList()}};
+        foreach(int i in Enumerable.Range(0,90))wide["craft:part"+i]=new(){Id="craft:part"+i,Item="part"+i,Known=true,Inputs=Enumerable.Range(0,90).Select(j=>new Requirement{Item="leaf"+j,Count=1}).ToList()};
+        g=new(){Entity="craft:a",Item="a"};GoalPlanner.Rebuild(g,wide,Ledger(),1,id=>id);
+        check(g.Nodes.Count<=96 && g.Nodes.Any(n=>n.Status=="blocked"),"wide nested mod recipes obey the global node budget");
+        wide["craft:a"].Inputs=new(){new(){Item="ore",Count=100001}};g=new(){Entity="craft:a",Item="a"};GoalPlanner.Rebuild(g,wide,Ledger(),1,id=>id);
+        check(g.Nodes[0].Status=="blocked" && !g.Nodes.Any(n=>n.Required==100000),"oversized material requirements are blocked, never silently understated");
         ledger=new(new[]{new GoalStock{Item="fish",Category=-4,Count=3,Quality=2}});
         check(ledger.Take("(O)-4",2,2)==2 && ledger.Take("fish",2)==1,"category and exact requirements share the same stock ledger");
         g=Goal();g.Count=3;recipes["craft:device"].Output=2;GoalPlanner.Rebuild(g,recipes,Ledger(),1,id=>id);

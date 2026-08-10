@@ -104,10 +104,11 @@ public static class GoalPlanner {
             if(recipe.Kind=="process" && !recipe.Known && recipe.Facility!="")node.DependsOn.Add(Expand(recipe.Facility,1,path+"/facility",new(ancestors),depth+1));
             int batches=(int)Math.Ceiling(node.ToPrepare/(double)Math.Max(1,recipe.Output));
             foreach(var input in recipe.Inputs) {
-                int required=(int)Math.Min(100000,(long)batches*input.Count);
-                node.DependsOn.Add(Expand(input.Item,required,path+"/"+input.Item,new(ancestors),depth+1));
+                long required=(long)batches*input.Count;
+                if(budget<=0 || required>100000 || required<1){node.Status="blocked";node.Reason="依赖规模或材料数量超过自动规划范围，请分成较小目标；没有省略后宣称备齐。";break;}
+                node.DependsOn.Add(Expand(input.Item,(int)required,path+"/"+input.Item,new(ancestors),depth+1));
             }
-            if(recipe.Known && node.DependsOn.All(id=>goal.Nodes.First(n=>n.Id==id).Status=="ready"))node.Status="player_step";
+            if(node.Status!="blocked" && recipe.Known && node.DependsOn.All(id=>goal.Nodes.First(n=>n.Id==id).Status=="ready"))node.Status="player_step";
             return path;
         }
         recipes.TryGetValue(goal.Entity,out var rootRecipe);

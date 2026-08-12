@@ -34,6 +34,9 @@ try:
     check(states.get('water')=='succeeded','one submission completes till, plant and water sequentially',states)
     check(overlap,'player third task starts while companion first task is still running')
     check(d['state']['Decisions']==0,'scheduler advances known steps without per-step model calls')
+    check(tool('action.status',id='water')['status']=='succeeded','task IDs resolve to real action state instead of unknown')
+    invalid=tool('companion.assign',actor_id=a,skill='mine',destination='Mountain')
+    check(invalid['error']=='companion_target_required_travel_then_read_candidates' and 'hint' in invalid,'incomplete NPC labor instruction explains travel and target lookup')
     tool('plan.cancel',ids=['npc-guard'])
     bad=[{'id':'bad-map','actor':'player','tool':'player.move','args':{'x':1,'y':1},'location':'DefinitelyNotThisMap'},
          {'id':'dependent','actor':'player','tool':'player.move','args':{'x':62,'y':17},'after':['bad-map']},

@@ -121,7 +121,7 @@ public sealed partial class ModEntry {
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){PauseAutoplay("今日自主模型调用达到预算上限，进度已保留");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),schedule=AgentPlanRead(),companions=AgentCompanions(),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),schedule=AgentPlanRead(),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
             recent=Data.Autoplay.Journal.TakeLast(10),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
         string serialized=AgentJson.Encode(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
@@ -149,6 +149,8 @@ public sealed partial class ModEntry {
     internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
+        string? contract=AgentCallContract.CompanionError(args);
+        if(contract!=null)return new{status="failed",error=contract,hint="跨地图先 companion.assign(skill=travel,destination=地图名)，成功后读取 world.read 的真实候选，再用 skill=mine/forage/... + target_id 派工。destination 不是劳动目标；不要编造 target_id。"};
         var values=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(args.GetRawText())!;
         values["command_id"]=JsonSerializer.SerializeToElement(Guid.NewGuid().ToString("N"));
         (string Location,int X,int Y)? claim=null;
@@ -172,9 +174,20 @@ public sealed partial class ModEntry {
         }
         return false;
     }
-    internal object AgentReceipt(string id,bool cancel)=>id.StartsWith("player:")?(cancel?playerExecutor.Cancel(id):playerExecutor.Poll(id)):
-        JsonDocument.Parse(cancel?api!.CancelAction(id):api!.PollAction(id)).RootElement.Clone();
+    internal object AgentReceipt(string id,bool cancel) {
+        var task=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id);
+        if(task!=null) {
+            if(cancel)return AgentPlanCancel(JsonSerializer.SerializeToElement(new{ids=new[]{id}}));
+            if(task.state!="running")return new{task_id=id,status=task.state,task.command_id,task.error,task.receipt};
+            if(task.command_id==null)return new{task_id=id,status="failed",error="running_task_missing_receipt_replan"};
+            id=task.command_id;
+        }
+        return id.StartsWith("player:")?(cancel?playerExecutor.Cancel(id):playerExecutor.Poll(id)):
+            JsonDocument.Parse(cancel?api!.CancelAction(id):api!.PollAction(id)).RootElement.Clone();
+    }
     internal int AgentWait(int seconds) {
+        if(Game1.activeClickableMenu is StardewValley.Menus.DialogueBox)throw new InvalidOperationException("dialogue_requires_menu_input_before_waiting");
+        if(Game1.eventUp)seconds=Math.Min(seconds,2);
         if(Game1.timeOfDay>=2200)throw new InvalidOperationException("late_night_plan_return_home_before_waiting");
         double until22=Math.Max(1,(22*60-Minute)*.7/AutoplaySpeed.Clock(Settings.AutoplayClockRate));
         int actual=Math.Clamp(seconds,1,Math.Min(60,Math.Max(1,(int)until22)));

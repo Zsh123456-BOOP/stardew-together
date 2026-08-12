@@ -3,6 +3,8 @@ using Together;
 public static class AutoplayChecks {
     public static void Run(Action<bool,string> check) {
         AgentScheduleChecks.Run(check);
+        check(AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="mine",destination="Mountain"}))=="companion_target_required_travel_then_read_candidates","remote labor without a real target gives an actionable travel/read error");
+        check(AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="travel",destination="Farm"}))==null && AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="mine",target_id="observed"}))==null,"travel and observed-target labor have separate valid contracts");
         check(AutoplaySpeed.Clock(double.NaN)==1 && AutoplaySpeed.Clock(double.PositiveInfinity)==1,"nonfinite clock settings cannot corrupt native timer");
         check(AutoplaySpeed.Clock(200)==1 && AutoplaySpeed.Clock(-3)==1,"legacy multiplier settings cannot enable acceleration");
         check(AutoplaySpeed.ExtraMilliseconds(8,16,false)==0,"no acceleration during protected movement/model/menu state");

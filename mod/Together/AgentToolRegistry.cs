@@ -40,8 +40,8 @@ public sealed class AgentToolRegistry {
         ["menu.choose"]="{token:string,id:string,right?:bool}: 点击刚读取的原生组件，过期token拒绝；返回菜单状态，不声称业务完成",
         ["menu.scroll"]="{direction:up|down}: 原生菜单滚动一页",
         ["menu.close"]="{}: 仅当原生允许安全关闭且无手持物时关闭",
-        ["companion.assign"]="{actor_id:string,skill:string,target_id?:string,destination?:string,seconds?:int}: 使用world.read的真实伙伴及候选；不猜目标ID",
-        ["action.status"]="{id:string}: 动作真实进度和前后证据",
+        ["companion.assign"]="{actor_id:string,skill:string,target_id?:string,destination?:string,seconds?:int}: travel 必须带 destination，只负责到达；mine/water/harvest/forage/clear/collect/pet/till/plant/feed/tend/buy/ship/gift/refill/deposit 必须带当前 world.read 候选的 target_id；劳动不能用 destination 代替目标。follow/stay 切换模式，guard/rest/fish 可带 seconds。跨图劳动分两轮：travel 成功→读取新候选→派劳动。",
+        ["action.status"]="{id:string}: 动作真实进度和前后证据；也接受 plan 的任务 id，排队状态不是完成",
         ["action.cancel"]="{id:string}: 取消尚可取消的动作，已消耗物资不回滚",
         ["agent.wait"]="{seconds:1..60}: 等待游戏进展，期间不重复请求模型",
         ["agent.pause"]="{reason:string}: 保存计划并暂停接管"

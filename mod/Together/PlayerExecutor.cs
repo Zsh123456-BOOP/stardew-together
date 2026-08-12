@@ -157,8 +157,10 @@ public sealed class PlayerExecutor {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
             if((DateTime.UtcNow-started).TotalSeconds>180){Finish("failed","action_timeout");return;}
             ObserveNativeTransition();
+            // Events often set CanMove=false. Report the interruption before the
+            // movement gate, otherwise a travel task waits forever behind dialogue.
+            if(Game1.eventUp){Finish("failed","event_interrupted_read_menu");return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
-            if(Game1.eventUp){Finish("failed","event_interrupted_read_state");return;}
             if(Current.skill=="player.work"){TickWork();return;}
             if(Current.skill=="player.use_tool") {
                 if(!Game1.player.UsingTool && Game1.player.CanMove && startedUsing)Finish("succeeded");return;

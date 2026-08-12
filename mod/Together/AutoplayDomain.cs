@@ -55,3 +55,15 @@ public static class AutoplaySpeed {
     public static int ExtraMilliseconds(double requested,double elapsed,bool eligible)=>0;
     public static int DecisionDelay(int value)=>Math.Clamp(value,100,10000);
 }
+
+public static class AgentCallContract {
+    public static string? CompanionError(JsonElement args) {
+        string Text(string key)=>args.TryGetProperty(key,out var e)&&e.ValueKind==JsonValueKind.String?e.GetString()??"":"";
+        if(Text("actor_id").Length==0)return "companion_actor_id_required";
+        string skill=Text("skill");
+        if(skill=="travel")return Text("destination").Length==0?"companion_travel_destination_required":null;
+        if(skill is "follow" or "stay" or "guard" or "rest" or "fish" or "dismiss")return null;
+        if(skill is not ("buy" or "ship" or "clear" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect"))return "unsupported_companion_skill";
+        return Text("target_id").Length==0?"companion_target_required_travel_then_read_candidates":null;
+    }
+}

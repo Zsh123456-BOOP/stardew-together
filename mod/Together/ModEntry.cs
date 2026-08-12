@@ -20,6 +20,9 @@ public sealed class Config {
     public int AutoIntervalSeconds {get;set;}=90;
     public int MaxCallsPerDay {get;set;}=24;
     public bool AllowTrialRecruitment {get;set;}=true;
+    public double AutoplayClockRate {get;set;}=2;
+    public int AutoplayDecisionDelayMs {get;set;}=250;
+    public int AutoplayMaxCallsPerDay {get;set;}=180;
     public bool EnableLab {get;set;}
 }
 
@@ -58,6 +61,7 @@ public sealed partial class ModEntry:Mod {
     public override void Entry(IModHelper helper) {
         Settings=helper.ReadConfig<Config>();
         SetupKnowledge();
+        SetupAutoplay();
         helper.Events.GameLoop.GameLaunched+=(_,_)=>{
             api=helper.ModRegistry.GetApi<ICompanionControl>("ThaliaFawnheart.TheStardewSquad");
             Notice=api==null?"需要带同行接口的 Squad 版本。":"同行已准备好，按 F8 打开。";
@@ -65,7 +69,7 @@ public sealed partial class ModEntry:Mod {
         helper.Events.GameLoop.SaveLoaded+=(_,_)=>Load();
         helper.Events.GameLoop.DayEnding+=(_,_)=>CheckpointJobs();
         helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist)Helper.Data.WriteSaveData("together-v2",Data);};
-        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
+        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
             EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
@@ -73,6 +77,7 @@ public sealed partial class ModEntry:Mod {
         helper.Events.Input.ButtonPressed+=(_,e)=>{
             if(Context.IsWorldReady && e.Button==Settings.OpenKey && (Game1.activeClickableMenu==null || Game1.activeClickableMenu is CompanionMenu)) {
                 helper.Input.Suppress(e.Button);
+                if(AutoplayRunning)PauseAutoplay("打开同行面板，暂时交回控制");
                 if(Game1.activeClickableMenu is CompanionMenu) Game1.exitActiveMenu();else Open();
             }
         };
@@ -94,7 +99,7 @@ public sealed partial class ModEntry:Mod {
         };
         helper.Events.Display.RenderedHud+=(_,e)=>{
             if(!Context.IsWorldReady || Game1.activeClickableMenu!=null) return;
-            string text=$"{Settings.OpenKey} 同行 · {Selected}  "+(Thinking?"正在想怎么回答你…":Current.Job?.Status is "active" or "waiting"?JobText(Current.Job):"聊聊 / 小约定");
+            string text=$"{Settings.OpenKey} 同行 · {Selected}  "+(AutoplayRunning?"DeepSeek 自主游玩 · F10 暂停":Thinking?"正在想怎么回答你…":Current.Job?.Status is "active" or "waiting"?JobText(Current.Job):"聊聊 / 小约定");
             e.SpriteBatch.Draw(Game1.staminaRect,new Rectangle(16,Game1.uiViewport.Height-53,Math.Min(760,Game1.uiViewport.Width-32),38),new Color(28,44,42)*.88f);
             e.SpriteBatch.DrawString(Font,text,new Vector2(28,Game1.uiViewport.Height-47),new Color(246,235,211),0,Vector2.Zero,.8f,SpriteEffects.None,1);
         };
@@ -156,12 +161,14 @@ public sealed partial class ModEntry:Mod {
         });
     }
     private void Load() {
-        generation++;pending=null;canPersist=true;api?.Reset();
+        ResetAgentRuntime();generation++;pending=null;canPersist=true;api?.Reset();
         ResetKnowledge();
         try{Data=Helper.Data.ReadSaveData<SaveData>("together-v2") ?? (File.Exists(SavePath)?JsonSerializer.Deserialize<SaveData>(File.ReadAllText(SavePath))??new():new());}
         catch{Data=new();canPersist=false;Notice="同行记录无法读取，本次暂停写入以保留原文件。";return;}
-        if(Data.SchemaVersion>5){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
-        Data.SchemaVersion=5;factsMinute=-1;RefreshFacts(true);
+        if(Data.SchemaVersion>6){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
+        Data.SchemaVersion=6;
+        if(Data.Autoplay.Status=="running"){Data.Autoplay.Status="paused";Data.Autoplay.Detail="重新载入后先核对状态，使用 together_agent resume 继续。";}
+        factsMinute=-1;RefreshFacts(true);
         foreach(var p in Data.People.Values) if(p.Job?.Status is "active" or "waiting") {p.Job.Status="paused";p.Job.Command=null;p.Job.TravelCommand=null;p.Job.Detail="上次的小约定还在；点继续后重新检查环境。";}
         foreach(var p in Data.People.Values){p.DailyCompanion??=p.Job!=null;p.NewDay(Game1.Date.TotalDays);}
         // Reclaim previously managed companions after Squad restores its saved team.
@@ -314,6 +321,8 @@ public sealed partial class ModEntry:Mod {
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null || !canPersist)return;
         Knowledge.Tick();
+        TickAutoplay();
+        if(AutoplayRunning)return;
         CompleteReply();
         foreach(var pair in Data.People.Where(p=>p.Value.Job?.Command!=null).ToArray())Poll(pair.Key,pair.Value);
         slowTick+=Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
@@ -457,7 +466,7 @@ public sealed partial class ModEntry:Mod {
         list.Add(new Line{Who=who,Text=text,Day=Game1.Date.TotalDays});
         if(list.Count>60)list.RemoveRange(0,list.Count-60);
     }
-    public string StatusJson()=>JsonSerializer.Serialize(new{event_up=Game1.eventUp,menu=Game1.activeClickableMenu?.GetType().Name,selected=Selected,thinking=Thinking,notice=Notice,person=Current,people=Data.People,projects=Data.Projects,shared_goals=Data.SharedGoals,facts=Facts,today=Data.Today,farm_policy=Data.FarmPolicy,performance=Performance(),reservations=Data.Reservations,pace=Data.Pace,calls=Data.Calls,tokens=Data.Tokens});
+    public string StatusJson()=>JsonSerializer.Serialize(new{autoplay=AutoplayDiagnostics(),event_up=Game1.eventUp,menu=Game1.activeClickableMenu?.GetType().Name,selected=Selected,thinking=Thinking,notice=Notice,person=Current,people=Data.People,projects=Data.Projects,shared_goals=Data.SharedGoals,facts=Facts,today=Data.Today,farm_policy=Data.FarmPolicy,performance=Performance(),reservations=Data.Reservations,pace=Data.Pace,calls=Data.Calls,tokens=Data.Tokens});
     private void Capture() {
         if(recordingFrame>=0 && DateTime.UtcNow>=recordingAt && Context.IsWorldReady) {
             try {

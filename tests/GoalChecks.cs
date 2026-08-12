@@ -54,6 +54,6 @@ public static class GoalChecks {
         g=Goal();g.Count=3;recipes["craft:device"].Output=2;GoalPlanner.Rebuild(g,recipes,Ledger(),1,id=>id);
         check(g.Nodes.Single(n=>n.Item=="wood").Required==20,"batch output rounds up ingredient requirements");
         var save=JsonSerializer.Deserialize<SaveData>(JsonSerializer.Serialize(new SaveData{SharedGoals=new(){g}}))!;
-        check(save.SchemaVersion==5 && save.SharedGoals[0].Count==3,"new goal state persists under downgrade-protected save version");
+        check(save.SchemaVersion==6 && save.SharedGoals[0].Count==3,"new goal state persists under downgrade-protected save version");
     }
 }

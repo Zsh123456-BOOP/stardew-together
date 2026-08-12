@@ -23,6 +23,10 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "agent_tool":return JsonSerializer.Serialize(agentTools.Execute(Arg("tool"),root.GetProperty("args")));
+            case "agent_start":StartAutoplay(Arg("goal"));break;
+            case "agent_pause":PauseAutoplay("lab_pause");break;
+            case "agent_speed":Settings.AutoplayClockRate=AutoplaySpeed.Clock(Num("rate",2));break;
             case "goal_recipes":ReadGoalRecipes();return JsonSerializer.Serialize(goalRecipes.Values,jsonOptions);
             case "goal_suite":return GoalContracts();
             case "goal_refusal":return GoalRefusalContract();

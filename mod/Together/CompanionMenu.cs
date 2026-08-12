@@ -26,6 +26,7 @@ public sealed partial class CompanionMenu:IClickableMenu {
         foreach(var box in fields)box.Selected=false;
         fields.Clear();buttons.Clear();chat=null;
         Button(width-64,18,40,36,"×",()=>exitThisMenu());
+        Button(width-318,18,114,36,"自主游玩",()=>{exitThisMenu();mod.OpenAutoplay();});
         Button(width-194,18,118,36,"共同手册",()=>{exitThisMenu();mod.OpenKnowledge();});
         Button(24,112,130,36,"换个队友",()=>{
             var names=mod.Names();int index=Array.IndexOf(names,mod.Selected);mod.Select(names[(index+1)%names.Length]);scroll=0;Rebuild();

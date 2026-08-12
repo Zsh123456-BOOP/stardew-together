@@ -114,7 +114,8 @@ public sealed class SaveData {
     public KnowledgeNotebook Knowledge {get;set;}=new();
     public FarmPolicy FarmPolicy {get;set;}=new();
     public List<PlanNode> Today {get;set;}=new();
-    public int SchemaVersion {get;set;}=5;
+    public AutoplayState Autoplay {get;set;}=new();
+    public int SchemaVersion {get;set;}=6;
     public string Pace {get;set;}="balanced";
     public bool FarmHelp {get;set;}=true;
     public List<SharedProject> Projects {get;set;}=new();

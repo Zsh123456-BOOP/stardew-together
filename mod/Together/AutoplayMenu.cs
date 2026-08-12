@@ -30,7 +30,7 @@ public sealed class AutoplayMenu:IClickableMenu {
         Text("这份存档的目标：",28,106);goal.Draw(b);
         foreach(var item in buttons){b.Draw(Game1.staminaRect,item.Bounds,new Color(214,226,205));b.DrawString(mod.Font,item.Label,new(item.Bounds.X+8,item.Bounds.Y+7),Color.DarkSlateGray,0,Vector2.Zero,.72f,SpriteEffects.None,1);}
         Text($"时间：原生正常速度 · 决策间隔：{mod.Settings.AutoplayDecisionDelayMs} 毫秒 · 每日上限：{mod.Settings.AutoplayMaxCallsPerDay} 次",28,272);
-        Text("完成农务后继续安排采集与经营；保留返家时间，体力不足时调整活动。",28,308,.72f);
+        Text($"任务队列：{mod.Data.Autoplay.Schedule.Tasks.Count(t=>t.state=="queued")} 等待 · {mod.Data.Autoplay.Schedule.Tasks.Count(t=>t.state=="running")} 执行 · {mod.Data.Autoplay.Schedule.Tasks.Count(t=>t.state is "failed" or "blocked" or "needs_review")} 需调整",28,308,.72f);
         Text("F10 / 方向键随时接回控制；原生保存开始后会先完成换日。",28,340,.72f);
         Text(Game1.parseText("状态："+(mod.Data.Autoplay.Status=="running"?"自主游玩中":mod.Data.Autoplay.Status=="paused"?"已暂停":"尚未开始")+" · "+mod.Data.Autoplay.Detail,mod.Font,1010),28,378,.72f);
         base.draw(b);drawMouse(b);

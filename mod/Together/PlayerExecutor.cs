@@ -24,7 +24,7 @@ public sealed class PlayerExecutor {
     public PlayerAction? Current {get;private set;}
     public Action<int>? NativeSleepRequested {get;set;}
     public bool Busy=>Current?.status=="running";
-    public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu);
+    public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu or LevelUpMenu {isProfessionChooser:false});
     private Point target,lastTile;
     private string origin="",destination="";
     private DateTime started,lastProgress,nextInteraction;
@@ -206,6 +206,22 @@ public sealed class PlayerExecutor {
             Finish("succeeded");return;
         }
         Point tile=workTiles[workIndex];
+        if(Current!.phase=="work_collect_start") {
+            if(!Game1.player.CanMove || Game1.player.UsingTool)return;
+            // Walk over the cleared tile so a drop thrown away from the adjacent work
+            // position is actually collected. Never insert loot directly into inventory.
+            if(Passable(Game1.currentLocation,tile)){Walk(tile);Current.phase="work_collect_walk";}
+            else {nextInteraction=DateTime.UtcNow.AddSeconds(1);Current.phase="work_collect_settle";}
+            return;
+        }
+        if(Current.phase=="work_collect_walk") {
+            if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+            StopWalk();nextInteraction=DateTime.UtcNow.AddMilliseconds(750);Current.phase="work_collect_settle";return;
+        }
+        if(Current.phase=="work_collect_settle") {
+            if(DateTime.UtcNow<nextInteraction || !Game1.player.CanMove)return;
+            Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";return;
+        }
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
             if(workSkill=="clear") {
@@ -243,6 +259,7 @@ public sealed class PlayerExecutor {
                 if(++workHits>=12)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
+            if(workSkill is "clear" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
             Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }
@@ -278,6 +295,18 @@ public sealed class PlayerExecutor {
     private void TickNight() {
         if(Current!.phase=="waking" && Game1.player.CanMove && !Game1.fadeToBlack && Game1.activeClickableMenu==null){Finish("succeeded");return;}
         if((DateTime.UtcNow-started).TotalSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
+        // LevelUpMenu.receiveLeftClick is empty in 1.6; ordinary confirmations use
+        // its native handler. Actual profession choices must never be auto-confirmed.
+        if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:false,isActive:true} level && level.CanReceiveInput()) {
+            level.okButtonClicked();Current!.effects.Add(new{native_menu="LevelUpMenu",kind="non_branching_confirmation"});return;
+        }
+        // Native overnight announcements (e.g. the summer earthquake) block saving
+        // until acknowledged. Questions/choices still belong to the model.
+        if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} notice && DateTime.UtcNow>=nextInteraction) {
+            nextInteraction=DateTime.UtcNow.AddMilliseconds(400);notice.finishTyping();
+            Current!.effects.Add(new{native_menu="DialogueBox",kind="non_branching_overnight_notice",text=notice.getCurrentString()});
+            notice.receiveLeftClick(notice.xPositionOnScreen+16,notice.yPositionOnScreen+16);return;
+        }
         // Non-branching shipping confirmation is deterministic; profession/reward choices stay with the model.
         if(Game1.activeClickableMenu is ShippingMenu shipping && DateTime.UtcNow>=nextInteraction) {
             nextInteraction=DateTime.UtcNow.AddMilliseconds(400);

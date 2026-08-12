@@ -25,6 +25,12 @@ public sealed class NativeMenuTools {
             for(int i=0;i<shop.forSaleButtons.Count;i++){int n=shop.currentItemIndex+i;if(n<shop.forSale.Count){var item=shop.forSale[n];var stock=shop.itemPriceAndStock.GetValueOrDefault(item);labels[shop.forSaleButtons[i].bounds]="buy:"+item.DisplayName+" price="+stock?.Price+" stock="+stock?.Stock;}}
         if(m is DialogueBox dialogue && dialogue.responseCC!=null)
             for(int i=0;i<Math.Min(dialogue.responses.Length,dialogue.responseCC.Count);i++)labels[dialogue.responseCC[i].bounds]="response:"+dialogue.responses[i].responseKey+" "+dialogue.responses[i].responseText;
+        if(m is LevelUpMenu level) {
+            if(level.okButton!=null)labels[level.okButton.bounds]="确认技能升级";
+            string Description(string field)=>string.Join("；",typeof(LevelUpMenu).GetField(field,BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(level) as List<string>??new());
+            if(level.leftProfession!=null)labels[level.leftProfession.bounds]=Description("leftProfessionDescription");
+            if(level.rightProfession!=null)labels[level.rightProfession.bounds]=Description("rightProfessionDescription");
+        }
         var components=new List<ClickableComponent>();
         // Read only known UI component types. Never traverse game state or arbitrary property getters.
         foreach(var owner in new[]{observed,m}.Distinct()) {
@@ -42,7 +48,12 @@ public sealed class NativeMenuTools {
         }
         foreach(var c in components.Where(c=>c!=null && c.visible && c.bounds.Width>0 && c.bounds.Height>0).DistinctBy(c=>c.bounds))
             choices.Add(new("c"+choices.Count,labels.GetValueOrDefault(c.bounds,c.name??"component"),c.bounds));
-        string text=m is DialogueBox d?d.getCurrentString():"";
+        if(m is LevelUpMenu levelState) {
+            if(!levelState.isActive || !levelState.CanReceiveInput())choices.Clear();
+            else if(levelState.isProfessionChooser)choices.RemoveAll(c=>c.Bounds!=levelState.leftProfession?.bounds && c.Bounds!=levelState.rightProfession?.bounds);
+            else choices.RemoveAll(c=>c.Bounds!=levelState.okButton?.bounds);
+        }
+        string text=m is DialogueBox d?d.getCurrentString():m is LevelUpMenu lu?typeof(LevelUpMenu).GetField("title",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(lu)?.ToString()??"技能升级":"";
         if(m is DialogueBox {isQuestion:false})choices.Add(new("continue","继续对话",new Rectangle(m.xPositionOnScreen+16,m.yPositionOnScreen+16,32,32)));
         string held=m is CraftingPage cp?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(cp.heldItem)):m is MenuWithInventory mi?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(mi.heldItem)):"";
         token=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.GetType().Name+JsonSerializer.Serialize(choices)+text+held)))[..16];
@@ -52,6 +63,11 @@ public sealed class NativeMenuTools {
         var previous=observed;string expected=AgentToolRegistry.Text(args,"token");Read();
         if(previous!=observed || expected!=token || token.Length==0)throw new InvalidOperationException("stale_menu_read_again");
         var choice=choices.FirstOrDefault(c=>c.Id==AgentToolRegistry.Text(args,"id"))??throw new InvalidOperationException("unknown_menu_choice");
+        if(observed is LevelUpMenu levelChoice) {
+            if(levelChoice.isProfessionChooser)throw new InvalidOperationException("profession_choice_requires_native_input_adapter");
+            if(!levelChoice.isActive || !levelChoice.CanReceiveInput())throw new InvalidOperationException("menu_wait_for_ready");
+            levelChoice.okButtonClicked();return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
+        }
         if(observed is DialogueBox dialogueBox)dialogueBox.finishTyping();
         observed!.performHoverAction(choice.Bounds.Center.X,choice.Bounds.Center.Y);
         bool right=args.TryGetProperty("right",out var flag)&&flag.ValueKind==JsonValueKind.True;
@@ -71,7 +87,7 @@ public sealed class NativeMenuTools {
     }
     public object Close() {
         var m=Menu();if(m==null)return new{status="closed"};var c=Content(m);
-        if(!m.readyToClose() || c is CraftingPage {heldItem:not null} || c is MenuWithInventory {heldItem:not null})throw new InvalidOperationException("menu_not_safe_to_close");
+        if(!m.readyToClose() || c is LevelUpMenu {isProfessionChooser:true} || c is CraftingPage {heldItem:not null} || c is MenuWithInventory {heldItem:not null})throw new InvalidOperationException("menu_not_safe_to_close");
         m.exitThisMenu();Reset();return new{status="closed"};
     }
 }

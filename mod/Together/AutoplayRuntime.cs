@@ -11,7 +11,6 @@ public sealed partial class ModEntry {
     private Task<ModelReply>? agentPending;
     private CancellationTokenSource? agentCancellation;
     private DateTime agentNext;
-    private readonly HashSet<string> agentWaiting=new();
     private readonly Dictionary<string,(string Location,int X,int Y)> agentClaims=new();
     private int agentGeneration;
     private DateTime agentRequestedWait;
@@ -27,7 +26,7 @@ public sealed partial class ModEntry {
         Helper.Events.GameLoop.Saved+=(_,_)=>playerExecutor.Saved();
         Helper.Events.GameLoop.DayStarted+=(_,_)=>{
             if(playerExecutor.DayStarted())Data.Autoplay.ReconcileSleep(Game1.Date.TotalDays);
-            if(AutoplayRunning) {Data.Autoplay.Record("day_started",AgentJson.Encode(AgentSnapshot()));agentNext=DateTime.UtcNow.AddMilliseconds(250);}
+            if(AutoplayRunning) {Data.Autoplay.Record("day_started",AgentJson.Encode(AgentSnapshot()));WakeAgent("new_day");agentNext=DateTime.UtcNow.AddMilliseconds(250);}
         };
         Helper.Events.Input.ButtonPressed+=(_,e)=>{
             if(AutoplayRunning && e.Button==SButton.F10){Helper.Input.Suppress(e.Button);PauseAutoplay("玩家按 F10 暂停接管");}
@@ -59,80 +58,95 @@ public sealed partial class ModEntry {
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
         Data.Autoplay.Goal=goal;Data.Autoplay.Status="running";Data.Autoplay.Detail="DeepSeek 接管；F10 或方向键随时暂停。";
-        agentStarting=true;agentNext=DateTime.UtcNow;Notice=Data.Autoplay.Detail;
+        agentKnownActors.Clear();agentKnownActors.Add("player");foreach(var actor in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(actor.GetProperty("id").GetString()!);agentIdleSignature="";
+        agentStarting=true;WakeAgent("start_or_resume");agentNext=DateTime.UtcNow;Notice=Data.Autoplay.Detail;
     }
     public void PauseAutoplay(string reason) {
         ResetAgentRuntime();Data.Autoplay.Status="paused";Data.Autoplay.Detail=reason;Notice=reason;
     }
     private void ResetAgentRuntime() {
-        agentGeneration++;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
-        foreach(string id in agentWaiting.Where(x=>!x.StartsWith("player:")))try{api?.CancelAction(id);}catch{}
-        agentWaiting.Clear();agentClaims.Clear();playerExecutor?.Cancel();agentTools?.Reset();
+        agentGeneration++;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
+        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)api?.CancelAction(task.command_id);}catch{}
+        Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
+        agentClaims.Clear();playerExecutor?.Cancel();agentTools?.Reset();
     }
     private object AgentSnapshot()=>new{day=Game1.Date.TotalDays,date=Game1.Date.ToString(),time=Game1.timeOfDay,clock_rate_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate),game_minutes_per_real_second_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate)*10/7,night_warning=Game1.timeOfDay>=2200?"接近深夜，优先安排返家；不要等待到凌晨两点":null,location=Game1.currentLocation.NameOrUniqueName,
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
         menu=Game1.activeClickableMenu?.GetType().Name,event_up=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,player_action=playerExecutor.Current is {} action?new{action.command_id,action.skill,action.status,action.phase,action.error,action.completed}:null};
-    private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=agentWaiting,
+    private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),decision_reasons=agentWakeReasons,
         clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
     private void TickAutoplay() {
         playerExecutor.Tick();
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        foreach(var id in agentWaiting.ToArray()) {
-            JsonElement result;
-            try {result=id.StartsWith("player:")?JsonSerializer.SerializeToElement(playerExecutor.Poll(id)):JsonDocument.Parse(api!.PollAction(id)).RootElement.Clone();}
-            catch {result=JsonSerializer.SerializeToElement(new{status="failed",error="receipt_unavailable"});}
-            if(result.TryGetProperty("status",out var s) && s.GetString()=="running")continue;
-            agentWaiting.Remove(id);agentClaims.Remove(id);if(s.GetString()=="succeeded"){Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;agentFailures.Clear();}Data.Autoplay.Record("action_result",result.GetRawText());
-        }
-        if(agentPending!=null) {
-            if(!agentPending.IsCompleted)return;
+        TickAgentSchedule();ObserveAgentEvents();
+        // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
+        if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
             try {
                 var reply=task.GetAwaiter().GetResult();Data.Tokens+=reply.Tokens;RecordUsage();
-                var turn=AgentTurn.Parse(reply.Json);Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
-                Data.Autoplay.Record("decision",reply.Json);
-                if(turn.speech.Length>0)Say(Selected,turn.speech);
-                bool playerUsed=false;
-                foreach(var call in turn.calls) {
-                    if(!AutoplayRunning)break;
-                    object result;
-                    try {
-                        bool mutatesPlayer=AgentToolRegistry.IsPlayerMutation(call.tool);
-                        if(mutatesPlayer && playerUsed)throw new InvalidOperationException("one_player_action_per_turn");
-                        if(mutatesPlayer)playerUsed=true;
-                        result=agentTools.Execute(call.tool,call.args);
-                    }catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
-                    var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);
-                    Data.Autoplay.Record("tool_result",AgentJson.Encode(new{tool=call.tool,result=observed}));
-                    if(observed.ValueKind==JsonValueKind.Object && observed.TryGetProperty("error",out var failure) && failure.ValueKind==JsonValueKind.String) {
-                        string code=failure.GetString()!;int attempts=agentFailures.GetValueOrDefault(code)+1;agentFailures[code]=attempts;
-                        if(attempts>=6)PauseAutoplay("同一失败已出现6次，暂停避免空转："+code);
+                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays) {
+                    Data.Autoplay.Record("stale_decision","请求期间换日或接管会话改变；丢弃旧动作，重新观察。");WakeAgent("stale_response");
+                } else {
+                    var turn=AgentTurn.Parse(reply.Json);Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
+                    Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
+                    bool followup=false;
+                    foreach(var call in turn.calls) {
+                        if(!AutoplayRunning)break;
+                        object result;
+                        try{result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,call.args);}
+                        catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
+                        var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);
+                        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{tool=call.tool,result=observed}));
+                        if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;}
+                        if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
                     }
-                    if(observed.ValueKind==JsonValueKind.Object && observed.TryGetProperty("command_id",out var id) && observed.TryGetProperty("status",out var status)) {
-                        if(status.GetString()=="running")agentWaiting.Add(id.GetString()!);
-                        else if(status.GetString()=="succeeded"){Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;agentFailures.Clear();}
-                    }
+                    if(followup)WakeAgent("tool_results");
+                    agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
+                    if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
+                    TickAgentSchedule();
                 }
-                agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
-                if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
             }catch(Exception e){PauseAutoplay("模型本轮未执行："+(e is InvalidOperationException?e.Message:e.GetType().Name));}
         }
-        if(!AutoplayRunning || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.eventUp || Game1.currentMinigame!=null)return;
-        // Ordinary actions finish without a second paid polling call. Interactive night menus are exceptions.
-        if(agentWaiting.Count>0 && !(playerExecutor.NeedsMenuChoice && Game1.activeClickableMenu!=null))return;
-        if(playerExecutor.Busy && !playerExecutor.NeedsMenuChoice)return;
+        if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.eventUp || Game1.currentMinigame!=null)return;
+        if(!agentNeedsDecision) {
+            // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
+            bool playerQueued=Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&t.state is "queued" or "running");
+            if(playerQueued && !playerExecutor.NeedsMenuChoice)return;
+            WakeAgent("player_needs_next_plan");
+        }
+        // Sleep owns the native save lifecycle; only branch menus or its result need the model.
+        if(playerExecutor.Busy && playerExecutor.Current?.skill=="player.sleep"&&!playerExecutor.NeedsMenuChoice)return;
         EnsureBudget();
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){PauseAutoplay("今日自主模型调用达到预算上限，进度已保留");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),tools=AgentToolRegistry.Catalog,
-            recent=Data.Autoplay.Journal.TakeLast(12),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
-        string serialized=AgentJson.Encode(context); // No game objects are accessed by the HTTP task.
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),schedule=AgentPlanRead(),companions=AgentCompanions(),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
+            recent=Data.Autoplay.Journal.TakeLast(10),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
+        string serialized=AgentJson.Encode(context);
+        agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         agentPending=AutoplayModel.Ask(file,Settings.Model,serialized,agentCancellation.Token);
     }
-    internal object AgentWorld(){RefreshFacts(true);var world=World();return new{snapshot=AgentSnapshot(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=world.TryGetProperty("actors",out var actors)?actors.EnumerateArray().Select(a=>new{id=a.GetProperty("id"),name=a.GetProperty("name"),location=a.GetProperty("location"),candidates=a.GetProperty("candidates").EnumerateArray().Take(25).ToArray()}).ToArray():null,goals=GoalContext()};}
+    private object[] AgentCompanions() {
+        var world=World();
+        if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
+        return actors.EnumerateArray().Select(a=>{
+            var info=new Dictionary<string,object>();
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","resource_sites","fishing_available","control_mode","cargo","in_combat","relationship"})
+                if(a.TryGetProperty(key,out var value))info[key]=value.Clone();
+            string id=a.GetProperty("id").GetString()!;
+            info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();
+            if(a.TryGetProperty("candidates",out var candidates))info["candidates"]=candidates.EnumerateArray().Select(c=>{
+                var tile=c.GetProperty("tile");string location=a.GetProperty("location").GetString()!;
+                bool claimed=playerExecutor.ClaimsTile(location,tile[0].GetInt32(),tile[1].GetInt32()) || AgentTileBusy(location,tile[0].GetInt32(),tile[1].GetInt32());
+                return new{target=c.Clone(),claimed};
+            }).Where(c=>!c.claimed).Select(c=>c.target).Take(64).ToArray();
+            info["planning_note"]="独立角色：有候选可直接派工；异地任务先travel，抵达后刷新候选。follow/guard是跟随或护卫，不能作为完成生产的证据；无合适工作时说明休息或陪伴的理由。";
+            return (object)info;
+        }).ToArray();
+    }
+    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
         var values=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(args.GetRawText())!;

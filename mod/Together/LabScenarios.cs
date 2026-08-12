@@ -27,15 +27,26 @@ public sealed partial class ModEntry {
             case "agent_start":StartAutoplay(Arg("goal"));break;
             case "agent_pause":PauseAutoplay("lab_pause");break;
             case "agent_ui":Game1.activeClickableMenu=new AutoplayMenu(this);break;
+            case "agent_schedule_probe": {
+                PauseAutoplay("lab_schedule_probe");Game1.exitActiveMenu();
+                Data.Autoplay=new(){Goal="LAB deterministic scheduler contract",Status="running",StartDay=Game1.Date.TotalDays,RunId=Guid.NewGuid().ToString("N")};
+                agentNext=DateTime.UtcNow.AddMinutes(3);agentStarting=false;agentNeedsDecision=false;agentWakeReasons.Clear();
+                agentLabProbe=true;return JsonSerializer.Serialize(AgentPlanRead());
+            }
             case "agent_policy_probe": {
                 PauseAutoplay("lab_policy_probe");Game1.exitActiveMenu();
                 Data.Autoplay.Status="running";Data.Autoplay.Detail="LAB POLICY PROBE — no model decision";
-                agentNext=DateTime.UtcNow.AddSeconds(60);agentStarting=false;return JsonSerializer.Serialize(AgentDailyRead());
+                agentNext=DateTime.UtcNow.AddSeconds(60);agentStarting=false;agentLabProbe=true;return JsonSerializer.Serialize(AgentDailyRead());
+            }
+            case "agent_night_notice_fixture": {
+                // Replay a plain native notice for menu regression, not earned skill proof.
+                var notice=new Point(0,1);if(!Game1.player.newLevels.Contains(notice))Game1.player.newLevels.Add(notice);
+                break;
             }
             case "agent_resource_fixture": {
                 PauseAutoplay("lab_resource_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Game1.warpFarmer("Farm",62,17,false);
-                for(int x=61;x<=63;x++){var tile=new Vector2(x,18);farm.terrainFeatures.Remove(tile);farm.objects.Remove(tile);}
-                foreach(int x in new[]{61,62})farm.objects[new Vector2(x,18)]=ItemRegistry.Create<StardewValley.Object>("(O)294");
+                for(int x=66;x<=69;x++)for(int y=17;y<=24;y++){var tile=new Vector2(x,y);farm.terrainFeatures.Remove(tile);farm.objects.Remove(tile);}
+                foreach(int x in new[]{67,68})for(int y=18;y<=23;y++)farm.objects[new Vector2(x,y)]=ItemRegistry.Create<StardewValley.Object>("(O)294");
                 var stone=ItemRegistry.Create<StardewValley.Object>("(O)343");stone.MinutesUntilReady=2;farm.objects[new Vector2(63,18)]=stone;
                 var forage=ItemRegistry.Create<StardewValley.Object>("(O)16");forage.IsSpawnedObject=true;farm.objects[new Vector2(63,17)]=forage;
                 break;
@@ -44,7 +55,8 @@ public sealed partial class ModEntry {
                 PauseAutoplay("lab_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
                 Game1.warpFarmer("Farm",62,17,false);
                 for(int x=61;x<=63;x++)for(int y=18;y<=19;y++){farm.objects.Remove(new Vector2(x,y));farm.terrainFeatures.Remove(new Vector2(x,y));}
-                Game1.player.Items[5]=ItemRegistry.Create("(O)472",6);Game1.player.Items[6]=ItemRegistry.Create("(O)388",50);
+                string seed=DataLoader.Crops(Game1.content).Where(c=>c.Value.Seasons.Any(s=>s.ToString().Equals(Game1.currentSeason,StringComparison.OrdinalIgnoreCase)) && ItemRegistry.GetData("(O)"+c.Key)!=null).OrderBy(c=>c.Value.DaysInPhase.Sum()).ThenBy(c=>c.Key,StringComparer.Ordinal).First().Key;
+                Game1.player.Items[5]=ItemRegistry.Create("(O)"+seed,6);Game1.player.Items[6]=ItemRegistry.Create("(O)388",50);
                 farm.animals.Remove(-449404285);farm.animals.Remove(-449404282);
                 break;
             }

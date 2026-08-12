@@ -4,6 +4,7 @@ namespace Together;
 
 // Serializable checkpoints contain observations and intentions, never an API credential.
 public sealed class AutoplayState {
+    public AgentSchedule Schedule {get;set;}=new();
     public DailyAgenda Agenda {get;set;}=new();
     public string RunId {get;set;}="";
     public int StartDay {get;set;}

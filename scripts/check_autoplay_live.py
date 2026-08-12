@@ -53,5 +53,7 @@ shipping=next(x for x in mapdata['buildings'] if x['type']=='Shipping Bin')
 a=action('player.move',x=shipping['x'],y=shipping['y']+shipping['height'])
 gold=a['after']['money'];day=a['after']['day']
 a=action('player.ship',slot=5);check(a['after']['money']==gold,'shipping does not award money before native overnight settlement')
+scenario('agent_night_notice_fixture')
 a=action('player.sleep');check(a['after']['day']==day+1 and a['after']['money']>gold,'native save, date advance and shipping income all verified')
+check(any(e.get('native_menu')=='LevelUpMenu' for e in a['effects']),'plain level-up notice uses native confirmation and does not block saving')
 print('COMPLETED',len(results),'checks',flush=True)

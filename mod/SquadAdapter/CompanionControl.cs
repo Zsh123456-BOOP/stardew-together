@@ -270,7 +270,9 @@ public sealed partial class CompanionControl {
                 r.LastPosition=r.Mate.Npc.TilePoint;
             }
             if (!Members.Contains(r.Mate)) Finish(r, "failed", "actor_dismissed");
-            else if (r.Skill is not ("travel" or "dismiss") && r.Mate.Npc.currentLocation != r.Location) Finish(r, "failed", "location_changed");
+            // Guard follows the Farmer through real exits; unlike a fixed work target,
+            // its start map is not a validity constraint.
+            else if (r.Skill is not ("travel" or "dismiss" or "guard") && r.Mate.Npc.currentLocation != r.Location) Finish(r, "failed", "location_changed");
             else if (combat) { /* Keep goal while Squad handles fast combat. */ }
             else if(r.Skill=="pet" && r.Source is FarmAnimal animal && animal.TilePoint!=r.Target && !r.EffectByActor)Finish(r,"failed","target_moved");
             else if(r.Skill=="dismiss") {if(r.ActiveSeconds>300)Finish(r,"failed","home_route_unavailable");}

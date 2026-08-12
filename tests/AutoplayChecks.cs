@@ -2,6 +2,7 @@ using System.Text.Json;
 using Together;
 public static class AutoplayChecks {
     public static void Run(Action<bool,string> check) {
+        AgentScheduleChecks.Run(check);
         check(AutoplaySpeed.Clock(double.NaN)==1 && AutoplaySpeed.Clock(double.PositiveInfinity)==1,"nonfinite clock settings cannot corrupt native timer");
         check(AutoplaySpeed.Clock(200)==1 && AutoplaySpeed.Clock(-3)==1,"legacy multiplier settings cannot enable acceleration");
         check(AutoplaySpeed.ExtraMilliseconds(8,16,false)==0,"no acceleration during protected movement/model/menu state");

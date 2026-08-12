@@ -13,6 +13,10 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
+        ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色依次执行，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
+        ["plan.cancel"]="{ids:[任务id]}: 取消指定任务；保存开始后不可取消。失败后取消受阻旧计划，再根据真实状态提交新任务",
+        ["plan.archive"]="{}: 清理已结束且不再被依赖的任务记录，保留在用依赖与全局核验计数",
         ["day.read"]="{}: 今日农务、任务、材料缺口、可达工作候选与时间/体力预算；每批完成自动刷新",
         ["day.plan"]="{priorities:[string],resources?:[{item:string,count:int,purpose:string}]}: 保存1至8项优先事项和最多8项目标库存（总量，非增量）；按实际库存核验",
         ["world.read"]="{}: 日期、环境、农场、伙伴actor_id及真实candidates、共同目标",
@@ -54,6 +58,7 @@ public sealed class AgentToolRegistry {
         }
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
+            "plan.read"=>mod.AgentPlanRead(),"plan.submit"=>mod.AgentPlanSubmit(args),"plan.cancel"=>mod.AgentPlanCancel(args),"plan.archive"=>mod.AgentPlanArchive(),
             "day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
             "world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),
             "knowledge.search"=>mod.Knowledge.Search(Text(args,"query"),limit:8),

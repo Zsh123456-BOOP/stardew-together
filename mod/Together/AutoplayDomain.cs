@@ -4,6 +4,7 @@ namespace Together;
 
 // Serializable checkpoints contain observations and intentions, never an API credential.
 public sealed class AutoplayState {
+    public DailyAgenda Agenda {get;set;}=new();
     public string RunId {get;set;}="";
     public int StartDay {get;set;}
     public int VerifiedActions {get;set;}
@@ -13,14 +14,20 @@ public sealed class AutoplayState {
     public string Detail {get;set;}="";
     public int Decisions {get;set;}
     public int SleepDays {get;set;}
+    public int NativeSleepRequestedDay {get;set;}=-1;
+    public int NativeSleepCountedDay {get;set;}=-1;
+    public bool ReconcileSleep(int currentDay) {
+        if(NativeSleepRequestedDay<0 || currentDay!=NativeSleepRequestedDay+1 || NativeSleepCountedDay>=NativeSleepRequestedDay)return false;
+        SleepDays++;NativeSleepCountedDay=NativeSleepRequestedDay;return true;
+    }
     public List<AgentEvent> Journal {get;set;}=new();
     public void Record(string kind,string text) {
-        Journal.Add(new(kind,text.Length>12000?text[..12000]:text));
+        Journal.Add(new(kind,text.Length>16000?AgentJson.Encode(new{truncated=true,prefix=text[..15000],note="观察过长已截断，未列出不代表不存在；用更小范围重新查询"}):text));
         if(Journal.Count>32)Journal.RemoveRange(0,Journal.Count-32);
     }
 }
 public static class AgentJson {
-    public static readonly JsonSerializerOptions Options=new(){Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};
+    public static readonly JsonSerializerOptions Options=new(){DefaultIgnoreCondition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};
     public static string Encode(object? value)=>JsonSerializer.Serialize(value,Options);
 }
 public sealed record AgentEvent(string Kind,string Text);
@@ -43,7 +50,7 @@ public sealed class AgentTurn {
     }
 }
 public static class AutoplaySpeed {
-    public static double Clock(double requested)=>double.IsFinite(requested)?Math.Clamp(requested,1,8):1;
-    public static int ExtraMilliseconds(double requested,double elapsed,bool eligible)=>eligible?(int)Math.Clamp((Clock(requested)-1)*elapsed,0,250):0;
+    public static double Clock(double requested)=>1;
+    public static int ExtraMilliseconds(double requested,double elapsed,bool eligible)=>0;
     public static int DecisionDelay(int value)=>Math.Clamp(value,100,10000);
 }

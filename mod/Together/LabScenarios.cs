@@ -26,6 +26,28 @@ public sealed partial class ModEntry {
             case "agent_tool":return JsonSerializer.Serialize(agentTools.Execute(Arg("tool"),root.GetProperty("args")));
             case "agent_start":StartAutoplay(Arg("goal"));break;
             case "agent_pause":PauseAutoplay("lab_pause");break;
+            case "agent_ui":Game1.activeClickableMenu=new AutoplayMenu(this);break;
+            case "agent_policy_probe": {
+                PauseAutoplay("lab_policy_probe");Game1.exitActiveMenu();
+                Data.Autoplay.Status="running";Data.Autoplay.Detail="LAB POLICY PROBE — no model decision";
+                agentNext=DateTime.UtcNow.AddSeconds(60);agentStarting=false;return JsonSerializer.Serialize(AgentDailyRead());
+            }
+            case "agent_resource_fixture": {
+                PauseAutoplay("lab_resource_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Game1.warpFarmer("Farm",62,17,false);
+                for(int x=61;x<=63;x++){var tile=new Vector2(x,18);farm.terrainFeatures.Remove(tile);farm.objects.Remove(tile);}
+                foreach(int x in new[]{61,62})farm.objects[new Vector2(x,18)]=ItemRegistry.Create<StardewValley.Object>("(O)294");
+                var stone=ItemRegistry.Create<StardewValley.Object>("(O)343");stone.MinutesUntilReady=2;farm.objects[new Vector2(63,18)]=stone;
+                var forage=ItemRegistry.Create<StardewValley.Object>("(O)16");forage.IsSpawnedObject=true;farm.objects[new Vector2(63,17)]=forage;
+                break;
+            }
+            case "agent_fixture": {
+                PauseAutoplay("lab_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
+                Game1.warpFarmer("Farm",62,17,false);
+                for(int x=61;x<=63;x++)for(int y=18;y<=19;y++){farm.objects.Remove(new Vector2(x,y));farm.terrainFeatures.Remove(new Vector2(x,y));}
+                Game1.player.Items[5]=ItemRegistry.Create("(O)472",6);Game1.player.Items[6]=ItemRegistry.Create("(O)388",50);
+                farm.animals.Remove(-449404285);farm.animals.Remove(-449404282);
+                break;
+            }
             case "agent_speed":Settings.AutoplayClockRate=AutoplaySpeed.Clock(Num("rate",2));break;
             case "goal_recipes":ReadGoalRecipes();return JsonSerializer.Serialize(goalRecipes.Values,jsonOptions);
             case "goal_suite":return GoalContracts();

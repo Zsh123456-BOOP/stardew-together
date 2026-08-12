@@ -13,20 +13,24 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["day.read"]="{}: 今日农务、任务、材料缺口、可达工作候选与时间/体力预算；每批完成自动刷新",
+        ["day.plan"]="{priorities:[string],resources?:[{item:string,count:int,purpose:string}]}: 保存1至8项优先事项和最多8项目标库存（总量，非增量）；按实际库存核验",
         ["world.read"]="{}: 日期、环境、农场、伙伴actor_id及真实candidates、共同目标",
         ["map.read"]="{x?:int,y?:int,radius?:1..20}: 当前地图局部格子、障碍、作物、矿物、交互、真实出口；坐标可用于移动与操作",
         ["inventory.read"]="{}: 玩家背包slot、ID、数量、工具；含手持物",
         ["knowledge.search"]="{query:string}: 原生百科模糊检索",
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
+        ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
-        ["player.work"]="{skill:water|till|plant|harvest,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活；自动寻路、工具动画、逐格核验；避免每格请求模型",
+        ["player.work"]="{skill:water|till|plant|harvest|clear|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear仅石块/树枝，须正确工具；forage无需工具）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",
         ["player.use_tool"]="{slot:int,x:int,y:int}: 使用实际工具击打相邻格，保留动画与原生结算",
         ["player.interact"]="{x:int,y:int,slot?:int}: 邻格原生交互，如收获、NPC、机器、门、矿梯",
         ["player.place"]="{slot:int,x:int,y:int}: 使用真实持有的种子/可放物品，原生判定及消耗",
-        ["player.sleep"]="{}: 回家、真实床位、睡眠确认、结算、保存、第二天；须选择的夜间菜单用menu工具",
+        ["player.ship"]="{slot:int}: 在真实农场出货箱旁，将指定槽位整叠可售物品投入出货箱；次日原生结算，不提前加钱",
+        ["player.sleep"]="{reason:string,review?:string}: 正常经营须先查看day.read；提前休息必须说明替代活动为何不可行，有可行工作时拒绝。 回家、真实床位、睡眠确认、结算、保存、第二天；须选择的夜间菜单用menu工具",
         ["menu.read"]="{}: 原生菜单文本、可选响应、组件id、token、手持物；不使用截图",
         ["menu.open"]="{page:inventory|crafting|journal}: 打开相应原生菜单",
         ["menu.choose"]="{token:string,id:string,right?:bool}: 点击刚读取的原生组件，过期token拒绝；返回菜单状态，不声称业务完成",
@@ -43,12 +47,19 @@ public sealed class AgentToolRegistry {
     public object Execute(string tool,JsonElement args) {
         if(!Context.IsWorldReady || Context.IsMultiplayer)throw new InvalidOperationException("single_player_world_required");
         if(!Catalog.ContainsKey(tool))throw new InvalidOperationException("unknown_tool");
+        if(tool.StartsWith("menu.") && tool!="menu.read" && player.Busy && !player.NeedsMenuChoice)throw new InvalidOperationException("player_busy");
+        if(tool is "player.use_tool" or "player.place" or "player.interact" or "player.work") {
+            IEnumerable<JsonElement> targets=tool=="player.work" && args.TryGetProperty("tiles",out var tiles) && tiles.ValueKind==JsonValueKind.Array?tiles.EnumerateArray().ToArray():new[]{args};
+            if(targets.Any(t=>mod.AgentTileBusy(Game1.currentLocation.NameOrUniqueName,Number(t,"x",-1),Number(t,"y",-1))))throw new InvalidOperationException("target_claimed_by_companion");
+        }
+        if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
+            "day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
             "world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),
             "knowledge.search"=>mod.Knowledge.Search(Text(args,"query"),limit:8),
             "knowledge.get" or "goal.requirements"=>mod.Knowledge.Query(Text(args,"query"),Text(args,"id") is {Length:>0} id?id:null),
-            "progress.read"=>Progress(),
-            "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep"=>player.Start(tool,args),
+            "progress.read"=>Progress(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
+            "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
             "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
             "companion.assign"=>mod.AgentCompanion(args),
@@ -57,13 +68,15 @@ public sealed class AgentToolRegistry {
             _=>throw new InvalidOperationException("unknown_tool")
         };
     }
-    private object Wait(int seconds){mod.AgentWait(seconds);return new{status="waiting",seconds=Math.Clamp(seconds,1,60)};}
+    private object Wait(int seconds){int actual=mod.AgentWait(seconds);return new{status="waiting",seconds=actual,note="按原生时间限制等待长度，深夜前重新决策"};}
     private object Pause(string reason){mod.PauseAutoplay(reason);return new{status="paused",reason};}
     internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name};
     internal static object Inventory()=>new{selected=Game1.player.CurrentToolIndex,items=Game1.player.Items.Select((v,i)=>new{slot=i,item=ItemInfo(v)}).ToArray()};
     private static object Progress()=>new{scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
         crafting=Game1.player.craftingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooking=Game1.player.cookingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         skills=new{farming=Game1.player.FarmingLevel,mining=Game1.player.MiningLevel,fishing=Game1.player.FishingLevel,foraging=Game1.player.ForagingLevel,combat=Game1.player.CombatLevel},
+        shipped=Game1.player.basicShipped.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooked=Game1.player.recipesCooked.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
+        fish_caught=Game1.player.fishCaught.Pairs.ToDictionary(p=>p.Key,p=>p.Value),minerals=Game1.player.mineralsFound.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         deepest_mine=Game1.player.deepestMineLevel,mail=Game1.player.mailReceived.ToArray(),
         quests=Game1.player.questLog.Select(q=>new{id=q.id.Value,title=q.questTitle,description=q.questDescription,completed=q.completed.Value}).ToArray(),
         note="未覆盖全部成就条件；缺少条目不能解释为已完成"};
@@ -81,10 +94,11 @@ public sealed class AgentToolRegistry {
                 item=o==null?null:ItemInfo(o),terrain=feature?.GetType().Name,watered=dirt?.state.Value==1,
                 crop=dirt?.crop==null?null:new{harvest=dirt.crop.indexOfHarvest.Value,phase=dirt.crop.currentPhase.Value,dead=dirt.crop.dead.Value,ready=dirt.readyForHarvest()},action,touch});
         }rows.Add(row.ToString());}
-        return new{location=l.NameOrUniqueName,width,height,center=new[]{cx,cy},radius=r,x0,y0,grid=rows,legend="# blocked, ~ water, . clear diggable, _ clear non-diggable; origin x0,y0; moving characters may block",cells=cells.Take(100),cells_truncated=cells.Count>100,
+        return new{location=l.NameOrUniqueName,width,height,center=new[]{cx,cy},radius=r,x0,y0,
             exits=PlayerExecutor.Exits(l).Select(e=>new{e.X,e.Y,e.TargetName,e.TargetX,e.TargetY}),
+            buildings=l.buildings.Select(b=>new{type=b.buildingType.Value,x=b.tileX.Value,y=b.tileY.Value,width=b.tilesWide.Value,height=b.tilesHigh.Value}),
             characters=l.characters.Select(n=>new{name=n.Name,x=n.TilePoint.X,y=n.TilePoint.Y,monster=n.IsMonster}),
             furniture=l.furniture.Select(f=>new{name=f.Name,x=f.TileLocation.X,y=f.TileLocation.Y}),
-            home=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName};
+            home=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName,grid=rows,legend="# blocked, ~ water, . clear diggable, _ clear non-diggable; origin x0,y0; moving characters may block",cells=cells.Take(36),cells_truncated=cells.Count>36,note="建筑和出口先列出，cells截断时缩小radius或移动中心查询，缺省格子不等于没有对象"};
     }
 }

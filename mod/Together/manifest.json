@@ -1,10 +1,15 @@
 {
   "Name": "同行 · Together",
   "Author": "Stardew Agent Project",
-  "Version": "0.6.0",
-  "Description": "Companion with shared farm projects, memories and a live searchable encyclopedia. Press F8.",
+  "Version": "0.7.0",
+  "Description": "State-driven DeepSeek companion and player tool loop, native sleep, encyclopedia and shared farming. Press F8.",
   "UniqueID": "StardewAgent.Together",
   "EntryDll": "Together.dll",
   "MinimumApiVersion": "4.5.2",
-  "Dependencies": [{"UniqueID": "ThaliaFawnheart.TheStardewSquad", "IsRequired": true}]
+  "Dependencies": [
+    {
+      "UniqueID": "ThaliaFawnheart.TheStardewSquad",
+      "IsRequired": true
+    }
+  ]
 }

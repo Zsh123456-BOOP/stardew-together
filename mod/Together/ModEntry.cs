@@ -20,7 +20,8 @@ public sealed class Config {
     public int AutoIntervalSeconds {get;set;}=90;
     public int MaxCallsPerDay {get;set;}=24;
     public bool AllowTrialRecruitment {get;set;}=true;
-    public double AutoplayClockRate {get;set;}=2;
+    // Accept old config files, but never let a stored multiplier change game time.
+    public double AutoplayClockRate {get=>1;set { }}
     public int AutoplayDecisionDelayMs {get;set;}=250;
     public int AutoplayMaxCallsPerDay {get;set;}=180;
     public bool EnableLab {get;set;}
@@ -69,7 +70,7 @@ public sealed partial class ModEntry:Mod {
         helper.Events.GameLoop.SaveLoaded+=(_,_)=>Load();
         helper.Events.GameLoop.DayEnding+=(_,_)=>CheckpointJobs();
         helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist)Helper.Data.WriteSaveData("together-v2",Data);};
-        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
+        helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();playerExecutor.ClearWorld();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
             EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
@@ -161,12 +162,12 @@ public sealed partial class ModEntry:Mod {
         });
     }
     private void Load() {
-        ResetAgentRuntime();generation++;pending=null;canPersist=true;api?.Reset();
+        ResetAgentRuntime();playerExecutor.ClearWorld();generation++;pending=null;canPersist=true;api?.Reset();
         ResetKnowledge();
         try{Data=Helper.Data.ReadSaveData<SaveData>("together-v2") ?? (File.Exists(SavePath)?JsonSerializer.Deserialize<SaveData>(File.ReadAllText(SavePath))??new():new());}
         catch{Data=new();canPersist=false;Notice="同行记录无法读取，本次暂停写入以保留原文件。";return;}
         if(Data.SchemaVersion>6){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
-        Data.SchemaVersion=6;
+        Data.SchemaVersion=6;Data.Autoplay.ReconcileSleep(Game1.Date.TotalDays);
         if(Data.Autoplay.Status=="running"){Data.Autoplay.Status="paused";Data.Autoplay.Detail="重新载入后先核对状态，使用 together_agent resume 继续。";}
         factsMinute=-1;RefreshFacts(true);
         foreach(var p in Data.People.Values) if(p.Job?.Status is "active" or "waiting") {p.Job.Status="paused";p.Job.Command=null;p.Job.TravelCommand=null;p.Job.Detail="上次的小约定还在；点继续后重新检查环境。";}

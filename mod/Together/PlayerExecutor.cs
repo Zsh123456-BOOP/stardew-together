@@ -22,6 +22,7 @@ public sealed class PlayerAction {
 public sealed class PlayerExecutor {
     private readonly Dictionary<string,PlayerAction> receipts=new();
     public PlayerAction? Current {get;private set;}
+    public Action<int>? NativeSleepRequested {get;set;}
     public bool Busy=>Current?.status=="running";
     public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu);
     private Point target,lastTile;
@@ -31,10 +32,13 @@ public sealed class PlayerExecutor {
     private bool saved,sleepConfirmed,startedUsing;
     private PathFindController? ownedController;
     private Warp? edge;
+    private bool boundaryDriving;
     private List<Point> workTiles=new();
     private string workSkill="";
-    private int workSlot,workIndex;
-    private object? workBefore;
+    private int workSlot,workIndex,workHits;
+    private object? workBefore,actionTargetBefore;
+    public bool ClaimsTile(string location,int x,int y)=>Busy && origin==location && (Current!.skill=="player.work"?workTiles.Skip(workIndex).Any(p=>p.X==x&&p.Y==y):Current.skill is "player.use_tool" or "player.place" or "player.interact" && target.X==x&&target.Y==y);
+    public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;}
     public void ClearStopped(){if(!Busy){Current=null;receipts.Clear();}}
     public object Poll(string id)=>receipts.TryGetValue(id,out var r)?r:throw new InvalidOperationException("unknown_player_action");
     public object Cancel(string? id=null) {
@@ -49,35 +53,49 @@ public sealed class PlayerExecutor {
         money=Game1.player.Money,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
-        if(Game1.activeClickableMenu!=null || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove || Game1.player.UsingTool)
+        if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
         started=lastProgress=nextInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
-        startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
+        actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "harvest"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
-                    workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;
-                    if(workSkill!="harvest")SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
+                    workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
+                    if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
                     if(workSkill=="water" && Game1.player.CurrentTool is not StardewValley.Tools.WateringCan || workSkill=="till" && Game1.player.CurrentTool is not StardewValley.Tools.Hoe)throw new InvalidOperationException("wrong_tool_for_work");
                     Current.phase="work_next";break;
                 case "player.move":target=Tile(args);destination=origin;Current.phase="walking";Walk(target);break;
                 case "player.travel":destination=AgentToolRegistry.Text(args,"location");Current.phase="travelling";if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_location");break;
                 case "player.sleep":destination=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName;Current.phase="returning_home";break;
                 case "player.use_tool":
-                    target=Tile(args);Adjacent(target);SelectSlot(args,true);
+                    target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,true);
                     if(Game1.player.CurrentTool==null)throw new InvalidOperationException("slot_is_not_tool");
                     Face(target);Game1.player.lastClick=target.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();startedUsing=Game1.player.UsingTool;
                     if(!startedUsing)throw new InvalidOperationException("tool_did_not_start");Current.phase="tool_animation";break;
                 case "player.interact":
-                    target=Tile(args);Adjacent(target);SelectSlot(args,false);Face(target);Current.phase="interacting";
-                    if(!Game1.tryToCheckAt(target.ToVector2(),Game1.player))throw new InvalidOperationException("interaction_not_available");break;
+                    target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,false);Face(target);Current.phase="interacting";
+                    if(Game1.currentLocation.objects.TryGetValue(target.ToVector2(),out var container) && container is StardewValley.Objects.Chest chest && chest.playerChest.Value && !chest.giftbox.Value) {
+                        if(chest.GetMutex().IsLocked())throw new InvalidOperationException("chest_busy");
+                        chest.GetMutex().RequestLock(()=>{
+                            if(chest.SpecialChestType==StardewValley.Objects.Chest.SpecialChestTypes.MiniShippingBin)chest.ShowMenu();
+                            else {chest.frameCounter.Value=5;Game1.playSound("openChest");Game1.player.freezePause=1000;}
+                        });
+                    } else if(!Game1.tryToCheckAt(target.ToVector2(),Game1.player))throw new InvalidOperationException("interaction_not_available");break;
+                case "player.ship":
+                    SelectSlot(args,true);
+                    if(Game1.currentLocation is not Farm shippingFarm)throw new InvalidOperationException("shipping_requires_farm");
+                    if(Game1.player.ActiveObject is not {} cargo || !cargo.canBeShipped())throw new InvalidOperationException("item_not_shippable");
+                    bool atBin=shippingFarm.buildings.Any(b=>b.buildingType.Value=="Shipping Bin" && new Rectangle(b.tileX.Value*64-64,b.tileY.Value*64-64,(b.tilesWide.Value+2)*64,(b.tilesHigh.Value+2)*64).Intersects(Game1.player.GetBoundingBox()));
+                    if(!atBin)throw new InvalidOperationException("move_next_to_shipping_bin_first");
+                    shippingFarm.shipItem(cargo,Game1.player);
+                    Current.effects.Add(new{shipped=cargo.QualifiedItemId,count=cargo.Stack,confirmed_in_bin=shippingFarm.getShippingBin(Game1.player).Contains(cargo),income="pending_native_overnight"});Finish("succeeded");break;
                 case "player.place":
-                    target=Tile(args);Adjacent(target);SelectSlot(args,true);Face(target);
+                    target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,true);Face(target);
                     if(Game1.player.ActiveObject==null)throw new InvalidOperationException("slot_not_placeable_object");
                     if(!Utility.tryToPlaceItem(Game1.currentLocation,Game1.player.ActiveObject,target.X*64,target.Y*64))throw new InvalidOperationException("native_placement_rejected");
                     Finish("succeeded");break;
@@ -102,32 +120,50 @@ public sealed class PlayerExecutor {
         var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+48-box.Center.Y);
         return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,true,false,false,true);
     }
-    private void StopWalk(){if(Game1.player.controller==ownedController)Game1.player.controller=null;ownedController=null;Game1.player.Halt();}
+    private void StopWalk(){
+        // Halt resets the sprite animation. Only halt movement owned by this executor;
+        // native hold-up/receive-item animations must reach their own completion callbacks.
+        if((ownedController!=null || boundaryDriving) && (Game1.player.controller==ownedController || Game1.player.controller==null)) {
+            if(Game1.player.controller==ownedController)Game1.player.controller=null;Game1.player.Halt();
+        }
+        ownedController=null;boundaryDriving=false;
+    }
     private void Walk(Point p) {
         StopWalk();target=p;if(Game1.player.TilePoint==p)return;
         var controller=new PathFindController(Game1.player,Game1.currentLocation,p,-1);
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
         ownedController=controller;Game1.player.controller=controller;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
     }
-    private Point Approach(Point p) {
+    private Point Approach(Point p,bool adjacentOnly=false) {
         foreach(var option in new[]{p,new Point(p.X,p.Y+1),new Point(p.X-1,p.Y),new Point(p.X+1,p.Y),new Point(p.X,p.Y-1)}.OrderBy(t=>Vector2.Distance(t.ToVector2(),Game1.player.Tile)))
-            if(Passable(Game1.currentLocation,option)) {
+            if((!adjacentOnly || option!=p) && Passable(Game1.currentLocation,option)) {
                 var path=new PathFindController(Game1.player,Game1.currentLocation,option,-1);
                 if(option==Game1.player.TilePoint || path.pathToEndPoint?.Count>0)return option;
             }
         throw new InvalidOperationException("exit_unreachable");
+    }
+    public void ObserveNativeTransition() {
+        if(!Context.IsWorldReady || !Busy)return;
+        if(Game1.locationRequest!=null || Game1.fadeToBlack) {
+            // A Farmer path controller moves even when CanMove=false. Keeping it during
+            // fade re-enters the boundary warp every frame and restarts the transition.
+            if(ownedController!=null && Game1.player.controller==ownedController)Game1.player.controller=null;
+            ownedController=null;boundaryDriving=false;lastProgress=DateTime.UtcNow;
+        }
     }
     public void Tick() {
         if(!Busy || !Context.IsWorldReady)return;
         try {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
             if((DateTime.UtcNow-started).TotalSeconds>180){Finish("failed","action_timeout");return;}
+            ObserveNativeTransition();
+            if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
             if(Game1.eventUp){Finish("failed","event_interrupted_read_state");return;}
             if(Current.skill=="player.work"){TickWork();return;}
             if(Current.skill=="player.use_tool") {
-                if(!Game1.player.UsingTool && startedUsing)Finish("succeeded");return;
+                if(!Game1.player.UsingTool && Game1.player.CanMove && startedUsing)Finish("succeeded");return;
             }
-            if(Current.skill=="player.interact"){if(!Game1.player.UsingTool)Finish("succeeded");return;}
+            if(Current.skill=="player.interact"){if((Game1.player.CanMove && !Game1.player.UsingTool && Game1.player.freezePause<=0) || Game1.activeClickableMenu!=null)Finish("succeeded");return;}
             if(Current.skill=="player.move") {
                 if(Game1.currentLocation.NameOrUniqueName!=origin){Finish("failed","location_changed_before_destination");return;}
                 if(Game1.player.TilePoint==target){Finish("succeeded");return;}
@@ -145,7 +181,7 @@ public sealed class PlayerExecutor {
                     else if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("unexpected_bed_menu");
                     // Same native response as confirming the actual bed prompt, only after walking onto its real spot.
                     Game1.player.isInBed.Value=true;sleepConfirmed=true;Current.phase="overnight";
-                    house.answerDialogueAction("Sleep_Yes",Array.Empty<string>());return;
+                    NativeSleepRequested?.Invoke(startDay);house.answerDialogueAction("Sleep_Yes",Array.Empty<string>());return;
                 }
             }
             if(Game1.activeClickableMenu!=null){Finish("failed","menu_interrupted_read_menu");return;}
@@ -154,26 +190,44 @@ public sealed class PlayerExecutor {
     }
     private static object TileState(Point p) {
         var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
-        return new{x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,terrain=f?.GetType().Name,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
+        return new{x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
     private void TickWork() {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("work_interrupted_by_menu");
-        if(workIndex>=workTiles.Count){Finish("succeeded");return;}
+        if(workIndex>=workTiles.Count){
+            if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
+            // The last impact can finish before its debris reaches the Farmer. Let native
+            // collection settle so receipts include the final crop/material where picked up.
+            if(workSkill is "harvest" or "clear" or "forage") {
+                if(Current!.phase!="settling_drops"){Current.phase="settling_drops";nextInteraction=DateTime.UtcNow.AddSeconds(1);}
+                if(DateTime.UtcNow<nextInteraction)return;
+            }
+            Finish("succeeded");return;
+        }
         Point tile=workTiles[workIndex];
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
+            if(workSkill=="clear") {
+                if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
+                SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
+                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || resource.BaseName=="Stone" && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe))throw new InvalidOperationException("wrong_resource_or_tool");
+                if(Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
+            }
+            if(workSkill=="forage" && (!Game1.currentLocation.objects.TryGetValue(v,out var forage) || !forage.isForage() || forage.bigCraftable.Value))throw new InvalidOperationException("not_a_forage_target");
             bool already=workSkill=="water"&&dirt?.state.Value==1 || workSkill=="till"&&dirt!=null;
             if(already){Current.effects.Add(new{tile=workBefore,status="already_satisfied"});workIndex++;return;}
             if(workSkill=="water"&&dirt?.crop==null || workSkill=="plant"&&(dirt==null||dirt.crop!=null) || workSkill=="harvest"&&dirt?.readyForHarvest()!=true)
                 throw new InvalidOperationException("work_target_not_eligible");
-            Walk(Approach(tile));Current.phase="work_walk";
+            Walk(Approach(tile,true));Current.phase="work_walk";
         }
         if(Current.phase=="work_walk") {
             if(Game1.player.TilePoint!=target){MonitorWalk();return;}
             StopWalk();Adjacent(tile);Face(tile);
-            if(workSkill!="harvest")SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
-            if(workSkill is "water" or "till") {
+            if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
+            if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
+            if(workSkill is "water" or "till" or "clear") {
+                if(Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
             } else if(workSkill=="plant") {
@@ -184,7 +238,12 @@ public sealed class PlayerExecutor {
         if(Current.phase=="work_impact" && !Game1.player.UsingTool) {
             var after=TileState(tile);
             if(JsonSerializer.Serialize(workBefore)==JsonSerializer.Serialize(after))throw new InvalidOperationException("work_effect_not_observed");
-            Current.effects.Add(new{before=workBefore,after});Current.completed++;workIndex++;retries=0;Current.phase="work_next";
+            Current.effects.Add(new{before=workBefore,after});
+            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2())) {
+                if(++workHits>=12)throw new InvalidOperationException("resource_hit_limit_replan");
+                Current.phase="work_next";return;
+            }
+            Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }
     private void MonitorWalk() {
@@ -205,14 +264,19 @@ public sealed class PlayerExecutor {
             if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player))return;
             var warp=l.warps.FirstOrDefault(w=>w.X==edge.X&&w.Y==edge.Y&&w.TargetName==edge.TargetName);
             if(warp!=null) {
-                int direction=Math.Abs(at.X-Game1.player.TilePoint.X)>Math.Abs(at.Y-Game1.player.TilePoint.Y)?(at.X>Game1.player.TilePoint.X?1:3):(at.Y>Game1.player.TilePoint.Y?2:0);
-                Game1.player.faceDirection(direction);Game1.player.setMovingInFacingDirection();
+                // Keep native path ownership through the boundary. A one-frame movement flag
+                // can be cleared by the game's keyboard processing before the Farmer moves.
+                var continuation=new Stack<Point>();continuation.Push(at);
+                ownedController=new PathFindController(continuation,l,Game1.player,at);
+                Game1.player.controller=ownedController;boundaryDriving=true;
+                target=at;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
             }
         }
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("travel_menu_requires_choice");
         MonitorWalk();
     }
     private void TickNight() {
+        if(Current!.phase=="waking" && Game1.player.CanMove && !Game1.fadeToBlack && Game1.activeClickableMenu==null){Finish("succeeded");return;}
         if((DateTime.UtcNow-started).TotalSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
         // Non-branching shipping confirmation is deterministic; profession/reward choices stay with the model.
         if(Game1.activeClickableMenu is ShippingMenu shipping && DateTime.UtcNow>=nextInteraction) {
@@ -224,10 +288,14 @@ public sealed class PlayerExecutor {
     public bool DayStarted() {
         if(!Busy || !sleepConfirmed)return false;
         bool advanced=Game1.Date.TotalDays==startDay+1;
-        Finish(advanced&&saved?"succeeded":"failed",advanced&&saved?null:"day_transition_not_verified");return advanced&&saved;
+        if(advanced&&saved)Current!.phase="waking";else Finish("failed","day_transition_not_verified");return advanced&&saved;
     }
     private void Finish(string status,string? error=null) {
-        if(Current==null)return;StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;
+        if(Current==null)return;
+        if(actionTargetBefore!=null && Context.IsWorldReady && Game1.currentLocation.NameOrUniqueName==origin) {
+            var after=TileState(target);Current.effects.Add(new{before=actionTargetBefore,after,effect_observed=AgentJson.Encode(actionTargetBefore)!=AgentJson.Encode(after)});actionTargetBefore=null;
+        }
+        StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {
         foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp;

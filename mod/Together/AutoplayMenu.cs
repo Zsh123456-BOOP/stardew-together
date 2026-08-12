@@ -13,10 +13,9 @@ public sealed class AutoplayMenu:IClickableMenu {
     private readonly TextBox goal;
     private readonly List<(Rectangle Bounds,string Label,Action Action)> buttons=new();
     public AutoplayMenu(ModEntry mod):base(Game1.uiViewport.Width/2-440,Game1.uiViewport.Height/2-245,880,490,true) {
-        this.mod=mod;goal=new TextBox(Game1.content.Load<Texture2D>("LooseSprites/textBox"),null,mod.Font,Color.DarkSlateGray){X=xPositionOnScreen+28,Y=yPositionOnScreen+138,Width=824,Text=mod.Data.Autoplay.Goal.Length>0?mod.Data.Autoplay.Goal:"一起经营农场：种植、每天浇水，回家睡觉，收获并出货；根据百科和真实状态安排。",textLimit=800};
+        this.mod=mod;goal=new TextBox(Game1.content.Load<Texture2D>("LooseSprites/textBox"),null,mod.Font,Color.DarkSlateGray){X=xPositionOnScreen+28,Y=yPositionOnScreen+138,Width=824,Text=mod.Data.Autoplay.Goal.Length>0?mod.Data.Autoplay.Goal:"一起经营农场：先照料作物，再按材料缺口分工采集、探索和制作；合理利用体力与白天，安全回家。",textLimit=800};
         Add(28,204,180,"开始 / 继续接管",()=>{exitThisMenu();mod.StartAutoplay(goal.Text);});
         Add(228,204,120,"暂停",()=>mod.PauseAutoplay("玩家暂停"));
-        foreach(int rate in new[]{1,2,4,8}){int r=rate;Add(380+Array.IndexOf(new[]{1,2,4,8},rate)*110,204,100,rate+" 倍时钟",()=>mod.SetAutoplaySpeed(r));}
     }
     private void Add(int x,int y,int w,string text,Action a)=>buttons.Add((new(xPositionOnScreen+x,yPositionOnScreen+y,w,40),text,a));
     public override void receiveLeftClick(int x,int y,bool playSound=true){base.receiveLeftClick(x,y,playSound);foreach(var b in buttons)if(b.Bounds.Contains(x,y)){b.Action();return;}goal.Selected=new Rectangle(goal.X,goal.Y,goal.Width,48).Contains(x,y);}
@@ -30,10 +29,10 @@ public sealed class AutoplayMenu:IClickableMenu {
         Text("控制玩家与同行伙伴。读取地图、查手册，按真实操作推进存档。",28,70);
         Text("这份存档的目标：",28,106);goal.Draw(b);
         foreach(var item in buttons){b.Draw(Game1.staminaRect,item.Bounds,new Color(214,226,205));b.DrawString(mod.Font,item.Label,new(item.Bounds.X+8,item.Bounds.Y+7),Color.DarkSlateGray,0,Vector2.Zero,.72f,SpriteEffects.None,1);}
-        Text($"时钟：{mod.Settings.AutoplayClockRate:0.#} 倍 · 决策间隔：{mod.Settings.AutoplayDecisionDelayMs} 毫秒 · 每日上限：{mod.Settings.AutoplayMaxCallsPerDay} 次",28,272);
-        Text("倍率在空闲等待时生效，移动和工具保持原生动画。模型响应仍受网络影响。",28,308,.72f);
+        Text($"时间：原生正常速度 · 决策间隔：{mod.Settings.AutoplayDecisionDelayMs} 毫秒 · 每日上限：{mod.Settings.AutoplayMaxCallsPerDay} 次",28,272);
+        Text("完成农务后继续安排采集与经营；保留返家时间，体力不足时调整活动。",28,308,.72f);
         Text("F10 / 方向键随时接回控制；原生保存开始后会先完成换日。",28,340,.72f);
-        Text(Game1.parseText("状态："+mod.Data.Autoplay.Status+" · "+mod.Data.Autoplay.Detail,mod.Font,1010),28,378,.72f);
+        Text(Game1.parseText("状态："+(mod.Data.Autoplay.Status=="running"?"自主游玩中":mod.Data.Autoplay.Status=="paused"?"已暂停":"尚未开始")+" · "+mod.Data.Autoplay.Detail,mod.Font,1010),28,378,.72f);
         base.draw(b);drawMouse(b);
     }
 }

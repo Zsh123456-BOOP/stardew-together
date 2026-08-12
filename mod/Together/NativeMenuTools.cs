@@ -22,7 +22,7 @@ public sealed class NativeMenuTools {
         if(m is CraftingPage craft && craft.currentCraftingPage<craft.pagesOfCraftingRecipes.Count)
             foreach(var pair in craft.pagesOfCraftingRecipes[craft.currentCraftingPage])labels[pair.Key.bounds]="craft:"+pair.Value.name+" "+pair.Value.DisplayName+" ingredients="+pair.Value.doesFarmerHaveIngredientsInInventory();
         if(m is ShopMenu shop)
-            for(int i=0;i<shop.forSaleButtons.Count;i++){int n=shop.currentItemIndex+i;if(n<shop.forSale.Count)labels[shop.forSaleButtons[i].bounds]="buy:"+shop.forSale[n].DisplayName;}
+            for(int i=0;i<shop.forSaleButtons.Count;i++){int n=shop.currentItemIndex+i;if(n<shop.forSale.Count){var item=shop.forSale[n];var stock=shop.itemPriceAndStock.GetValueOrDefault(item);labels[shop.forSaleButtons[i].bounds]="buy:"+item.DisplayName+" price="+stock?.Price+" stock="+stock?.Stock;}}
         if(m is DialogueBox dialogue && dialogue.responseCC!=null)
             for(int i=0;i<Math.Min(dialogue.responses.Length,dialogue.responseCC.Count);i++)labels[dialogue.responseCC[i].bounds]="response:"+dialogue.responses[i].responseKey+" "+dialogue.responses[i].responseText;
         var components=new List<ClickableComponent>();
@@ -42,7 +42,8 @@ public sealed class NativeMenuTools {
         }
         foreach(var c in components.Where(c=>c!=null && c.visible && c.bounds.Width>0 && c.bounds.Height>0).DistinctBy(c=>c.bounds))
             choices.Add(new("c"+choices.Count,labels.GetValueOrDefault(c.bounds,c.name??"component"),c.bounds));
-        string text=m is DialogueBox d?string.Join("\n",d.dialogues):"";
+        string text=m is DialogueBox d?d.getCurrentString():"";
+        if(m is DialogueBox {isQuestion:false})choices.Add(new("continue","继续对话",new Rectangle(m.xPositionOnScreen+16,m.yPositionOnScreen+16,32,32)));
         string held=m is CraftingPage cp?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(cp.heldItem)):m is MenuWithInventory mi?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(mi.heldItem)):"";
         token=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.GetType().Name+JsonSerializer.Serialize(choices)+text+held)))[..16];
         return new{type=m.GetType().Name,token,text,held,choices=choices.Select(c=>new{c.Id,c.Label}),ready_to_close=m.readyToClose()};
@@ -51,6 +52,8 @@ public sealed class NativeMenuTools {
         var previous=observed;string expected=AgentToolRegistry.Text(args,"token");Read();
         if(previous!=observed || expected!=token || token.Length==0)throw new InvalidOperationException("stale_menu_read_again");
         var choice=choices.FirstOrDefault(c=>c.Id==AgentToolRegistry.Text(args,"id"))??throw new InvalidOperationException("unknown_menu_choice");
+        if(observed is DialogueBox dialogueBox)dialogueBox.finishTyping();
+        observed!.performHoverAction(choice.Bounds.Center.X,choice.Bounds.Center.Y);
         bool right=args.TryGetProperty("right",out var flag)&&flag.ValueKind==JsonValueKind.True;
         if(right)observed!.receiveRightClick(choice.Bounds.Center.X,choice.Bounds.Center.Y);else observed!.receiveLeftClick(choice.Bounds.Center.X,choice.Bounds.Center.Y);
         return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};

@@ -63,7 +63,7 @@ public sealed class PlayerExecutor {
             switch(skill) {
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -201,7 +201,7 @@ public sealed class PlayerExecutor {
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
             // The last impact can finish before its debris reaches the Farmer. Let native
             // collection settle so receipts include the final crop/material where picked up.
-            if(workSkill is "harvest" or "clear" or "forage") {
+            if(workSkill is "harvest" or "clear" or "clear_dead" or "forage") {
                 if(Current!.phase!="settling_drops"){Current.phase="settling_drops";nextInteraction=DateTime.UtcNow.AddSeconds(1);}
                 if(DateTime.UtcNow<nextInteraction)return;
             }
@@ -232,6 +232,14 @@ public sealed class PlayerExecutor {
                 if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || resource.BaseName=="Stone" && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe))throw new InvalidOperationException("wrong_resource_or_tool");
                 if(Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
             }
+            if(workSkill=="clear_dead") {
+                SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
+                if(Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("clear_dead_requires_scythe");
+                if(dirt==null)throw new InvalidOperationException("dead_crop_not_present");
+                // A native scythe swing can also clear the next dead crop in this batch.
+                if(dirt.crop==null){Current.effects.Add(new{tile=workBefore,status="already_clear"});workIndex++;return;}
+                if(!dirt.crop.dead.Value)throw new InvalidOperationException("refusing_to_clear_living_crop");
+            }
             if(workSkill=="forage" && (!Game1.currentLocation.objects.TryGetValue(v,out var forage) || !forage.isForage() || forage.bigCraftable.Value))throw new InvalidOperationException("not_a_forage_target");
             bool already=workSkill=="water"&&dirt?.state.Value==1 || workSkill=="till"&&dirt!=null;
             if(already){Current.effects.Add(new{tile=workBefore,status="already_satisfied"});workIndex++;return;}
@@ -244,8 +252,8 @@ public sealed class PlayerExecutor {
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
-            if(workSkill is "water" or "till" or "clear") {
-                if(Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
+            if(workSkill is "water" or "till" or "clear" or "clear_dead") {
+                if(workSkill!="clear_dead" && Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
             } else if(workSkill=="plant") {
@@ -261,7 +269,7 @@ public sealed class PlayerExecutor {
                 if(++workHits>=12)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
-            if(workSkill is "clear" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
+            if(workSkill is "clear" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
             Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }

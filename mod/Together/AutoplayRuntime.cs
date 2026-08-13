@@ -18,6 +18,7 @@ public sealed partial class ModEntry {
     private readonly Stopwatch agentWatch=new();
     private double agentLastLatency;
     private bool agentStarting;
+    private int agentReplyFailures;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
         playerExecutor=new(){NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day};agentTools=new(this,playerExecutor);
@@ -65,7 +66,7 @@ public sealed partial class ModEntry {
         ResetAgentRuntime();Data.Autoplay.Status="paused";Data.Autoplay.Detail=reason;Notice=reason;
     }
     private void ResetAgentRuntime() {
-        agentGeneration++;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
+        agentGeneration++;agentReplyFailures=0;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)api?.CancelAction(task.command_id);}catch{}
         Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
         agentClaims.Clear();playerExecutor?.Cancel();agentTools?.Reset();
@@ -83,12 +84,13 @@ public sealed partial class ModEntry {
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
         if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
+            string? unappliedReply=null;bool applying=false;
             try {
-                var reply=task.GetAwaiter().GetResult();Data.Tokens+=reply.Tokens;RecordUsage();
+                var reply=task.GetAwaiter().GetResult();unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();
                 if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays) {
                     Data.Autoplay.Record("stale_decision","请求期间换日或接管会话改变；丢弃旧动作，重新观察。");WakeAgent("stale_response");
                 } else {
-                    var turn=AgentTurn.Parse(reply.Json);Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
+                    var turn=AgentTurn.Parse(reply.Json);applying=true;agentReplyFailures=0;Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
                     bool followup=false;
                     foreach(var call in turn.calls) {
@@ -106,9 +108,14 @@ public sealed partial class ModEntry {
                     if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
                     TickAgentSchedule();
                 }
-            }catch(Exception e){PauseAutoplay("模型本轮未执行："+(e is InvalidOperationException?e.Message:e.GetType().Name));}
+            }catch(Exception e){
+                if(!applying && (e is JsonException || e is InvalidOperationException && e.Message is "invalid_turn" or "invalid_tool_call" or "empty_turn" or "model_reply_incomplete") && ++agentReplyFailures<=2) {
+                    Data.Autoplay.Record("invalid_model_reply",AgentJson.Encode(new{error=e.Message,reply=unappliedReply,no_actions_applied=true,retry=agentReplyFailures}));
+                    WakeAgent("invalid_reply_use_valid_JSON_and_tool_schema_no_actions_applied");agentNext=DateTime.UtcNow.AddSeconds(1);
+                } else PauseAutoplay("模型本轮未执行："+(e is InvalidOperationException?e.Message:e.GetType().Name));
+            }
         }
-        if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.eventUp || Game1.currentMinigame!=null)return;
+        if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
             bool playerQueued=Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&t.state is "queued" or "running");

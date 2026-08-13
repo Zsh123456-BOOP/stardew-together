@@ -33,6 +33,19 @@ public sealed partial class ModEntry {
                 agentNext=DateTime.UtcNow.AddMinutes(3);agentStarting=false;agentNeedsDecision=false;agentWakeReasons.Clear();
                 agentLabProbe=true;return JsonSerializer.Serialize(AgentPlanRead());
             }
+            case "agent_reply_probe": {
+                if(!agentLabProbe || !AutoplayRunning)throw new InvalidOperationException("schedule_probe_required");
+                agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
+                agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
+            }
+            case "agent_dead_crop_fixture": {
+                PauseAutoplay("lab_dead_crop_fixture");Game1.exitActiveMenu();Game1.warpFarmer("Farm",66,18,false);
+                for(int x=67;x<=69;x++){
+                    var tile=new Vector2(x,18);farm.objects.Remove(tile);var crop=new Crop("472",x,18,farm);crop.dead.Value=x<69;
+                    farm.terrainFeatures[tile]=new HoeDirt(0,farm){crop=crop};
+                }
+                break;
+            }
             case "agent_policy_probe": {
                 PauseAutoplay("lab_policy_probe");Game1.exitActiveMenu();
                 Data.Autoplay.Status="running";Data.Autoplay.Detail="LAB POLICY PROBE — no model decision";

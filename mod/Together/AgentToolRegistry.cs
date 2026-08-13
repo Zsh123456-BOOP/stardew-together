@@ -27,7 +27,7 @@ public sealed class AgentToolRegistry {
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
-        ["player.work"]="{skill:water|till|plant|harvest|clear|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear仅石块/树枝，须正确工具；forage无需工具）；自动寻路、工具动画、逐格核验；避免每格请求模型",
+        ["player.work"]="{skill:water|till|plant|harvest|clear|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear仅石块/树枝，须正确工具；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",
         ["player.use_tool"]="{slot:int,x:int,y:int}: 使用实际工具击打相邻格，保留动画与原生结算",

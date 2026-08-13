@@ -30,7 +30,9 @@ public sealed partial class ModEntry {
         var l=Game1.currentLocation;var p=Game1.player;var candidates=new List<(Point Tile,string Skill,int Slot,string Item,string Purpose,float Energy)>();
         int Slot(Type type)=>Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]!=null && type.IsInstanceOfType(p.Items[i]),-1);
         int axe=Slot(typeof(Axe)),pick=Slot(typeof(Pickaxe)),can=Slot(typeof(WateringCan));
-        foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt dirt && dirt.crop!=null && !dirt.crop.dead.Value) {
+        int scythe=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i] is Tool t&&t.isScythe(),-1);
+        foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt dirt && dirt.crop!=null) {
+            if(dirt.crop.dead.Value){if(scythe>=0)candidates.Add((pair.Key.ToPoint(),"clear_dead",scythe,"","清理枯苗，腾出可用耕地",0));continue;}
             if(dirt.readyForHarvest())candidates.Add((pair.Key.ToPoint(),"harvest",-1,"(O)"+dirt.crop.indexOfHarvest.Value,"收获成熟作物",0));
             else if(dirt.state.Value!=1 && can>=0 && ((WateringCan)p.Items[can]).WaterLeft>0)candidates.Add((pair.Key.ToPoint(),"water",can,"","今日照料",2));
         }

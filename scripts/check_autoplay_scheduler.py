@@ -66,5 +66,11 @@ try:
         if all(s in ('succeeded','failed','blocked') for s in states.values()):break
         time.sleep(.1)
     check(overlap and all(s=='succeeded' for s in states.values()),'NPC mines while Farmer gathers twelve wood, both with verified receipts',tasks)
+    scenario('agent_schedule_probe')
+    for attempt in range(3):
+        scenario('agent_reply_probe',reply='{"plan":"synthetic invalid payload","calls":[{"tool":"player.travel","args":{"location":"FarmHouse"}},')
+        time.sleep(.2)
+        d=diag()
+        check(d['state']['Decisions']==0 and not d['state']['Schedule']['Tasks'] and (d['state']['Status']=='running' if attempt<2 else d['state']['Status']=='paused'),f'invalid reply {attempt+1}: no partial actions; bounded retry policy')
 finally:scenario('agent_pause')
 print('COMPLETED',len(results),'scheduler checks',flush=True)

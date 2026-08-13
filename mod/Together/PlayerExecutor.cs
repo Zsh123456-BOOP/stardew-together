@@ -75,6 +75,7 @@ public sealed class PlayerExecutor {
                 case "player.use_tool":
                     target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,true);
                     if(Game1.player.CurrentTool==null)throw new InvalidOperationException("slot_is_not_tool");
+                    if(Game1.player.CurrentTool is StardewValley.Tools.WateringCan {WaterLeft:0} && !Game1.currentLocation.CanRefillWateringCanOnTile(target.X,target.Y))throw new InvalidOperationException("watering_can_empty_read_day_refill_options_or_delegate");
                     Face(target);Game1.player.lastClick=target.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();startedUsing=Game1.player.UsingTool;
                     if(!startedUsing)throw new InvalidOperationException("tool_did_not_start");Current.phase="tool_animation";break;
                 case "player.interact":
@@ -226,11 +227,12 @@ public sealed class PlayerExecutor {
         }
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
+            if(workSkill=="water" && Game1.player.Items[workSlot] is StardewValley.Tools.WateringCan {WaterLeft:0})throw new InvalidOperationException("watering_can_empty_read_day_refill_options_or_delegate");
             if(workSkill=="clear") {
                 if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
-                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || resource.BaseName=="Stone" && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe))throw new InvalidOperationException("wrong_resource_or_tool");
-                if(Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
+                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || resource.BaseName=="Stone" && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && Game1.player.CurrentTool?.isScythe()==true))throw new InvalidOperationException("wrong_resource_or_tool");
+                if(Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
             }
             if(workSkill=="clear_dead") {
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -253,7 +255,7 @@ public sealed class PlayerExecutor {
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
             if(workSkill is "water" or "till" or "clear" or "clear_dead") {
-                if(workSkill!="clear_dead" && Game1.player.Stamina<17)throw new InvalidOperationException("energy_reserve_reached");
+                if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
             } else if(workSkill=="plant") {

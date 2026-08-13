@@ -20,10 +20,29 @@ public sealed partial class ModEntry {
             chores=new{Facts.DryCrops,Facts.RipeCrops,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.MachinesReady},
             priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),
             shared_goals=GoalContext(),quests=Facts.Quests.Take(8),
-            options,resource_policy="材料优先满足day.plan目标库存和共同心愿缺口；没有经营目标时才使用木材50/石料25的起步储备。useful=false表示当前没有已声明用途，不要求清空整个农场。",options_scope="仅当前地图最近一批已核验路径的农活、石块、树枝和采集物，非全世界；空列表不能证明没有可做的事，换地点、查百科/任务、整理与补给也要考虑。",
+            watering=AgentWatering(),options,resource_policy="材料优先满足day.plan目标库存和共同心愿缺口；同时保留木材50/石料25/纤维20的基础经营储备。useful=false表示当前没有已声明用途，不要求清空整个农场。",options_scope="仅当前地图最近一批已核验路径的农活、石块、树枝和采集物，非全世界；空列表不能证明没有可做的事，换地点、查百科/任务、整理与补给也要考虑。",
             next_review="每批完成、换地图、换日或失败后刷新；不要按每个格子调用模型。伙伴可通过world.read并行派工；出货前先核对材料预留。",
             today_completed_batches=Data.Autoplay.Agenda.CompletedBatches,recent_days=Data.Autoplay.Agenda.History.TakeLast(3)
         };
+    }
+    private object AgentWatering() {
+        int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is WateringCan,-1);
+        if(slot<0)return new{available=false};
+        var can=(WateringCan)Game1.player.Items[slot];var l=Game1.currentLocation;var sources=new List<Point>();var options=new List<object>();
+        if(can.WaterLeft==0) {
+            for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++)
+                if(l.CanRefillWateringCanOnTile(x,y))sources.Add(new(x,y));
+            foreach(var tile in sources.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile)).Take(64)) {
+                foreach(var at in new[]{new Point(tile.X,tile.Y+1),new Point(tile.X-1,tile.Y),new Point(tile.X+1,tile.Y),new Point(tile.X,tile.Y-1)}) {
+                    if(!PlayerExecutor.Passable(l,at))continue;
+                    var path=new PathFindController(Game1.player,l,at,-1);
+                    if(at!=Game1.player.TilePoint && path.pathToEndPoint?.Count is not >0)continue;
+                    options.Add(new{location=l.NameOrUniqueName,move=new{x=at.X,y=at.Y},use_tool=new{slot,x=tile.X,y=tile.Y},route_tiles=path.pathToEndPoint?.Count??0});break;
+                }
+                if(options.Count==3)break;
+            }
+        }
+        return new{available=true,slot,water_left=can.WaterLeft,refill_options=options,instruction="空水壶可先 player.move 到 move，再 player.use_tool 到水源，核验 water_left 增加；也可把浇水交给伙伴。"};
     }
     private int ReturnReserve()=>Game1.currentLocation==Utility.getHomeOfFarmer(Game1.player)?20:Game1.currentLocation is StardewValley.Farm?45:90;
     private List<DayOption> DayOptions() {
@@ -38,7 +57,8 @@ public sealed partial class ModEntry {
         }
         foreach(var pair in l.objects.Pairs) {
             var o=pair.Value;var tile=pair.Key.ToPoint();
-            if(o.IsTwig() && axe>=0)candidates.Add((tile,"clear",axe,"(O)388","收集木材用于建设与制作",4));
+            if(o.IsWeeds() && scythe>=0)candidates.Add((tile,"clear",scythe,"(O)771","清理杂草，回收纤维并整理农场空间",0));
+            else if(o.IsTwig() && axe>=0)candidates.Add((tile,"clear",axe,"(O)388","收集木材用于建设与制作",4));
             else if(o.BaseName=="Stone" && pick>=0)candidates.Add((tile,"clear",pick,"(O)390","收集石料；产物以实际掉落为准",Math.Max(2,o.MinutesUntilReady*2)));
             else if(o.isForage() && !o.bigCraftable.Value)candidates.Add((tile,"forage",-1,o.QualifiedItemId,"拾取季节采集物，留用/补给/出货",0));
         }
@@ -47,7 +67,7 @@ public sealed partial class ModEntry {
             int owned=Facts.Stock.Where(s=>s.Item==item).Sum(s=>s.Count);
             if(Data.Autoplay.Agenda.Resources.Any(r=>r.Item==item && r.Count>owned))return true;
             if(Data.SharedGoals.Any(g=>g.Status=="active" && g.Nodes.Any(n=>n.Item==item&&n.ToPrepare>0)))return true;
-            return Data.Autoplay.Agenda.Resources.Count==0 && !Data.SharedGoals.Any(g=>g.Status=="active") && owned<(item=="(O)388"?50:item=="(O)390"?25:0);
+            return owned<(item=="(O)388"?50:item=="(O)390"?25:item=="(O)771"?20:0);
         }
         var result=new List<DayOption>();
         bool inventoryRoom=p.Items.Any(i=>i==null);

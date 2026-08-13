@@ -2,7 +2,7 @@
 from pathlib import Path
 import json,subprocess,sys,argparse
 root=Path(__file__).resolve().parents[1]
-cases=[('transit','check_autoplay_transit.py'),('resources','check_autoplay_resources.py'),('scheduler','check_autoplay_scheduler.py'),('dead-crops','check_autoplay_dead_crops.py'),('native','check_autoplay_live.py')]
+cases=[('transit','check_autoplay_transit.py'),('resources','check_autoplay_resources.py'),('scheduler','check_autoplay_scheduler.py'),('dead-crops','check_autoplay_dead_crops.py'),('supplies','check_autoplay_supplies.py'),('native','check_autoplay_live.py')]
 parser=argparse.ArgumentParser();parser.add_argument('--cases',nargs='+',choices=[c[0] for c in cases]);args=parser.parse_args()
 if args.cases:cases=[c for c in cases if c[0] in args.cases]
 results=[]

@@ -94,7 +94,7 @@ public sealed partial class CompanionControl {
         }
     }
     private object[] Candidates(ISquadMate mate) => FindCandidates(mate).Select(c=>(object)new {
-        target_id=c.Id, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
+        target_id=c.Id, location=mate.Npc.currentLocation.NameOrUniqueName, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
     private static string[] CandidateOutputs(Candidate c) {
         if(c.Skill=="harvest" && c.Source is HoeDirt dirt && dirt.crop!=null)return new[]{ItemRegistry.QualifyItemId(dirt.crop.indexOfHarvest.Value)??""};
         if(c.Source is not StardewValley.Object item)return Array.Empty<string>();
@@ -135,7 +135,7 @@ public sealed partial class CompanionControl {
             task = mate.Task?.Type.ToString(), moving = mate.Npc.isMoving(), cooldown = mate.ActionCooldown,
             registered_location=mate.Npc.currentLocation is not StardewValley.Locations.MineShaft mine || StardewValley.Locations.MineShaft.activeMines.Contains(mine),
             path_preview=mate.Path.Take(6).Select(Tile).ToArray(),reachable_locations=Reachable(mate.Npc.currentLocation), returning_home=records.Values.Any(r=>r.Actor==Id(mate) && r.Skill=="dismiss" && r.Status=="running"), managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
-            resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
+            travel_options=MineTravelOptions(mate.Npc.currentLocation).ToArray(), resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
             cargo = Counts(Pouch(mate)),
             in_combat = mate.Task?.Type == TaskType.Attacking,

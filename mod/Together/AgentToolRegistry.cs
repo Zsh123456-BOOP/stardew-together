@@ -20,14 +20,15 @@ public sealed class AgentToolRegistry {
         ["day.read"]="{}: 今日农务、任务、材料缺口、可达工作候选与时间/体力预算；每批完成自动刷新",
         ["day.plan"]="{priorities:[string],resources?:[{item:string,count:int,purpose:string}]}: 保存1至8项优先事项和最多8项目标库存（总量，非增量）；按实际库存核验",
         ["world.read"]="{}: 日期、环境、农场、伙伴actor_id及真实candidates、共同目标",
-        ["map.read"]="{x?:int,y?:int,radius?:1..20}: 当前地图局部格子、障碍、作物、矿物、交互、真实出口；坐标可用于移动与操作",
+        ["map.read"]="{actor_id?:player或真实伙伴ID,x?:int,y?:int,radius?:1..20}: 指定角色所在地图局部格子、障碍、作物、矿物、交互、真实出口；坐标可用于移动与操作",
         ["inventory.read"]="{}: 玩家背包slot、ID、数量、工具；含手持物",
         ["knowledge.search"]="{query:string}: 原生百科模糊检索",
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
+        ["progress.roadmap"]="{}: 原生成就、实际技能与下一阶段建议；建议不是已经完成的成就，按季节与前置条件并行安排",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
-        ["player.work"]="{skill:water|till|plant|harvest|clear|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear仅石块/树枝，须正确工具；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
+        ["player.work"]="{skill:water|till|plant|harvest|clear|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear支持石块用镐、树枝用斧、杂草用镰刀；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",
         ["player.use_tool"]="{slot:int,x:int,y:int}: 使用实际工具击打相邻格，保留动画与原生结算",
@@ -63,7 +64,7 @@ public sealed class AgentToolRegistry {
             "world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),
             "knowledge.search"=>mod.Knowledge.Search(Text(args,"query"),limit:8),
             "knowledge.get" or "goal.requirements"=>mod.Knowledge.Query(Text(args,"query"),Text(args,"id") is {Length:>0} id?id:null),
-            "progress.read"=>Progress(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
+            "progress.read"=>Progress(),"progress.roadmap"=>mod.AgentProgression(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
             "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
             "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
@@ -75,7 +76,7 @@ public sealed class AgentToolRegistry {
     }
     private object Wait(int seconds){int actual=mod.AgentWait(seconds);return new{status="waiting",seconds=actual,note="按原生时间限制等待长度，深夜前重新决策"};}
     private object Pause(string reason){mod.PauseAutoplay(reason);return new{status="paused",reason};}
-    internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name};
+    internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name,upgrade_level=item is Tool tool?(int?)tool.UpgradeLevel:null,water_left=item is StardewValley.Tools.WateringCan can?(int?)can.WaterLeft:null};
     internal static object Inventory()=>new{selected=Game1.player.CurrentToolIndex,items=Game1.player.Items.Select((v,i)=>new{slot=i,item=ItemInfo(v)}).ToArray()};
     private static object Progress()=>new{scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
         crafting=Game1.player.craftingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooking=Game1.player.cookingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
@@ -85,8 +86,9 @@ public sealed class AgentToolRegistry {
         deepest_mine=Game1.player.deepestMineLevel,mail=Game1.player.mailReceived.ToArray(),
         quests=Game1.player.questLog.Select(q=>new{id=q.id.Value,title=q.questTitle,description=q.questDescription,completed=q.completed.Value}).ToArray(),
         note="未覆盖全部成就条件；缺少条目不能解释为已完成"};
-    private static object ReadMap(JsonElement args) {
-        var l=Game1.currentLocation;int r=Math.Clamp(Number(args,"radius",8),1,20),cx=Number(args,"x",Game1.player.TilePoint.X),cy=Number(args,"y",Game1.player.TilePoint.Y);
+    private object ReadMap(JsonElement args) {
+        string actorId=Text(args,"actor_id","player");var origin=mod.AgentMapOrigin(actorId);
+        var l=origin.Location;int r=Math.Clamp(Number(args,"radius",8),1,20),cx=Number(args,"x",origin.Tile.X),cy=Number(args,"y",origin.Tile.Y);
         int width=l.Map.Layers[0].LayerWidth,height=l.Map.Layers[0].LayerHeight;
         cx=Math.Clamp(cx,0,width-1);cy=Math.Clamp(cy,0,height-1);var cells=new List<object>();var rows=new List<string>();
         int x0=Math.Max(0,cx-r),y0=Math.Max(0,cy-r);
@@ -99,7 +101,7 @@ public sealed class AgentToolRegistry {
                 item=o==null?null:ItemInfo(o),terrain=feature?.GetType().Name,watered=dirt?.state.Value==1,
                 crop=dirt?.crop==null?null:new{harvest=dirt.crop.indexOfHarvest.Value,phase=dirt.crop.currentPhase.Value,dead=dirt.crop.dead.Value,ready=dirt.readyForHarvest()},action,touch});
         }rows.Add(row.ToString());}
-        return new{location=l.NameOrUniqueName,width,height,center=new[]{cx,cy},radius=r,x0,y0,
+        return new{actor_id=actorId,location=l.NameOrUniqueName,width,height,center=new[]{cx,cy},radius=r,x0,y0,
             exits=PlayerExecutor.Exits(l).Select(e=>new{e.X,e.Y,e.TargetName,e.TargetX,e.TargetY}),
             buildings=l.buildings.Select(b=>new{type=b.buildingType.Value,x=b.tileX.Value,y=b.tileY.Value,width=b.tilesWide.Value,height=b.tilesHigh.Value}),
             characters=l.characters.Select(n=>new{name=n.Name,x=n.TilePoint.X,y=n.TilePoint.Y,monster=n.IsMonster}),

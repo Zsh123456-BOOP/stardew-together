@@ -38,6 +38,11 @@ public sealed partial class ModEntry {
                 agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }
+            case "agent_empty_can_fixture": {
+                PauseAutoplay("lab_empty_can_fixture");Game1.exitActiveMenu();
+                foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=0;
+                break;
+            }
             case "agent_dead_crop_fixture": {
                 PauseAutoplay("lab_dead_crop_fixture");Game1.exitActiveMenu();Game1.warpFarmer("Farm",66,18,false);
                 for(int x=67;x<=69;x++){

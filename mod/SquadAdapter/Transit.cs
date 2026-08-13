@@ -75,6 +75,16 @@ public sealed partial class CompanionControl {
             }
         }
     }
+    private static IEnumerable<object> MineTravelOptions(GameLocation location) {
+        if(location.Name!="Mine" && location is not MineShaft)yield break;
+        var layer=location.Map.GetLayer("Buildings");
+        for(int y=0;y<layer.LayerHeight;y++)for(int x=0;x<layer.LayerWidth;x++) {
+            if(location.Name=="Mine" && location.doesTileHaveProperty(x,y,"Action","Buildings")=="Mine")
+                yield return new{destination=MineShaft.GetLevelName(1),tile=new[]{x,y},kind="mine_entrance",note="矿井大厅没有矿石；通过真实梯子进入第一层，再读取候选"};
+            if(location is MineShaft mine && layer.Tiles[x,y]?.TileIndex==173 && mine.mineLevel<120)
+                yield return new{destination=MineShaft.GetLevelName(mine.mineLevel+1),tile=new[]{x,y},kind="revealed_ladder",note="本层已出现的原生下层梯子；不是任意换层"};
+        }
+    }
     private static bool DoorOpen(GameLocation location,string[] action) {
         if(action.Length<6 || !int.TryParse(action[4],out int open) || !int.TryParse(action[5],out int close))return false;
         if(GameLocation.AreStoresClosedForFestival() && location.InValleyContext())return false;

@@ -63,7 +63,9 @@ public sealed partial class ModEntry {
         agentStarting=true;WakeAgent("start_or_resume");agentNext=DateTime.UtcNow;Notice=Data.Autoplay.Detail;
     }
     public void PauseAutoplay(string reason) {
+        bool wasRunning=AutoplayRunning;
         ResetAgentRuntime();Data.Autoplay.Status="paused";Data.Autoplay.Detail=reason;Notice=reason;
+        if(wasRunning && !reason.StartsWith("lab_"))Game1.addHUDMessage(new HUDMessage("自主游玩已暂停："+FriendlyAgentReason(reason),3));
     }
     private void ResetAgentRuntime() {
         agentGeneration++;agentReplyFailures=0;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
@@ -71,11 +73,28 @@ public sealed partial class ModEntry {
         Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
         agentClaims.Clear();playerExecutor?.Cancel();agentTools?.Reset();
     }
+    private static string FriendlyAgentReason(string reason) {
+        if(reason.Contains("watering_can_empty"))return "水壶已空，需要补水或安排伙伴浇水";
+        if(reason.Contains("work_effect_not_observed"))return "操作未产生预期效果，需要重新检查工具和目标";
+        if(reason.Contains("path_stalled"))return "路线受阻，需要重新安排";
+        if(reason.Contains("JsonException"))return "模型回复格式连续错误，计划已保留";
+        return reason.Length<=48?reason:reason[..48]+"…";
+    }
+    private string AgentHud() {
+        if(!AutoplayRunning)return "自主游玩已暂停 · "+FriendlyAgentReason(Data.Autoplay.Detail);
+        string Lane(bool player) {
+            var t=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running" && (t.spec.actor=="player")==player);
+            if(t==null)return "待安排";
+            string skill=AgentToolRegistry.Text(t.spec.args,"skill",t.spec.tool);
+            return skill switch {"water"=>"浇水","clear_dead"=>"清枯苗","clear"=>"清理采集","mine"=>"挖矿","plant"=>"播种","till"=>"翻土","forage"=>"拾取资源","harvest"=>"收获","player.travel" or "travel"=>"赶路","player.move"=>"走向目标","player.sleep"=>"回家过夜",_=>"执行任务"};
+        }
+        return (agentPending!=null?$"思考中 {agentWatch.Elapsed.TotalSeconds:0}秒 · ":"执行中 · ")+$"玩家：{Lane(true)} · 队友：{Lane(false)} · F10 暂停";
+    }
     private object AgentSnapshot()=>new{day=Game1.Date.TotalDays,date=Game1.Date.ToString(),time=Game1.timeOfDay,clock_rate_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate),game_minutes_per_real_second_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate)*10/7,night_warning=Game1.timeOfDay>=2200?"接近深夜，优先安排返家；不要等待到凌晨两点":null,location=Game1.currentLocation.NameOrUniqueName,
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
         menu=Game1.activeClickableMenu?.GetType().Name,event_up=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,player_action=playerExecutor.Current is {} action?new{action.command_id,action.skill,action.status,action.phase,action.error,action.completed}:null};
     private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),decision_reasons=agentWakeReasons,
-        clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
+        model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
     private void TickAutoplay() {
         playerExecutor.Tick();
         if(!AutoplayRunning)return;
@@ -128,19 +147,26 @@ public sealed partial class ModEntry {
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){PauseAutoplay("今日自主模型调用达到预算上限，进度已保留");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),schedule=AgentPlanRead(),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
             recent=Data.Autoplay.Journal.TakeLast(10),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
         string serialized=AgentJson.Encode(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         agentPending=AutoplayModel.Ask(file,Settings.Model,serialized,agentCancellation.Token);
     }
+    internal (GameLocation Location,Point Tile) AgentMapOrigin(string actorId) {
+        if(actorId=="player")return (Game1.currentLocation,Game1.player.TilePoint);
+        var actor=World().GetProperty("actors").EnumerateArray().FirstOrDefault(a=>a.GetProperty("id").GetString()==actorId);
+        if(actor.ValueKind!=JsonValueKind.Object)throw new InvalidOperationException("actor_not_recruited");
+        var location=Game1.getLocationFromName(actor.GetProperty("location").GetString()!)??throw new InvalidOperationException("actor_location_unavailable");
+        var tile=actor.GetProperty("tile");return (location,new(tile[0].GetInt32(),tile[1].GetInt32()));
+    }
     private object[] AgentCompanions() {
         var world=World();
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
             var info=new Dictionary<string,object>();
-            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","resource_sites","fishing_available","control_mode","cargo","in_combat","relationship"})
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","in_combat","relationship"})
                 if(a.TryGetProperty(key,out var value))info[key]=value.Clone();
             string id=a.GetProperty("id").GetString()!;
             info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();

@@ -3,6 +3,10 @@ using Together;
 public static class AutoplayChecks {
     public static void Run(Action<bool,string> check) {
         AgentScheduleChecks.Run(check);
+        var failures=new AgentFailureTracker();
+        for(int i=0;i<5;i++)failures.Failed("player","no_path");failures.Progress("npc");
+        check(failures.Failed("player","no_path"),"companion progress cannot hide a stuck player lane");
+        failures.Progress("player");check(!failures.Failed("player","no_path"),"actual player progress resets old failures instead of pausing after unrelated errors all day");
         check(AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="mine",destination="Mountain"}))=="companion_target_required_travel_then_read_candidates","remote labor without a real target gives an actionable travel/read error");
         check(AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="travel",destination="Farm"}))==null && AgentCallContract.CompanionError(JsonSerializer.SerializeToElement(new{actor_id="npc",skill="mine",target_id="observed"}))==null,"travel and observed-target labor have separate valid contracts");
         check(AutoplaySpeed.Clock(double.NaN)==1 && AutoplaySpeed.Clock(double.PositiveInfinity)==1,"nonfinite clock settings cannot corrupt native timer");

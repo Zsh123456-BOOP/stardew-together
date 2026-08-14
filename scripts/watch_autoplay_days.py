@@ -1,4 +1,4 @@
-"""Observe two full native days. Only start/pause are issued; all gameplay decisions are the model's."""
+"""Observe two native overnight transitions; all gameplay decisions are the model's."""
 from pathlib import Path
 import json,sys,time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -28,4 +28,4 @@ try:
         time.sleep(5)
 finally:
     scenario('agent_pause');final=diag();(out/'final.json').write_text(json.dumps(final,ensure_ascii=False,indent=2))
-    (out/'result.json').write_text(json.dumps({'passed':passed,'model':final.get('model','unknown'),'elapsed_seconds':time.monotonic()-start,'start_day':day0,'end_day':final['snapshot']['day'],'normal_sleeps':final['state']['SleepDays'],'actor_overlap_observed':overlap,'model_decisions':len(decisions),'completed_tasks':completed,'note':'Two transitions are necessary, not sufficient for efficiency or all-achievement claims; review the event trace.'},ensure_ascii=False,indent=2))
+    (out/'result.json').write_text(json.dumps({'passed':passed,'model':final.get('model','unknown'),'elapsed_seconds':time.monotonic()-start,'start_day':day0,'start_time':baseline['snapshot']['time'],'end_day':final['snapshot']['day'],'normal_sleeps':final['state']['SleepDays'],'actor_overlap_observed':overlap,'model_decisions':len(decisions),'completed_tasks':completed,'note':'Two transitions are necessary, not sufficient for efficiency or all-achievement claims; review the event trace.'},ensure_ascii=False,indent=2))

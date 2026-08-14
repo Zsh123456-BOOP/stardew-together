@@ -38,6 +38,29 @@ public sealed partial class ModEntry {
                 agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }
+            case "agent_semantic_fixture": {
+                PauseAutoplay("lab_semantic_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Game1.warpFarmer("Farm",62,17,false);
+                Game1.player.Stamina=90;Game1.player.health=100;
+                for(int i=0;i<Game1.player.Items.Count;i++)if(Game1.player.Items[i] is StardewValley.Object)Game1.player.Items[i]=null;
+                foreach(var name in Data.People.Keys)Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{name}").Clear();
+                for(int x=61;x<=70;x++)for(int y=17;y<=24;y++){farm.objects.Remove(new Vector2(x,y));farm.terrainFeatures.Remove(new Vector2(x,y));}
+                string seed=DataLoader.Crops(Game1.content).First(c=>c.Value.Seasons.Any(s=>s.ToString().Equals(Game1.currentSeason,StringComparison.OrdinalIgnoreCase))).Key;
+                for(int x=61;x<=63;x++)for(int y=18;y<=19;y++)farm.terrainFeatures[new Vector2(x,y)]=new HoeDirt(0,farm){crop=new Crop(seed,x,y,farm)};
+                for(int x=67;x<=68;x++)for(int y=18;y<=23;y++)farm.objects[new Vector2(x,y)]=ItemRegistry.Create<StardewValley.Object>("(O)294");
+                for(int x=64;x<=65;x++)for(int y=20;y<=23;y++){var o=ItemRegistry.Create<StardewValley.Object>("(O)343");o.MinutesUntilReady=1;farm.objects[new Vector2(x,y)]=o;}
+                foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=1;
+                var box=new Chest(true);box.modData["stardewagent.together/chest-role"]="output";farm.objects[new Vector2(60,17)]=box;
+                break;
+            }
+            case "agent_full_inventory_fixture": {
+                PauseAutoplay("lab_full_inventory_fixture");Game1.exitActiveMenu();
+                for(int i=0;i<Game1.player.Items.Count;i++)if(Game1.player.Items[i] is not Tool){Game1.player.Items[i]=ItemRegistry.Create(i==5?"(O)472":i==6?"(O)24":"(O)"+(388+i%3),i==6?5:10);}
+                foreach(var name in Data.People.Keys) {var pouch=Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{name}");pouch.Clear();foreach(string id in new[]{"388","390","771","378","380","382","384","386"})pouch.Add(ItemRegistry.Create("(O)"+id,3));}
+                break;
+            }
+            case "agent_pause_notice_fixture": {
+                Data.Autoplay.Status="running";PauseAutoplay("玩家按 F10 暂停接管");break;
+            }
             case "agent_empty_can_fixture": {
                 PauseAutoplay("lab_empty_can_fixture");Game1.exitActiveMenu();
                 foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=0;

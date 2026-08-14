@@ -18,17 +18,17 @@ public sealed partial class ModEntry {
         if(agentWakeReasons.Count>16)agentWakeReasons.RemoveAt(0);
         agentNeedsDecision=true;agentRequestedWait=DateTime.MinValue;agentNext=DateTime.UtcNow;
     }
-    internal object AgentPlanRead()=>new {
+    internal object AgentPlanRead(bool compact=false)=>new {
         revision=Data.Autoplay.Schedule.Revision,event_version=Data.Autoplay.Schedule.EventVersion,
         tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{t.spec,t.state,t.command_id,t.error}),
-        recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,t.receipt}),
+        recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=compact?ReceiptSummary(t.receipt):(object?)t.receipt}),
         note="同一角色按队列顺序执行，角色之间独立；after指定跨角色依赖。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
     };
     internal object AgentPlanSubmit(JsonElement args) {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
         if(list==null)throw new InvalidOperationException("tasks_required");
         foreach(var spec in list.Where(s=>s!=null)) {
-            if(spec.tool=="companion.assign") {
+            if(spec.tool=="companion.assign" || spec.tool=="work.run"&&spec.actor!="player") {
                 // All NPC task lanes must name an actor actually observed in this save.
                 if(!World().GetProperty("actors").EnumerateArray().Any(a=>a.GetProperty("id").GetString()==spec.actor))throw new InvalidOperationException("actor_not_recruited");
             }
@@ -50,19 +50,18 @@ public sealed partial class ModEntry {
     }
     internal object AgentPlanArchive()=>new{archived=Data.Autoplay.Schedule.Archive(),revision=Data.Autoplay.Schedule.Revision};
     private object QueueLegacyAction(AgentCall call) {
-        string actor=call.tool=="companion.assign"?AgentToolRegistry.Text(call.args,"actor_id"):"player";
+        string actor=call.tool is "companion.assign" or "work.run"?AgentToolRegistry.Text(call.args,"actor_id","player"):"player";
         var previous=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>t.spec.actor==actor&&!t.Terminal);
         string location=actor=="player"?Game1.currentLocation.NameOrUniqueName:"";
         if(previous?.spec.tool=="player.travel")location=AgentToolRegistry.Text(previous.spec.args,"location",location);
         else if(previous!=null && previous.spec.location.Length>0)location=previous.spec.location;
-        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool=="player.travel"||call.tool=="player.sleep"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
+        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool is "player.travel" or "player.sleep" or "work.run"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
         if(previous!=null)task.after.Add(previous.spec.id);
         Data.Autoplay.Schedule.Submit(task.id,Data.Autoplay.Schedule.Revision,new(){task},Game1.Date.TotalDays);
         return new{status="queued",task_id=task.id,actor,revision=Data.Autoplay.Schedule.Revision};
     }
-    private void RecordAgentFailure(string code) {
-        int attempts=agentFailures.GetValueOrDefault(code)+1;agentFailures[code]=attempts;
-        if(attempts>=6)PauseAutoplay("同一失败已出现6次，保留队列并暂停："+code);
+    private void RecordAgentFailure(string code,string actor="decision") {
+        if(agentFailures.Failed(actor,code))PauseAutoplay("同一角色无成功进展期间反复失败6次，计划已保留："+code);
     }
     private void CompleteScheduled(ScheduledAgentTask task,JsonElement result) {
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
@@ -73,9 +72,10 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
         Data.Autoplay.Record("task_finished",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,state,error}));
         if(state=="succeeded") {
+            agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");
             Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;
             if(!Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==task.spec.actor&&t.state=="queued"&&t.spec.day==Game1.Date.TotalDays))WakeAgent("actor_ready:"+task.spec.actor);
-        } else {WakeAgent("task_failed:"+task.spec.id);RecordAgentFailure(error??"action_failed");}
+        } else {WakeAgent("task_failed:"+task.spec.id);RecordAgentFailure(error??"action_failed",task.spec.actor);}
     }
     private void TickAgentSchedule() {
         var schedule=Data.Autoplay.Schedule;

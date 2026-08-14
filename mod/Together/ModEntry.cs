@@ -15,7 +15,7 @@ public interface ICompanionControl {
 public sealed class Config {
     public SButton OpenKey {get;set;}=SButton.F8;
     public string ApiKeyFile {get;set;}=".env";
-    public string Model {get;set;}="deepseek-v4-pro";
+    public string Model {get;set;}="deepseek-flash";
     public bool Autonomy {get;set;}=true;
     public int AutoIntervalSeconds {get;set;}=90;
     public int MaxCallsPerDay {get;set;}=24;
@@ -100,6 +100,11 @@ public sealed partial class ModEntry:Mod {
         };
         helper.Events.Display.RenderedHud+=(_,e)=>{
             if(!Context.IsWorldReady || Game1.activeClickableMenu!=null) return;
+            if(agentToastUntil>DateTime.UtcNow) {
+                string toast=Game1.parseText(agentToast,Font,Math.Min(600,Game1.uiViewport.Width-64));var size=Font.MeasureString(toast)*.85f;
+                e.SpriteBatch.Draw(Game1.staminaRect,new Rectangle(24,Game1.uiViewport.Height-145,(int)size.X+24,(int)size.Y+20),new Color(248,239,216)*.96f);
+                e.SpriteBatch.DrawString(Font,toast,new Vector2(36,Game1.uiViewport.Height-135),new Color(43,65,57),0,Vector2.Zero,.85f,SpriteEffects.None,1);
+            }
             string text=$"{Settings.OpenKey} 同行 · {Selected}  "+(AutoplayRunning || Data.Autoplay.Status=="paused" && Data.Autoplay.Goal.Length>0?AgentHud():Thinking?"正在想怎么回答你…":Current.Job?.Status is "active" or "waiting"?JobText(Current.Job):"聊聊 / 小约定");
             e.SpriteBatch.Draw(Game1.staminaRect,new Rectangle(16,Game1.uiViewport.Height-53,Math.Min(1180,Game1.uiViewport.Width-32),38),new Color(28,44,42)*.88f);
             e.SpriteBatch.DrawString(Font,text,new Vector2(28,Game1.uiViewport.Height-47),new Color(246,235,211),0,Vector2.Zero,.8f,SpriteEffects.None,1);

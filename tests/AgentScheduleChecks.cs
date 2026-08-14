@@ -5,6 +5,15 @@ public static class AgentScheduleChecks {
     private static AgentTaskSpec Player(string id,params string[] deps)=>new(){id=id,actor="player",tool="player.move",args=JsonSerializer.SerializeToElement(new{x=1,y=2}),after=deps.ToList()};
     private static AgentTaskSpec Npc(string id)=>new(){id=id,actor="npc:Abigail",tool="companion.assign",args=JsonSerializer.SerializeToElement(new{actor_id="npc:Abigail",skill="follow"})};
     public static void Run(Action<bool,string> check) {
+        check(AgentPollingPolicy.Defer(true,false,new[]{"plan.submit","world.read","action.status"}),"busy actors do not trigger paid polling loops for redundant state reads");
+        check(!AgentPollingPolicy.Defer(false,false,new[]{"world.read"})&&!AgentPollingPolicy.Defer(true,true,new[]{"action.status"})&&!AgentPollingPolicy.Defer(true,false,new[]{"knowledge.get"}),"idle actors, tool errors and new knowledge still wake model planning");
+        var semantic=new AgentSchedule();
+        var work=new AgentTaskSpec{id="wood",actor="player",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="wood",count=12})};
+        var npcWork=new AgentTaskSpec{id="stone",actor="npc:Abigail",tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id="npc:Abigail",goal="stone",count=3})};
+        semantic.Submit("semantic",0,new(){work,npcWork},3);
+        check(semantic.Ready(3,600).Count==2,"semantic jobs occupy independent actor lanes without coordinates");
+        bool mismatch=false;try{semantic.Submit("mismatch",semantic.Revision,new(){new(){id="bad-work",actor="npc:Other",tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id="player",goal="water"})}},3);}catch(InvalidOperationException){mismatch=true;}
+        check(mismatch,"semantic job cannot claim a different actor's scheduling lane");
         var q=new AgentSchedule();var input=new List<AgentTaskSpec>{Player("p1"),Player("p2","p1"),Npc("n1")};
         check(q.Submit("plan1",0,input,3)&&!q.Submit("plan1",0,input,3)&&q.Tasks.Count==3,"plan submission retries are idempotent even with an old revision");
         check(input.All(t=>t.day==-1),"submitting a plan does not mutate the model request fingerprint");

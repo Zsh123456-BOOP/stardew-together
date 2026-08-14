@@ -28,6 +28,7 @@ public sealed class AgentToolRegistry {
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.roadmap"]="{}: 原生成就、实际技能与下一阶段建议；建议不是已经完成的成就，按季节与前置条件并行安排",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
+        ["work.run"]="{actor_id?:player或真实伙伴ID,goal:stone|wood|fiber|water|refill|harvest|forage|clear_dead|store,location?:真实地图名,count?:int,reserve_stamina?:15..270,until?:HHMM<=2300}: 高层持续劳动，无需坐标/工具槽/target_id。石/木/纤维count为本次实际新增物品数量（默认20），其它count为目标数，0做完当前地图可做目标。自动走到指定地图、选工具、逐次寻路换目标，玩家浇水自动补水再继续。木材目前限树枝，clear_dead/refill限玩家；NPC无原生体力条，按能力/货物/时间限制。中断或部分完成返回实际数量与stop_reason，不伪报达标。默认保留20体力、22点停止；采集前自动留2空槽，不足则走回Farm的output箱卸货再回来。store可主动存货；保留工具/种子/补给/预留物，不会丢弃出售。可取消/查进度。",
         ["player.work"]="{skill:water|till|plant|harvest|clear|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear支持石块用镐、树枝用斧、杂草用镰刀；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",
@@ -52,6 +53,7 @@ public sealed class AgentToolRegistry {
     public object Execute(string tool,JsonElement args) {
         if(!Context.IsWorldReady || Context.IsMultiplayer)throw new InvalidOperationException("single_player_world_required");
         if(!Catalog.ContainsKey(tool))throw new InvalidOperationException("unknown_tool");
+        if((IsPlayerMutation(tool)&&mod.WorkActorBusy("player")) || tool=="companion.assign"&&mod.WorkActorBusy(Text(args,"actor_id")))throw new InvalidOperationException("actor_owned_by_work_job_cancel_or_wait");
         if(tool.StartsWith("menu.") && tool!="menu.read" && player.Busy && !player.NeedsMenuChoice)throw new InvalidOperationException("player_busy");
         if(tool is "player.use_tool" or "player.place" or "player.interact" or "player.work") {
             IEnumerable<JsonElement> targets=tool=="player.work" && args.TryGetProperty("tiles",out var tiles) && tiles.ValueKind==JsonValueKind.Array?tiles.EnumerateArray().ToArray():new[]{args};
@@ -65,6 +67,7 @@ public sealed class AgentToolRegistry {
             "knowledge.search"=>mod.Knowledge.Search(Text(args,"query"),limit:8),
             "knowledge.get" or "goal.requirements"=>mod.Knowledge.Query(Text(args,"query"),Text(args,"id") is {Length:>0} id?id:null),
             "progress.read"=>Progress(),"progress.roadmap"=>mod.AgentProgression(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
+            "work.run"=>mod.StartSemanticWork(args),
             "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
             "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
@@ -103,8 +106,9 @@ public sealed class AgentToolRegistry {
         }rows.Add(row.ToString());}
         return new{actor_id=actorId,location=l.NameOrUniqueName,width,height,center=new[]{cx,cy},radius=r,x0,y0,
             exits=PlayerExecutor.Exits(l).Select(e=>new{e.X,e.Y,e.TargetName,e.TargetX,e.TargetY}),
-            buildings=l.buildings.Select(b=>new{type=b.buildingType.Value,x=b.tileX.Value,y=b.tileY.Value,width=b.tilesWide.Value,height=b.tilesHigh.Value}),
+            buildings=l.buildings.Select(b=>new{type=b.buildingType.Value,x=b.tileX.Value,y=b.tileY.Value,width=b.tilesWide.Value,height=b.tilesHigh.Value,door=b.humanDoor.Value.X<0?null:new{x=b.tileX.Value+b.humanDoor.Value.X,y=b.tileY.Value+b.humanDoor.Value.Y},interior=b.GetIndoors()?.NameOrUniqueName}),
             characters=l.characters.Select(n=>new{name=n.Name,x=n.TilePoint.X,y=n.TilePoint.Y,monster=n.IsMonster}),
+            farm_animals=Game1.getFarm().getAllFarmAnimals().Where(a=>a.currentLocation==l).Select(a=>new{name=a.displayName,x=a.TilePoint.X,y=a.TilePoint.Y,pet=a.wasPet.Value,fullness=a.fullness.Value}),
             furniture=l.furniture.Select(f=>new{name=f.Name,x=f.TileLocation.X,y=f.TileLocation.Y}),
             home=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName,grid=rows,legend="# blocked, ~ water, . clear diggable, _ clear non-diggable; origin x0,y0; moving characters may block",cells=cells.Take(36),cells_truncated=cells.Count>36,note="建筑和出口先列出，cells截断时缩小radius或移动中心查询，缺省格子不等于没有对象"};
     }

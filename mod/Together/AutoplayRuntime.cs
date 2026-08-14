@@ -14,7 +14,7 @@ public sealed partial class ModEntry {
     private readonly Dictionary<string,(string Location,int X,int Y)> agentClaims=new();
     private int agentGeneration;
     private DateTime agentRequestedWait;
-    private readonly Dictionary<string,int> agentFailures=new();
+    private readonly AgentFailureTracker agentFailures=new();
     private readonly Stopwatch agentWatch=new();
     private double agentLastLatency;
     private bool agentStarting;
@@ -65,12 +65,12 @@ public sealed partial class ModEntry {
     public void PauseAutoplay(string reason) {
         bool wasRunning=AutoplayRunning;
         ResetAgentRuntime();Data.Autoplay.Status="paused";Data.Autoplay.Detail=reason;Notice=reason;
-        if(wasRunning && !reason.StartsWith("lab_"))Game1.addHUDMessage(new HUDMessage("自主游玩已暂停："+FriendlyAgentReason(reason),3));
+        if(wasRunning && !reason.StartsWith("lab_")){agentToast="自主游玩已暂停："+FriendlyAgentReason(reason);agentToastUntil=DateTime.UtcNow.AddSeconds(8);}
     }
     private void ResetAgentRuntime() {
         agentGeneration++;agentReplyFailures=0;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
-        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)api?.CancelAction(task.command_id);}catch{}
-        Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
+        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)AgentReceipt(task.command_id,true);}catch{}
+        ResetSemanticWork();Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
         agentClaims.Clear();playerExecutor?.Cancel();agentTools?.Reset();
     }
     private static string FriendlyAgentReason(string reason) {
@@ -80,6 +80,8 @@ public sealed partial class ModEntry {
         if(reason.Contains("JsonException"))return "模型回复格式连续错误，计划已保留";
         return reason.Length<=48?reason:reason[..48]+"…";
     }
+    private string agentToast="";
+    private DateTime agentToastUntil;
     private string AgentHud() {
         if(!AutoplayRunning)return "自主游玩已暂停 · "+FriendlyAgentReason(Data.Autoplay.Detail);
         string Lane(bool player) {
@@ -93,10 +95,10 @@ public sealed partial class ModEntry {
     private object AgentSnapshot()=>new{day=Game1.Date.TotalDays,date=Game1.Date.ToString(),time=Game1.timeOfDay,clock_rate_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate),game_minutes_per_real_second_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate)*10/7,night_warning=Game1.timeOfDay>=2200?"接近深夜，优先安排返家；不要等待到凌晨两点":null,location=Game1.currentLocation.NameOrUniqueName,
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
         menu=Game1.activeClickableMenu?.GetType().Name,event_up=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,player_action=playerExecutor.Current is {} action?new{action.command_id,action.skill,action.status,action.phase,action.error,action.completed}:null};
-    private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),decision_reasons=agentWakeReasons,
+    private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),work=semanticJobs.Values.TakeLast(12),decision_reasons=agentWakeReasons,
         model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
     private void TickAutoplay() {
-        playerExecutor.Tick();
+        playerExecutor.Tick();TickSemanticWork();
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
         TickAgentSchedule();ObserveAgentEvents();
@@ -105,23 +107,25 @@ public sealed partial class ModEntry {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
             string? unappliedReply=null;bool applying=false;
             try {
-                var reply=task.GetAwaiter().GetResult();unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();
+                var reply=task.GetAwaiter().GetResult();unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
                 if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays) {
                     Data.Autoplay.Record("stale_decision","请求期间换日或接管会话改变；丢弃旧动作，重新观察。");WakeAgent("stale_response");
                 } else {
                     var turn=AgentTurn.Parse(reply.Json);applying=true;agentReplyFailures=0;Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
-                    bool followup=false;
+                    bool followup=false,hadToolError=false;
                     foreach(var call in turn.calls) {
                         if(!AutoplayRunning)break;
                         object result;
                         try{result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,call.args);}
                         catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
                         var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);
-                        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{tool=call.tool,result=observed}));
-                        if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;}
+                        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{tool=call.tool,result=ModelToolObservation(call.tool,observed)}));
+                        if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;hadToolError=true;}
                         if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
                     }
+                    bool allActorsHaveWork=agentKnownActors.All(actor=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&t.state is "queued" or "running"));
+                    if(followup&&AgentPollingPolicy.Defer(allActorsHaveWork,hadToolError,turn.calls.Select(c=>c.tool)))followup=false;
                     if(followup)WakeAgent("tool_results");
                     agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
                     if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
@@ -147,8 +151,8 @@ public sealed partial class ModEntry {
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){PauseAutoplay("今日自主模型调用达到预算上限，进度已保留");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),tools=AgentToolRegistry.Catalog,
-            recent=Data.Autoplay.Journal.TakeLast(10),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(true),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),
+            recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
         string serialized=AgentJson.Encode(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
@@ -175,11 +179,11 @@ public sealed partial class ModEntry {
                 bool claimed=playerExecutor.ClaimsTile(location,tile[0].GetInt32(),tile[1].GetInt32()) || AgentTileBusy(location,tile[0].GetInt32(),tile[1].GetInt32());
                 return new{target=c.Clone(),claimed};
             }).Where(c=>!c.claimed).Select(c=>c.target).Take(64).ToArray();
-            info["planning_note"]="独立角色：有候选可直接派工；异地任务先travel，抵达后刷新候选。follow/guard是跟随或护卫，不能作为完成生产的证据；无合适工作时说明休息或陪伴的理由。";
+            info["planning_note"]="独立角色：有候选可直接派工；常规劳动用work.run指定location，底层自动移动并连续劳动；低层动作才需逐目标派工。follow/guard是跟随或护卫，不能作为完成生产的证据；无合适工作时说明休息或陪伴的理由。";
             return (object)info;
         }).ToArray();
     }
-    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
+    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
         string? contract=AgentCallContract.CompanionError(args);
@@ -215,6 +219,7 @@ public sealed partial class ModEntry {
             if(task.command_id==null)return new{task_id=id,status="failed",error="running_task_missing_receipt_replan"};
             id=task.command_id;
         }
+        if(id.StartsWith("work:"))return SemanticReceipt(id,cancel);
         return id.StartsWith("player:")?(cancel?playerExecutor.Cancel(id):playerExecutor.Poll(id)):
             JsonDocument.Parse(cancel?api!.CancelAction(id):api!.PollAction(id)).RootElement.Clone();
     }

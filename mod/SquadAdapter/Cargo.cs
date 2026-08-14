@@ -54,10 +54,20 @@ public sealed partial class CompanionControl {
         if(r!=null){r.Catches.Add(item.QualifiedItemId);string key=item.QualifiedItemId+":"+item.Quality;r.ResourceChanges[key]=r.ResourceChanges.GetValueOrDefault(key)+item.Stack;}
         return false;
     }
+    private static bool CaptureStoneDebris(int debrisType,int numberOfChunks,GameLocation location) {
+        // Vanilla breakStone uses createDebris(14), distinct from visual radial debris.
+        // Capture only its real stone output in the scoped NPC action, never a player drop.
+        if(outputOwner==null||debrisType!=14||numberOfChunks<=0||location!=outputOwner.Npc.currentLocation)return true;
+        var item=ItemRegistry.Create("(O)390",numberOfChunks);if(CargoAccept(item,true)!=true)return true;
+        var r=instance?.records.Values.LastOrDefault(r=>r.Actor==Id(outputOwner)&&r.Status=="running");
+        if(r!=null)r.ResourceChanges["(O)390:0"]=r.ResourceChanges.GetValueOrDefault("(O)390:0")+numberOfChunks;
+        return false;
+    }
     private static void PatchCargo() {
         if(cargoPatched)return;
         var harmony=new Harmony("stardewagent.together.cargo");
         PatchMineLifetime(harmony);
+        harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createDebris),new[]{typeof(int),typeof(int),typeof(int),typeof(int),typeof(GameLocation)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(CaptureStoneDebris)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.addItemToInventoryBool),new[]{typeof(Item),typeof(bool)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptInventory)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.couldInventoryAcceptThisItem),new[]{typeof(Item)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptCapacity)));
         harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createItemDebris)),postfix:new HarmonyMethod(typeof(CompanionControl),nameof(CollectOwnDebris)));

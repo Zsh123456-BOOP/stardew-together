@@ -103,7 +103,7 @@ public static class WorldReader {
         }
         foreach(var animal in farm.getAllFarmAnimals()) {
             if(!animal.wasPet.Value)f.AnimalsUnpetted++;
-            f.Animals.Add(new{name=animal.displayName,pet=animal.wasPet.Value,fullness=animal.fullness.Value});
+            f.Animals.Add(new{name=animal.displayName,location=animal.currentLocation?.NameOrUniqueName,x=animal.TilePoint.X,y=animal.TilePoint.Y,home=animal.home?.GetIndoors()?.NameOrUniqueName,pet=animal.wasPet.Value,fullness=animal.fullness.Value});
         }
         foreach(var q in p.questLog) {
             try{f.Quests.Add(new{id=q.id.Value,type=q.GetType().Name,title=q.questTitle,objective=q.currentObjective,complete=q.completed.Value,

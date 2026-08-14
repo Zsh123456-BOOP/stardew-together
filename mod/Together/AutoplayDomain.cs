@@ -67,3 +67,17 @@ public static class AgentCallContract {
         return Text("target_id").Length==0?"companion_target_required_travel_then_read_candidates":null;
     }
 }
+
+public sealed class AgentFailureTracker {
+    private readonly Dictionary<string,Dictionary<string,int>> attempts=new();
+    public bool Failed(string actor,string code) {
+        if(!attempts.TryGetValue(actor,out var errors))attempts[actor]=errors=new();
+        int count=errors.GetValueOrDefault(code)+1;errors[code]=count;return count>=6;
+    }
+    public void Progress(string actor)=>attempts.Remove(actor);
+    public void Clear()=>attempts.Clear();
+}
+
+public static class AgentPollingPolicy {
+    public static bool Defer(bool allActorsHaveWork,bool error,IEnumerable<string> tools)=>allActorsHaveWork&&!error&&tools.All(t=>AgentSchedule.Queueable(t)||t is "plan.submit" or "world.read" or "day.read" or "plan.read" or "inventory.read" or "action.status" or "progress.read" or "progress.roadmap");
+}

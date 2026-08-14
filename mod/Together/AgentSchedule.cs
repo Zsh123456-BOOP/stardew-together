@@ -28,7 +28,7 @@ public sealed class AgentSchedule {
     public long EventVersion {get;set;}
     public List<ScheduledAgentTask> Tasks {get;set;}=new();
     public Dictionary<string,string> Submissions {get;set;}=new();
-    public static bool Queueable(string tool)=>tool is "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.ship" or "player.sleep" or "companion.assign";
+    public static bool Queueable(string tool)=>tool is "work.run" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.ship" or "player.sleep" or "companion.assign";
     private static bool IdValid(string? id)=>!string.IsNullOrWhiteSpace(id)&&id.Length<=80 && id.All(c=>char.IsLetterOrDigit(c)||c is '_' or '-' or ':' or '.');
     private static bool TimeValid(int time)=>time>=600&&time<=2600&&time%100<60;
     public bool Submit(string submission,int expected,List<AgentTaskSpec> specs,int day) {
@@ -43,6 +43,7 @@ public sealed class AgentSchedule {
             if(s==null||!IdValid(s.id)||known.ContainsKey(s.id)||!IdValid(s.actor)||!Queueable(s.tool)||s.args.ValueKind!=JsonValueKind.Object || s.after==null || s.after.Count>16 || s.after.Any(d=>!IdValid(d)) || s.location==null||s.location.Length>120||s.purpose==null||s.purpose.Length>200 || !TimeValid(s.not_before)||!TimeValid(s.deadline)||s.not_before>s.deadline || s.day < -1 || s.day>day+7 || s.day>=0&&s.day<day)
                 throw new InvalidOperationException("invalid_plan_task");
             if(s.tool.StartsWith("player.") && s.actor!="player" || s.tool=="companion.assign" && (s.actor=="player" || !s.args.TryGetProperty("actor_id",out var actor)||actor.GetString()!=s.actor))throw new InvalidOperationException("task_actor_mismatch");
+            if(s.tool=="work.run" && (s.args.TryGetProperty("actor_id",out var worker)?worker.GetString():"player")!=s.actor)throw new InvalidOperationException("task_actor_mismatch");
             // Clone inputs: normalization must not change the idempotency fingerprint.
             var clone=JsonSerializer.Deserialize<AgentTaskSpec>(JsonSerializer.Serialize(s))!;if(clone.day<0)clone.day=day;
             var predecessor=Tasks.Concat(staged).LastOrDefault(t=>!t.Terminal && t.spec.actor==clone.actor);

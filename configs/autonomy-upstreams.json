@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "recorded": "2026-09-19",
+  "purpose": "Pinned source research for staged adapters. Listed does not mean installed or integrated.",
+  "repositories": [
+    {
+      "repo": "hawkfalcon/Stardew-Mods",
+      "sha": "7128ddd2394d1fe3228f8f67cadaa0cf24413ee4",
+      "branch": "master"
+    },
+    {
+      "repo": "mschult2/stardew-planner",
+      "sha": "724c4ab5732f83a8e39d6d99650c07dc5a3f8f62",
+      "branch": "main"
+    },
+    {
+      "repo": "IanManske/StardewValleyStonks",
+      "sha": "49722d969f44ef71e2a7c1fded9c579f3c3ed41f",
+      "branch": "main"
+    },
+    {
+      "repo": "wencanjiang/SPIKE",
+      "sha": "297996ee0ffb170e4754eaa0a6c5cf4ac3f61feb",
+      "branch": "main"
+    },
+    {
+      "repo": "StarDojo2025/stardojo",
+      "sha": "e251401cf1e84ba07cbfa08283a7aba52290e578",
+      "branch": "main"
+    },
+    {
+      "repo": "Pathoschild/StardewMods",
+      "sha": "76565e83ede4bc8b3c293f1c659032ba9c39c213",
+      "branch": "develop"
+    }
+  ]
+}

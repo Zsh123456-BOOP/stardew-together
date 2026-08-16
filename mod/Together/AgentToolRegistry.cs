@@ -13,6 +13,8 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
+        ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
         ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色依次执行，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
         ["plan.cancel"]="{ids:[任务id]}: 取消指定任务；保存开始后不可取消。失败后取消受阻旧计划，再根据真实状态提交新任务",
@@ -61,6 +63,7 @@ public sealed class AgentToolRegistry {
         }
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
+            "capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),
             "plan.read"=>mod.AgentPlanRead(),"plan.submit"=>mod.AgentPlanSubmit(args),"plan.cancel"=>mod.AgentPlanCancel(args),"plan.archive"=>mod.AgentPlanArchive(),
             "day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
             "world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),

@@ -4,7 +4,7 @@ using StardewValley.Tools;
 
 namespace Together;
 internal static class NativeRewards {
-    public static bool IsReward(ItemGrabMenu menu)=>!menu.shippingBin&&menu.source!=ItemGrabMenu.source_chest&&(menu.essential||menu.source is ItemGrabMenu.source_gift or ItemGrabMenu.source_fishingChest or ItemGrabMenu.source_overflow||menu.context is FishingRod);
+    public static bool IsReward(ItemGrabMenu menu)=>!menu.shippingBin&&menu.source!=ItemGrabMenu.source_chest&&(menu.essential||menu.source is ItemGrabMenu.source_gift or ItemGrabMenu.source_fishingChest or ItemGrabMenu.source_overflow||menu.context is FishingRod or JunimoNoteMenu or StardewValley.Locations.CommunityCenter);
     public static (bool Finished,object Evidence) Step(ItemGrabMenu menu) {
         if(!IsReward(menu))throw new InvalidOperationException("menu_is_not_an_observed_reward");
         if(menu.heldItem!=null) {

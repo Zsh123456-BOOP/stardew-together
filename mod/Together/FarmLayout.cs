@@ -5,6 +5,12 @@ public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool 
 public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
 
 public static class FarmLayout {
+    public static bool KeepsAccess(IReadOnlyList<LayoutCell> source,FarmCell start,IEnumerable<FarmCell> anchors,IEnumerable<FarmCell> occupied,IEnumerable<FarmCell> newAccess) {
+        var cells=source.ToDictionary(c=>c.Tile);var blocked=occupied.ToHashSet();
+        if(blocked.Contains(start))return false;
+        var before=Distances(cells,start,new());var after=Distances(cells,start,blocked);
+        return anchors.Where(before.ContainsKey).All(after.ContainsKey)&&newAccess.All(after.ContainsKey);
+    }
     public static Dictionary<FarmCell,int> WaterDistances(IReadOnlyList<LayoutCell> source,IEnumerable<FarmCell> water) {
         var cells=source.ToDictionary(c=>c.Tile);var result=new Dictionary<FarmCell,int>();var queue=new Queue<FarmCell>();
         foreach(var stand in water.SelectMany(Neighbours).Distinct().Where(p=>cells.TryGetValue(p,out var c)&&c.Passable)) {result[stand]=0;queue.Enqueue(stand);}

@@ -23,6 +23,18 @@ internal sealed class NativeMenuInput : InputState {
     public override MouseState GetMouseState()=>mouse;
     public override KeyboardState GetKeyboardState()=>default;
     public override GamePadState GetGamePadState()=>default;
+    public static void ClickWorld(IClickableMenu menu,Point tile) {
+        int rawX=tile.X*64+32-Game1.viewport.X,rawY=tile.Y*64+32-Game1.viewport.Y;
+        int x=(int)Utility.ModifyCoordinateForUIScale(rawX),y=(int)Utility.ModifyCoordinateForUIScale(rawY);
+        var input=Game1.input;var mouse=Game1.oldMouseState;
+        try {
+            Game1.input=new NativeMenuInput(x,y,ButtonState.Pressed);
+            // World menus read the previous mouse using zoomLevel, independently
+            // of the UI-scaled receiveLeftClick coordinates.
+            Game1.oldMouseState=new MouseState((int)(rawX*Game1.options.zoomLevel),(int)(rawY*Game1.options.zoomLevel),0,ButtonState.Pressed,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
+            menu.receiveLeftClick(x,y);
+        }finally {Game1.input=input;Game1.oldMouseState=mouse;}
+    }
     public static void ChooseProfession(LevelUpMenu menu,Rectangle bounds) {
         if(!menu.isActive||!menu.isProfessionChooser||!menu.CanReceiveInput()||!menu.readyToClose())throw new InvalidOperationException("profession_menu_not_ready");
         var previous=Game1.input;var before=Game1.player.professions.ToHashSet();

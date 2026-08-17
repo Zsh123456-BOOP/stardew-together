@@ -32,6 +32,8 @@ public static class AutonomyDevelopmentChecks {
         var cells=Enumerable.Range(0,5).Select(x=>new LayoutCell(new(x,0),true,true,false,false,true,false,0)).ToArray();
         var layout=FarmLayout.Choose(cells,new(0,0),new[]{new FarmCell(4,0)},4,true,4);
         check(layout.Tiles.Count==0,"trellis cannot block the only path to an exit");
+        check(!FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(4,0)},new[]{new FarmCell(2,0)},Array.Empty<FarmCell>()),"building footprint cannot sever the only exit corridor");
+        check(FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(3,0)},new[]{new FarmCell(4,0)},new[]{new FarmCell(3,0)}),"building at dead end keeps its entrance and existing access reachable");
         var water=FarmLayout.WaterDistances(cells,new[]{new FarmCell(5,0)});
         check(water[new(0,0)]==4,"water access is measured over walkable route");
         string root=Path.Combine(Path.GetTempPath(),"together-memory-check-"+Guid.NewGuid().ToString("N"));

@@ -58,6 +58,7 @@ public sealed partial class ModEntry {
         job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
         if(goal=="withdraw") {
             job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
+            if(job.MinimumQuality is not (0 or 1 or 2 or 4))throw new InvalidOperationException("invalid_minimum_quality");
             if(job.Item.Length==0||ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem||count<1)throw new InvalidOperationException("withdraw_item_and_positive_count_required");
         }
         if(goal=="plant") {

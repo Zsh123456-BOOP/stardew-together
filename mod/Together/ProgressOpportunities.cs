@@ -22,7 +22,10 @@ public sealed partial class ModEntry {
             Add(70,"farm:layout","持有种子，计算季节/地形/维护负担后安排",new{tool="farm.plan",args=new{priority="collection"}});
         if(Game1.player.Stamina>=28&&Game1.currentLocation.canFishHere()&&Game1.player.Items.Any(i=>i is StardewValley.Tools.FishingRod))
             Add(45,"fish:progress","当地允许钓鱼，持有鱼竿且留有体力",new{tool="player.fish",args=new{count=3,reserve_stamina=20}});
-        if(Facts.AnimalsUnpetted+Facts.FeedNeeded>0)Add(92,"animals:care","动物还有未完成照料，可由伙伴分担",new{tool="world.read",args=new{},locations=Facts.CareLocations});
+        if(Facts.AnimalsUnpetted>0)Add(92,"animals:pet","动物还有未完成抚摸，可由玩家或伙伴分担",new{tool="player.care",args=new{mode="pet",count=0}});
+        if(Facts.FeedNeeded>0)Add(93,"animals:feed","食槽缺草，先取筒仓实际库存再喂养",new{tool="player.care",args=new{mode="feed",count=0}});
+        foreach(var quest in Game1.player.questLog.Where(q=>q.completed.Value&&q.HasMoneyReward()).Take(3))
+            Add(90,"reward:"+quest.id.Value,"任务已完成，金币奖励尚未领取",new{tool="player.claim_reward",args=new{quest_id=quest.id.Value}});
         return choices.OrderByDescending(c=>c.Priority).Take(10).Select(c=>c.Value).ToArray();
     }
 }

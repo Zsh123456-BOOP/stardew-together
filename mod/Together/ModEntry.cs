@@ -24,6 +24,8 @@ public sealed class Config {
     public double AutoplayClockRate {get=>1;set { }}
     public int AutoplayDecisionDelayMs {get;set;}=250;
     public int AutoplayMaxCallsPerDay {get;set;}=180;
+    public long ModelTokenBudgetPerDay {get;set;}=1000000;
+    public int ModelRequestByteLimit {get;set;}=240000;
     public bool EnableLab {get;set;}
 }
 
@@ -208,7 +210,7 @@ public sealed partial class ModEntry:Mod {
     public void Open(){if(Context.IsWorldReady && Game1.activeClickableMenu==null){RefreshFacts(true);Game1.activeClickableMenu=new CompanionMenu(this);}}
     public void SetPreset(string name){if(!Context.IsWorldReady)return;Current.Profile=Profile.Preset(name);Current.Life.WishDay=-1;Current.Life.Tick(Game1.Date.TotalDays,Minute,true,Current.Profile);Notice="人设已更新，下一句话就会生效。";Persist();}
     public void ToggleAuto(){Settings.Autonomy=!Settings.Autonomy;Helper.WriteConfig(Settings);Notice=Settings.Autonomy?"队友可以自己安排活动。":"暂停选择新的自主活动；已有安排可继续或停止。";}
-    private void EnsureBudget(){if(Data.BudgetDay!=Game1.Date.TotalDays){Data.BudgetDay=Game1.Date.TotalDays;Data.Calls=0;}LoadUsage();}
+    private void EnsureBudget(){ModelRequestBudget.Configure(UsagePath+".budget.json",Settings.ModelTokenBudgetPerDay,Settings.ModelRequestByteLimit);if(Data.BudgetDay!=Game1.Date.TotalDays){Data.BudgetDay=Game1.Date.TotalDays;Data.Calls=0;}LoadUsage();}
     private JsonElement World(){using var doc=JsonDocument.Parse(api?.GetState()??"{}");return doc.RootElement.Clone();}
     private JsonElement? Actor(JsonElement world,string name) {
         if(!world.TryGetProperty("actors",out var actors))return null;

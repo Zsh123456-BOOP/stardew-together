@@ -55,7 +55,7 @@ public sealed partial class ModEntry {
         string location=actor=="player"?Game1.currentLocation.NameOrUniqueName:"";
         if(previous?.spec.tool=="player.travel")location=AgentToolRegistry.Text(previous.spec.args,"location",location);
         else if(previous!=null && previous.spec.location.Length>0)location=previous.spec.location;
-        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool is "player.travel" or "player.sleep" or "work.run"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
+        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool is "player.travel" or "player.sleep" or "player.social" or "player.care" or "player.machine" or "player.cook" or "work.run"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
         if(previous!=null)task.after.Add(previous.spec.id);
         Data.Autoplay.Schedule.Submit(task.id,Data.Autoplay.Schedule.Revision,new(){task},Game1.Date.TotalDays);
         return new{status="queued",task_id=task.id,actor,revision=Data.Autoplay.Schedule.Revision};
@@ -67,6 +67,7 @@ public sealed partial class ModEntry {
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
         if(state!="succeeded" && state!="cancelled")state="failed";
+        LearnActionResult(task,state,error);
         Data.Autoplay.Schedule.Finish(task,state,error,AgentJson.Encode(result));
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
@@ -97,6 +98,7 @@ public sealed partial class ModEntry {
             try {
                 if(task.spec.actor=="player"&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
                 if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player"))throw new InvalidOperationException("finish_or_cancel_companion_work_before_sleep");
+                CheckKnownFailure(task);
                 var result=JsonSerializer.SerializeToElement(agentTools.Execute(task.spec.tool,task.spec.args),AgentJson.Options);
                 Data.Autoplay.Record("task_started",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,tool=task.spec.tool,result}));
                 if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"&&result.TryGetProperty("command_id",out var id))schedule.Started(task,id.GetString()!);

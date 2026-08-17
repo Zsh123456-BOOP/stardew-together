@@ -4,6 +4,11 @@ using StardewCropCalculatorLibrary;
 
 public static class AutonomyDevelopmentChecks {
     public static void Run(Action<bool,string> check) {
+        var failures=new FailureKnowledge();
+        failures.Record("k","player","work.run","empty","state1","task1",1,600);
+        check(failures.Block("k","state1",1,610)!=null,"repeat failure blocked only under unchanged conditions");
+        check(failures.Block("k","state2",1,610)==null&&failures.Block("k","state1",2,610)==null&&failures.Block("k","state1",1,621)==null,"failure evidence expires on state change, next day, or retry window");
+        failures.Success("k");check(failures.Entries.Count==0,"successful execution retires obsolete failure advice");
         var recipes=new Dictionary<string,GoalRecipe>{["craft:batch"]=new(){Id="craft:batch",Item="output",Known=true,Output=5,Inputs=new(){new(){Item="wood",Count=1}}}};
         var goal=new SharedGoal{Entity="craft:batch",Item="output",Count=5,BaselineCrafts=10,Completion="crafted"};
         GoalPlanner.Rebuild(goal,recipes,new(new[]{new GoalStock{Item="output",Count=99}}),1,id=>id,10);

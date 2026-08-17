@@ -19,7 +19,7 @@ agent.wait等待执行/游戏进展；agent.pause只有确实需要人类处理�
         using var request=new HttpRequestMessage(HttpMethod.Post,"https://api.deepseek.com/chat/completions");
         request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
         request.Content=new StringContent(JsonSerializer.Serialize(new{model,messages=new[]{new{role="system",content=prompt+"\n固定工具定义："+AgentJson.Encode(AgentToolRegistry.Catalog)},new{role="user",content=context}},response_format=new{type="json_object"},thinking=new{type="disabled"},max_tokens=3000,stream=false}),Encoding.UTF8,"application/json");
-        using var response=await Client.SendAsync(request,cancellation);
+        using var response=await ModelRequestBudget.SendAsync(Client,request,cancellation);
         if(!response.IsSuccessStatusCode)throw new InvalidOperationException("model_http_"+(int)response.StatusCode);
         using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
         var choice=body.RootElement.GetProperty("choices")[0];

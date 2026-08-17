@@ -65,6 +65,10 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.machine":StartMachines(args);break;
+                case "player.claim_reward":StartQuestReward(args);break;
+                case "player.care":StartAnimalCare(args);break;
+                case "player.social":StartSocial(args);break;
                 case "player.combat":StartCombat(args);break;
                 case "player.mine_descend":StartMineDescent();break;
                 case "player.fish":StartFishing(args);break;
@@ -188,6 +192,10 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.machine"){TickMachines();return;}
+            if(Current.skill=="player.claim_reward"){TickQuestReward();return;}
+            if(Current.skill=="player.care"){TickAnimalCare();return;}
+            if(Current.skill=="player.social"){TickSocial();return;}
             if(Current.skill=="player.combat"){TickCombat();return;}
             if(Current.skill=="player.mine_descend"){TickMineDescent();return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
@@ -231,7 +239,7 @@ public sealed partial class PlayerExecutor {
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
             // The last impact can finish before its debris reaches the Farmer. Let native
             // collection settle so receipts include the final crop/material where picked up.
-            if(workSkill is "harvest" or "clear" or "clear_dead" or "forage") {
+            if(workSkill is "harvest" or "clear" or "chop" or "clear_dead" or "forage") {
                 if(Current!.phase!="settling_drops"){Current.phase="settling_drops";nextInteraction=DateTime.UtcNow.AddSeconds(1);}
                 if(DateTime.UtcNow<nextInteraction)return;
             }

@@ -13,6 +13,7 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["usage.read"]="{}: 今日模型预算、API报告Token、失败请求保留额度、剩余和请求大小上限；额度外部持久记录，读档不回退，不等同于人民币账单",
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
         ["memory.search"]="{query?:string,actor?:string,limit?:1..20,offset?:int}: 检索本存档已归档事件/回执，不含读档后的未来记录；返回证据ID和截断提示",
         ["memory.evidence"]="{id:string,offset?:int}: 按归档证据ID读取原文，每页最多4000字符；继续next_offset能读完整记录；不能访问本存档时间线之外的历史",
@@ -22,6 +23,10 @@ public sealed class AgentToolRegistry {
         ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
         ["shop.read"]="{}: 读取当前已打开原生商店的实际货品、价格、货币、条件和库存；不远程打开商店",
         ["player.fish"]="{count?:1..20,reserve_stamina?:15..270}: 在当前可钓地图自动寻找可达岸边，真实蓄力/抛竿/咬钩/反馈控杆/收鱼；按Farmer原生捕获计数核验，次数/背包/体力/时间受限，特殊奖励菜单需继续处理；不保证指定鱼种",
+        ["player.machine"]="{mode:load|collect,location?:string,machine?:设备ID,item?:原料ID,count?:0..100,goal_id?:string,output?:目标产物ID}: 到指定地点依次接近真实机器投料或收货，加载按原生规则消耗背包原料/燃料并核验，收货核验入包数量；0遍历当前符合条件设备。投料完成不等于产物出炉；缺料/满包须补给后再调",
+        ["player.care"]="{mode?:pet|milk|shear|feed,count?:0..100}: 自动到真实动物所在地，逐只接近并原生抚摸/挤奶/剪毛/筒仓取草与食槽放草，0处理所有符合条件动物；需要真实工具、体力与背包，夜间停止；原生产物/照料状态核验",
+        ["player.claim_reward"]="{quest_id:string}: 自动打开原生日志、找到已完成未领奖任务或订单、点击领取金币奖励、核验收入与已领取状态；不会直接设置完成或加钱",
+        ["player.social"]="{npc:原生人物名,mode?:talk|gift|deliver|relationship,slot?:int,quest_id?:string}: 自动跨图寻找并接近真实NPC，原生聊天/送礼/任务交付；送物需slot，交任务需活动quest_id，完成后核验原生关系或指定任务。普通对话自动翻页，分支选择保留；relationship显式允许求婚等特殊物品，不保证对方接受",
         ["player.combat"]="{count?:0..50,min_health?:20..200}: 选择背包近战武器，当前地图持续接近/原生挥击/换目标；0清理当前已出现怪物，原生击杀归属核验，低生命或无伤害停止请求撤退/换策略；不宣称已有全部敌种战术",
         ["player.mine_descend"]="{}: 当前矿层自动找到已揭露且可达的真实梯子，走近原生交互并核验换层；未发现梯子先采矿/战斗，不直接生成通道或改层数",
         ["player.buy"]="{shop:string,item:物品ID,count:int,max_unit_price:int,budget:int,keep_gold?:int}: 在当前已打开商店连续采购普通金币货品，原生扣款/库存/入包核验；必须显式给数量和预算，交易货币/配方/特殊购买回调暂不接此入口",
@@ -85,6 +90,7 @@ public sealed class AgentToolRegistry {
             "map.scan"=>mod.ScanMap(args),
             "farm.plan"=>mod.PlanFarm(args),
             "storage.configure"=>mod.ConfigureStorage(args),
+            "usage.read"=>ModelRequestBudget.Status(),
             "shop.read"=>PlayerExecutor.ReadShop(),
             "plan.read"=>mod.AgentPlanRead(),"plan.submit"=>mod.AgentPlanSubmit(args),"plan.cancel"=>mod.AgentPlanCancel(args),"plan.archive"=>mod.AgentPlanArchive(),
             "day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
@@ -94,7 +100,7 @@ public sealed class AgentToolRegistry {
             "goal.create"=>mod.AgentGoalCreate(args),"goal.prepare"=>mod.AgentGoalPrepare(args),
             "progress.read"=>Progress(),"progress.roadmap"=>mod.AgentProgression(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
             "work.run"=>mod.StartSemanticWork(args),
-            "player.combat" or "player.mine_descend" or "player.fish" or "player.buy" or "player.craft" or "player.cook" or "player.eat" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
+            "player.machine" or "player.claim_reward" or "player.care" or "player.social" or "player.combat" or "player.mine_descend" or "player.fish" or "player.buy" or "player.craft" or "player.cook" or "player.eat" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
             "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
             "companion.assign"=>mod.AgentCompanion(args),

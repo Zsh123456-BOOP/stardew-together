@@ -57,7 +57,7 @@ public sealed partial class ModEntry {
             var p=Person(name);if(p.Job is {Status:"active" or "waiting"} j){if(j.Command!=null)api?.CancelAction(j.Command);if(j.TravelCommand!=null)api?.CancelAction(j.TravelCommand);j.Command=null;j.TravelCommand=null;j.Status="paused";}
         }
         ResetAgentRuntime();playerExecutor.ClearStopped();dayReviewed=-1;
-        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory};
+        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Failures=Data.Autoplay.Failures};
         AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
@@ -105,7 +105,7 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
         TickAgentSchedule();ObserveAgentEvents();
-        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy")return;
+        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy" or "player.claim_reward")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
         if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;

@@ -82,7 +82,7 @@ public sealed partial class ModEntry {
             options.Add((score,new{plan_id=plan.Id,plan.Seed,count=plan.Tiles.Count,tiles=plan.Tiles,harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
-        foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-24)).ToArray())farmPlantPlans.Remove(key);
+        foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
         return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),evaluated_seeds=options.Count,limitations=new[]{"仅已持有种子；采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","只用当前合法空地，不拆现有作物/设备/树木；布局不足明确报告","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
     }
     private object FarmForecast(FarmPlantPlan plan) {

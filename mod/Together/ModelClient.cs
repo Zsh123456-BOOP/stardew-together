@@ -20,7 +20,7 @@ public sealed class ModelClient {
         using var request=new HttpRequestMessage(HttpMethod.Post,"https://api.deepseek.com/chat/completions");
         request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
         request.Content=new StringContent(JsonSerializer.Serialize(new{model,messages=new[]{new{role="system",content=prompt},new{role="user",content=JsonSerializer.Serialize(context)}},response_format=new{type="json_object"},thinking=new{type="disabled"},max_tokens=900,stream=false}),Encoding.UTF8,"application/json");
-        using var response=await Client.SendAsync(request);
+        using var response=await ModelRequestBudget.SendAsync(Client,request);
         if(!response.IsSuccessStatusCode)throw new InvalidOperationException("模型暂不可用，显示本地资料。");
         using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync());var choice=body.RootElement.GetProperty("choices")[0];
         if(choice.GetProperty("finish_reason").GetString()!="stop")throw new InvalidOperationException("模型回答不完整，显示本地资料。");
@@ -54,7 +54,7 @@ speech 最多100字，说计划，不编造已完成结果。可以偶尔用一�
         request.Content=new StringContent(JsonSerializer.Serialize(new{model,messages=new[]{new{role="system",content=prompt},new{role="user",content=JsonSerializer.Serialize(context)}},
             response_format=new{type="json_object"},thinking=new{type="disabled"},max_tokens=700,stream=false}),Encoding.UTF8,"application/json");
         try {
-            using var response=await Client.SendAsync(request);
+            using var response=await ModelRequestBudget.SendAsync(Client,request);
             if(!response.IsSuccessStatusCode) throw new InvalidOperationException("模型服务返回 "+(int)response.StatusCode+"；这次不会派工。");
             using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var choice=body.RootElement.GetProperty("choices")[0];

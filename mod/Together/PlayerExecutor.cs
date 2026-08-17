@@ -19,10 +19,11 @@ public sealed class PlayerAction {
     public int completed {get;set;}
     public List<object> effects {get;set;}=new();
 }
-public sealed class PlayerExecutor {
+public sealed partial class PlayerExecutor {
     private readonly Dictionary<string,PlayerAction> receipts=new();
     public PlayerAction? Current {get;private set;}
     public Action<int>? NativeSleepRequested {get;set;}
+    public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
     public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu or LevelUpMenu {isProfessionChooser:false});
     private Point target,lastTile;
@@ -36,6 +37,8 @@ public sealed class PlayerExecutor {
     private List<Point> workTiles=new();
     private string workSkill="";
     private int workSlot,workIndex,workHits;
+    private int eatingSlot,eatingBefore;
+    private string eatingItem="";
     private object? workBefore,actionTargetBefore;
     public bool ClaimsTile(string location,int x,int y)=>Busy && origin==location && (Current!.skill=="player.work"?workTiles.Skip(workIndex).Any(p=>p.X==x&&p.Y==y):Current.skill is "player.use_tool" or "player.place" or "player.interact" && target.X==x&&target.Y==y);
     public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;}
@@ -61,9 +64,18 @@ public sealed class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.craft":case "player.cook":StartProduction(skill,args);break;
+                case "player.eat":
+                    SelectSlot(args,true);
+                    if(Game1.player.ActiveObject is not {} food || food.Edibility<=0 || food.questItem.Value || food.QualifiedItemId=="(O)434")throw new InvalidOperationException("item_not_ordinary_food");
+                    ValidateConsumption?.Invoke(new Dictionary<Item,int>{{food,1}},"","");
+                    eatingSlot=Game1.player.CurrentToolIndex;eatingItem=food.QualifiedItemId;eatingBefore=food.Stack;
+                    Game1.player.mostRecentlyGrabbedItem=food;Game1.player.eatHeldObject();
+                    if(!Game1.player.isEating)throw new InvalidOperationException("native_eating_rejected");
+                    Current.phase="eating";break;
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "chop" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -91,6 +103,7 @@ public sealed class PlayerExecutor {
                     SelectSlot(args,true);
                     if(Game1.currentLocation is not Farm shippingFarm)throw new InvalidOperationException("shipping_requires_farm");
                     if(Game1.player.ActiveObject is not {} cargo || !cargo.canBeShipped())throw new InvalidOperationException("item_not_shippable");
+                    ValidateConsumption?.Invoke(new Dictionary<Item,int>{{cargo,cargo.Stack}},"","");
                     bool atBin=shippingFarm.buildings.Any(b=>b.buildingType.Value=="Shipping Bin" && new Rectangle(b.tileX.Value*64-64,b.tileY.Value*64-64,(b.tilesWide.Value+2)*64,(b.tilesHigh.Value+2)*64).Intersects(Game1.player.GetBoundingBox()));
                     if(!atBin)throw new InvalidOperationException("move_next_to_shipping_bin_first");
                     shippingFarm.shipItem(cargo,Game1.player);
@@ -157,10 +170,17 @@ public sealed class PlayerExecutor {
         try {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
             if((DateTime.UtcNow-started).TotalSeconds>180){Finish("failed","action_timeout");return;}
+            if(Current.skill=="player.eat") {
+                if(Game1.player.isEating || !Game1.player.CanMove)return;
+                var remaining=Game1.player.Items[eatingSlot];int count=remaining?.QualifiedItemId==eatingItem?remaining.Stack:0;
+                Current.effects.Add(new{kind="native_eat",item=eatingItem,consumed=eatingBefore-count,stamina=Game1.player.Stamina,health=Game1.player.health});
+                Finish(eatingBefore-count==1?"succeeded":"failed",eatingBefore-count==1?null:"food_consumption_not_verified");return;
+            }
             ObserveNativeTransition();
             // Events often set CanMove=false. Report the interruption before the
             // movement gate, otherwise a travel task waits forever behind dialogue.
             if(Game1.eventUp){Finish("failed","event_interrupted_read_menu");return;}
+            if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
             if(Current.skill=="player.work"){TickWork();return;}
             if(Current.skill=="player.use_tool") {
@@ -193,7 +213,7 @@ public sealed class PlayerExecutor {
     }
     private static object TileState(Point p) {
         var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
-        return new{x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
+        return new{x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
     private void TickWork() {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
@@ -227,6 +247,11 @@ public sealed class PlayerExecutor {
         }
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
+            if(workSkill=="chop") {
+                if(f is not Tree tree || tree.growthStage.Value<5 || tree.tapped.Value)throw new InvalidOperationException("not_an_eligible_mature_tree");
+                if(Game1.player.Items[workSlot] is not StardewValley.Tools.Axe)throw new InvalidOperationException("chop_requires_axe");
+                if(tree.falling.Value){return;}
+            }
             if(workSkill=="water" && Game1.player.Items[workSlot] is StardewValley.Tools.WateringCan {WaterLeft:0})throw new InvalidOperationException("watering_can_empty_read_day_refill_options_or_delegate");
             if(workSkill=="clear") {
                 if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
@@ -254,7 +279,7 @@ public sealed class PlayerExecutor {
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
-            if(workSkill is "water" or "till" or "clear" or "clear_dead") {
+            if(workSkill is "water" or "till" or "clear" or "chop" or "clear_dead") {
                 if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
@@ -267,11 +292,11 @@ public sealed class PlayerExecutor {
             var after=TileState(tile);
             if(JsonSerializer.Serialize(workBefore)==JsonSerializer.Serialize(after))throw new InvalidOperationException("work_effect_not_observed");
             Current.effects.Add(new{before=workBefore,after});
-            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2())) {
-                if(++workHits>=12)throw new InvalidOperationException("resource_hit_limit_replan");
+            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill=="chop"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2())) {
+                if(++workHits>=64)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
-            if(workSkill is "clear" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
+            if(workSkill is "clear" or "chop" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
             Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }

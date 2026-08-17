@@ -33,6 +33,10 @@ public sealed class SemanticJob {
     internal HashSet<string> Excluded=new();
     internal Point? RefillTile,StorageTile;
     internal bool Storing;
+    internal bool IncludeTrees;
+    internal string PlanId="";
+    internal int MinimumQuality;
+    internal int FoodUsed,MaxFood=3;
 }
 
 public sealed partial class ModEntry {
@@ -40,8 +44,8 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
-        if(actor!="player" && goal is "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(goal is not ("withdraw" or "plant" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(actor!="player" && goal is "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "stone" or "wood" or "fiber"?20:0);
@@ -50,6 +54,17 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
+        if(goal=="withdraw") {
+            job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
+            if(job.Item.Length==0||ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem||count<1)throw new InvalidOperationException("withdraw_item_and_positive_count_required");
+        }
+        if(goal=="plant") {
+            job.PlanId=AgentToolRegistry.Text(args,"plan_id");
+            if(!farmPlantPlans.TryGetValue(job.PlanId,out var plan)||plan.Epoch!=agentSaveEpoch||plan.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("read_farm_plan_first");
+            job.location=plan.Location;job.requested=0;
+        }
+        job.MaxFood=Math.Clamp(AgentToolRegistry.Number(args,"max_food",3),0,10);
         semanticJobs.Add(job.command_id,job);
         foreach(var old in semanticJobs.Values.Where(j=>j.status!="running").Take(Math.Max(0,semanticJobs.Count-96)).ToArray())semanticJobs.Remove(old.command_id);
         return job;
@@ -97,6 +112,7 @@ public sealed partial class ModEntry {
                 if(j.ChildKind=="labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}
             } else if(j.ChildKind=="labor") {j.completed++;j.phase="selecting";}
+            else if(j.ChildKind=="recovery_eat") {j.FoodUsed++;j.phase="selecting";}
             else if(j.ChildKind=="storage_deposit") {
                 j.Storing=false;
                 if(r.TryGetProperty("evidence",out var detail)&&detail.TryGetProperty("resource_changes",out var changes))j.deposited+=changes.EnumerateObject().Sum(p=>Math.Max(0,p.Value.GetInt32()));
@@ -115,15 +131,17 @@ public sealed partial class ModEntry {
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
         if(Game1.timeOfDay>=j.Until){StopSemanticWork(j,"time_reserve_reached");return;}
         if((DateTime.UtcNow-j.Started).TotalSeconds>600||j.Attempts>=128){StopSemanticWork(j,"work_budget_reached");return;}
-        if(Game1.player.health<30){StopSemanticWork(j,"player_in_danger");return;}
+        if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
+        if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
         bool gathering=j.goal is "stone" or "wood" or "fiber" or "harvest" or "forage";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Count()>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         var origin=AgentMapOrigin(j.actor);
         if(origin.Location.NameOrUniqueName!=j.location) {
             WorkChild(j,j.actor=="player"?"player.travel":"companion.assign",j.actor=="player"?(object)new{location=j.location}:new{actor_id=j.actor,skill="travel",destination=j.location},"travel");return;
         }
-        if(j.actor=="player")SelectPlayerWork(j);else SelectCompanionWork(j,origin.Location);
+        if(j.goal=="plant")TickPlantWork(j);
+        else if(j.actor=="player")SelectPlayerWork(j);else SelectCompanionWork(j,origin.Location);
     }
     private int WorkSlot(Func<Item,bool> predicate)=>Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is {} item&&predicate(item),-1);
     private void SelectPlayerWork(SemanticJob j) {
@@ -145,6 +163,9 @@ public sealed partial class ModEntry {
             bool match=j.goal switch{"water"=>!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest(),"harvest"=>!d.crop.dead.Value&&d.readyForHarvest(),"clear_dead"=>d.crop.dead.Value,_=>false};
             if(match)candidates.Add((pair.Key.ToPoint(),j.goal,tool,j.goal=="water"?4:0,j.goal=="harvest"?"(O)"+d.crop.indexOfHarvest.Value:""));
         }
+        if(j.goal=="wood"&&j.IncludeTrees)foreach(var pair in l.terrainFeatures.Pairs)
+            if(pair.Value is Tree t&&t.growthStage.Value>=5&&!t.tapped.Value)
+                candidates.Add((pair.Key.ToPoint(),"chop",tool,Math.Max(4,t.health.Value*2+10),j.Item));
         string? constraint=null;
         foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
             string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key))continue;
@@ -154,8 +175,20 @@ public sealed partial class ModEntry {
             if(WorkStand(l,c.Tile)==null){j.Excluded.Add(key);j.skipped++;continue;}
             WorkChild(j,"player.work",new{skill=c.Skill,slot=c.Slot,tiles=new[]{new{x=c.Tile.X,y=c.Tile.Y}}},"labor",key);return;
         }
+        if(constraint=="energy_reserve_reached"&&TryWorkFood(j))return;
         bool all=candidates.Count==0&&j.requested==0;
         StopSemanticWork(j,all?"all_current_targets_completed":constraint??(j.skipped>0?"remaining_targets_unreachable":"no_matching_targets"),all);
+    }
+    private bool TryWorkFood(SemanticJob j) {
+        if(j.FoodUsed>=j.MaxFood || Game1.player.isEating)return false;
+        // Preserve all declared project reservations and every currently missing
+        // bundle/quest item; a generic food policy must not eat unique progress.
+        var protectedItems=Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Concat(Facts.Goals.Where(g=>!g.Complete&&g.Kind!="craft").SelectMany(g=>g.Needs)).Select(n=>n.Item).ToHashSet();
+        var choices=Game1.player.Items.Select((item,slot)=>new{item=item as StardewValley.Object,slot})
+            .Where(x=>x.item is {Edibility:>0} food&&!food.questItem.Value&&!food.bigCraftable.Value&&food.QualifiedItemId!="(O)434"&&food.Stack>Data.Reservations.GetValueOrDefault(food.QualifiedItemId)&&!protectedItems.Contains(food.QualifiedItemId))
+            .OrderBy(x=>x.item!.Price/(double)Math.Max(1,x.item.Edibility)).ThenBy(x=>x.slot).ToArray();
+        if(choices.Length==0)return false;
+        WorkChild(j,"player.eat",new{slot=choices[0].slot},"recovery_eat");return true;
     }
     private static Point? WorkStand(GameLocation l,Point tile) {
         foreach(var at in new[]{new Point(tile.X,tile.Y+1),new Point(tile.X-1,tile.Y),new Point(tile.X+1,tile.Y),new Point(tile.X,tile.Y-1)}.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile))) {

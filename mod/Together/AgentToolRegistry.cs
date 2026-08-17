@@ -14,6 +14,14 @@ public sealed class AgentToolRegistry {
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
+        ["memory.search"]="{query?:string,actor?:string,limit?:1..20,offset?:int}: 检索本存档已归档事件/回执，不含读档后的未来记录；返回证据ID和截断提示",
+        ["memory.evidence"]="{id:string,offset?:int}: 按归档证据ID读取原文，每页最多4000字符；继续next_offset能读完整记录；不能访问本存档时间线之外的历史",
+        ["map.scan"]="{actor_id?:string,offset?:int,limit?:1..120}: 指定角色当前地图完整对象/地形分页，含树木、作物和状态版本；不会把局部地图截断当资源不存在",
+        ["player.eat"]="{slot:int}: 吃真实背包的一份普通食物，原生动画/恢复/消耗核验；保留物由高层补给政策决定",
+        ["player.craft"]="{recipe:原生配方名,count?:1..99}: 连续制作指定批次，自动原生菜单/材料消耗/成品入包/统计核验；只用背包原料，缺料需先取货",
+        ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
+        ["storage.configure"]="{location?:string,x:int,y:int,role:output|none}: 给已观察的真实玩家箱设置同行收货/取货标记；不转移物资；work.run(goal=withdraw,item=ID,count=数量,quality=最低品质)自动去共享箱取货",
+        ["farm.plan"]="{seed?:物品ID,count?:1..96,max_daily_manual_water?:0..96,require_scarecrow?:bool}: 在农场/温室按已有种子和真实可达地形生成地块方案，保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)自动翻土播种浇水补水。当前不采购种子、无肥料/跨季优化，不把收益估算当实收。",
         ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
         ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色依次执行，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
@@ -27,10 +35,12 @@ public sealed class AgentToolRegistry {
         ["knowledge.search"]="{query:string}: 原生百科模糊检索",
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
+        ["goal.create"]="{request_id:string,entity:物品ID或craft:配方名,count?:int}: 幂等创建持久共同目标，原生配方自动展开依赖并预留材料，不打开UI",
+        ["goal.prepare"]="{id:共同目标ID}: 根据真实库存生成下一批可执行任务（共享箱取料、普通资源收集、原生制作）；返回tasks可直接交plan.submit；每批后重新核算，未接通路线返回gaps",
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.roadmap"]="{}: 原生成就、实际技能与下一阶段建议；建议不是已经完成的成就，按季节与前置条件并行安排",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
-        ["work.run"]="{actor_id?:player或真实伙伴ID,goal:stone|wood|fiber|water|refill|harvest|forage|clear_dead|store,location?:真实地图名,count?:int,reserve_stamina?:15..270,until?:HHMM<=2300}: 高层持续劳动，无需坐标/工具槽/target_id。石/木/纤维count为本次实际新增物品数量（默认20），其它count为目标数，0做完当前地图可做目标。自动走到指定地图、选工具、逐次寻路换目标，玩家浇水自动补水再继续。木材目前限树枝，clear_dead/refill限玩家；NPC无原生体力条，按能力/货物/时间限制。中断或部分完成返回实际数量与stop_reason，不伪报达标。默认保留20体力、22点停止；采集前自动留2空槽，不足则走回Farm的output箱卸货再回来。store可主动存货；保留工具/种子/补给/预留物，不会丢弃出售。可取消/查进度。",
+        ["work.run"]="{actor_id?:player或真实伙伴ID,goal:withdraw|plant|stone|wood|fiber|water|refill|harvest|forage|clear_dead|store,item?:物品ID,quality?:int,plan_id?:string,include_trees?:bool,max_food?:0..10,location?:真实地图名,count?:int,reserve_stamina?:15..270,until?:HHMM<=2300}: 高层持续劳动，无需坐标/工具槽/target_id。石/木/纤维count为本次实际新增物品数量（默认20），其它count为目标数，0做完当前地图可做目标。自动走到指定地图、选工具、逐次寻路换目标，玩家浇水自动补水再继续。木材默认树枝，include_trees=true时玩家可砍成熟未挂树液器的普通树；plant用farm.plan返回的plan_id执行布局，plant/clear_dead/refill限玩家；NPC无原生体力条，按能力/货物/时间限制。中断或部分完成返回实际数量与stop_reason，不伪报达标。默认保留20体力、22点停止；体力不足可吃最多max_food份普通非预留食物（默认3），然后续作；采集前自动留2空槽，不足则走回Farm的output箱卸货再回来。store可主动存货；保留工具/种子/补给/预留物，不会丢弃出售。可取消/查进度。",
         ["player.work"]="{skill:water|till|plant|harvest|clear|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear支持石块用镐、树枝用斧、杂草用镰刀；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",
@@ -52,7 +62,8 @@ public sealed class AgentToolRegistry {
     };
     internal static string Text(JsonElement a,string k,string fallback="")=>a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??fallback:fallback;
     internal static int Number(JsonElement a,string k,int fallback=0)=>a.TryGetProperty(k,out var v)&&v.TryGetInt32(out int n)?n:fallback;
-    public object Execute(string tool,JsonElement args) {
+    public object Execute(string tool,JsonElement args) => mod.WithExecutionContract(ExecuteCore(tool,args));
+    private object ExecuteCore(string tool,JsonElement args) {
         if(!Context.IsWorldReady || Context.IsMultiplayer)throw new InvalidOperationException("single_player_world_required");
         if(!Catalog.ContainsKey(tool))throw new InvalidOperationException("unknown_tool");
         if((IsPlayerMutation(tool)&&mod.WorkActorBusy("player")) || tool=="companion.assign"&&mod.WorkActorBusy(Text(args,"actor_id")))throw new InvalidOperationException("actor_owned_by_work_job_cancel_or_wait");
@@ -64,14 +75,20 @@ public sealed class AgentToolRegistry {
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
             "capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),
+            "memory.search"=>mod.ReadAgentMemory(args),
+            "memory.evidence"=>mod.ReadMemoryEvidence(args),
+            "map.scan"=>mod.ScanMap(args),
+            "farm.plan"=>mod.PlanFarm(args),
+            "storage.configure"=>mod.ConfigureStorage(args),
             "plan.read"=>mod.AgentPlanRead(),"plan.submit"=>mod.AgentPlanSubmit(args),"plan.cancel"=>mod.AgentPlanCancel(args),"plan.archive"=>mod.AgentPlanArchive(),
             "day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
             "world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),
             "knowledge.search"=>mod.Knowledge.Search(Text(args,"query"),limit:8),
             "knowledge.get" or "goal.requirements"=>mod.Knowledge.Query(Text(args,"query"),Text(args,"id") is {Length:>0} id?id:null),
+            "goal.create"=>mod.AgentGoalCreate(args),"goal.prepare"=>mod.AgentGoalPrepare(args),
             "progress.read"=>Progress(),"progress.roadmap"=>mod.AgentProgression(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
             "work.run"=>mod.StartSemanticWork(args),
-            "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
+            "player.craft" or "player.cook" or "player.eat" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
             "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
             "companion.assign"=>mod.AgentCompanion(args),

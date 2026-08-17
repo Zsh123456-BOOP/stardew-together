@@ -9,16 +9,16 @@ public sealed record CapabilityDefinition(string id,string title,string[] tools,
 // endpoint never implies that every quest or minigame has an autonomous executor.
 public static class CapabilityCatalog {
     public static readonly CapabilityDefinition[] All={
-        new("F01","状态与地图",new[]{"world.read","map.read","inventory.read"},new[]{"player","companion"},"完整状态分页与统一快照版本", "原生快照"),
+        new("F01","状态与地图",new[]{"world.read","map.read","map.scan","inventory.read"},new[]{"player","companion"},"全状态变更索引与离线规划隔离", "原生快照"),
         new("F02","移动与跨图",new[]{"player.travel","player.move","companion.assign"},new[]{"player","companion"},"特殊区域通道覆盖", "角色实际位置"),
         new("F03","工具装备",new[]{"inventory.read","player.use_tool"},new[]{"player"},"升级领取与装备策略", "实际工具与装备"),
-        new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"整树/树桩/完整矿物劳动", "原生掉落与实际入包"),
-        new("F05","农田布局",Array.Empty<string>(),new[]{"player"},"空间规划与通道核验", "未来占用图可达性"),
-        new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"经济排期与自动选地", "地块/种子消耗/成熟日期"),
+        new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"硬木树桩/完整矿物劳动", "原生掉落与实际入包"),
+        new("F05","农田布局",new[]{"farm.plan"},new[]{"player"},"未来用地/设施选址/后台计算", "未来占用图可达性"),
+        new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"完整资金排期/肥料/跨季优化", "地块/种子消耗/成熟日期"),
         new("F07","动物照料",new[]{"companion.assign"},new[]{"companion"},"完整 Farmer 照料与批量流程", "动物原生照料/产物状态"),
-        new("F08","仓储物流",new[]{"work.run"},new[]{"player","companion"},"取货/扩容/全局品质预留", "源目标库存守恒"),
-        new("F09","补给恢复",new[]{"work.run"},new[]{"player"},"自动进食与低健康撤退", "水量/体力/物品消耗"),
-        new("F10","制作烹饪",new[]{"menu.open","menu.choose","goal.requirements"},new[]{"player"},"完整高层制作烹饪技能", "原生配方计数+消耗+产物"),
+        new("F08","仓储物流",new[]{"work.run"},new[]{"player","companion"},"扩容/全局品质预留", "源目标库存守恒"),
+        new("F09","补给恢复",new[]{"work.run","player.eat"},new[]{"player"},"低健康撤退与补给预算完善", "水量/体力/物品消耗"),
+        new("F10","制作烹饪",new[]{"player.craft","player.cook","goal.requirements","goal.prepare"},new[]{"player"},"完整配方解锁/替代材料与厨房覆盖", "原生配方计数+消耗+产物"),
         new("F11","生产加工",new[]{"companion.assign","player.interact"},new[]{"player","companion"},"连续加工与全机器条件", "机器在制品/原料/产物"),
         new("F12","买卖出货",new[]{"companion.assign","player.ship","menu.choose"},new[]{"player","companion"},"完整高层买卖与商店覆盖", "钱/货品/次日收入"),
         new("F13","建造升级",new[]{"player.place","menu.choose"},new[]{"player"},"建筑/房屋/工具完整流程", "原生建筑与升级状态"),
@@ -28,13 +28,13 @@ public static class CapabilityCatalog {
         new("F17","献祭捐赠",new[]{"progress.catalog","player.interact","menu.choose"},new[]{"player"},"献祭/捐赠/路线建设高层技能", "原生提交与解锁"),
         new("F18","社交关系",new[]{"companion.assign","player.interact","menu.choose"},new[]{"player","companion"},"Farmer 关系/家庭完整流程", "原生友情与剧情状态"),
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
-        new("F20","菜单过夜",new[]{"player.sleep","menu.read","menu.choose"},new[]{"player"},"职业与特殊夜间选择", "原生保存+实际次日"),
+        new("F20","菜单过夜",new[]{"player.sleep","menu.read","menu.choose"},new[]{"player"},"职业策略持久化与特殊夜间选择验收", "原生保存+实际次日"),
         new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
         new("F22","成就目标图",new[]{"progress.catalog","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
         new("F25","百科检索",new[]{"knowledge.search","knowledge.get","goal.requirements"},new[]{"player","companion"},"特殊规则与完整条件覆盖", "游戏内容与现场条件"),
-        new("F26","记忆与调用",Array.Empty<string>(),new[]{"player","companion"},"长期归档/压缩/经验失效", "证据ID/时间线/实际usage"),
+        new("F26","记忆与调用",new[]{"memory.search","memory.evidence"},new[]{"player","companion"},"关系记忆归档/季摘要/经验失效", "证据ID/时间线/实际usage"),
         new("F27","恢复与接管",new[]{"action.cancel","action.status","agent.pause"},new[]{"player","companion"},"全技能恢复与统一快照", "无重复消耗/晚到指令拒绝")
     };
     public static object Read()=>new{schema_version=1,scope="实现入口不等于完整技能验收；gap不为空则该类尚未齐全",capabilities=All};
@@ -62,7 +62,7 @@ public sealed partial class ModEntry {
                 int count=cooking?p.recipesCooked.TryGetValue(output.ItemId,out var cooked)?cooked:0:p.craftingRecipes.TryGetValue(pair.Key,out var crafted)?crafted:0;
                 rows.Add(new(prefix+pair.Key,recipe.DisplayName,cooking?"cooking":"crafting",count>0,new[]{"F08","F10"},known?Array.Empty<string>():new[]{"unlock:"+prefix+pair.Key},
                     new{known,produced=count,output=output.QualifiedItemId,ingredients=recipe.recipeList.Select(i=>new{item=i.Key,count=i.Value}),native_definition=pair.Value},
-                    cooking?"Farmer.recipesCooked":"Farmer.craftingRecipes",known?"高层制作执行待接通":"解锁规则与制作执行待接通"));
+                    cooking?"Farmer.recipesCooked":"Farmer.craftingRecipes",known?"已接高层制作/烹饪，完整配方实机核验待完成":"解锁规则待补；高层执行要求配方已知"));
             }
         }
         foreach(var g in Facts.Goals.Where(g=>g.Kind!="craft"))rows.Add(new(g.Id,g.Title,g.Kind=="special_order"?"order":g.Kind=="joja"?"route":"quest",g.Complete,new[]{g.Kind=="joja"?"F17":"F16"},Array.Empty<string>(),new{g.Kind,g.Deadline,g.Gold,g.Needs},"原生任务/订单/邮件条件",g.Complete?"":"专属交互执行待接通"));

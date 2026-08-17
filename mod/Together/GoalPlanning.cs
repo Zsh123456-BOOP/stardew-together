@@ -30,6 +30,7 @@ public sealed class GoalNode {
     public string Name {get;set;}="";
     public string Owner {get;set;}="together";
     public string Kind {get;set;}="gather";
+    public string Recipe {get;set;}="";
     public string Status {get;set;}="missing";
     public int Required {get;set;}
     public int Owned {get;set;}
@@ -97,7 +98,7 @@ public static class GoalPlanner {
             var alternatives=recipes.Values.Where(r=>r.Item==item && (r.Kind!="process" || r.Known || depth==0)).ToArray();
             var recipe=selected??alternatives.OrderByDescending(r=>r.Known).ThenBy(r=>r.Kind=="craft"?0:1).ThenBy(r=>r.Output).ThenBy(r=>r.Id,StringComparer.Ordinal).FirstOrDefault();
             if(recipe==null){node.Reason=alternatives.Length>1?"存在多种制作途径，请从百科选择具体配方":"先收集；没有已核实的制作配方，可查百科或请玩家处理获取条件";return path;}
-            node.Kind=recipe.Kind;node.Source=recipe.Source;
+            node.Kind=recipe.Kind;node.Recipe=recipe.Id;node.Source=recipe.Source;
             node.Status=recipe.Known?"waiting":"locked";
             node.Reason=recipe.Kind=="process"?"备料后在"+name(recipe.Facility)+"加工；先收齐原料，最终以实际产物核验。"+(recipe.Known?"":"还没有观察到已放置的设备。"):(recipe.Known?"备料后由玩家制作；伙伴继续准备能取得的材料":"配方尚未解锁；先备料。"+recipe.Unlock);
             if(depth>=6 || budget<recipe.Inputs.Count || !ancestors.Add(item)) {node.Status="blocked";node.Reason="依赖过深或循环，停止自动展开；需要选择其他获取途径";return path;}
@@ -114,14 +115,15 @@ public static class GoalPlanner {
         recipes.TryGetValue(goal.Entity,out var rootRecipe);
         Expand(goal.Item,goal.Count,"root",new(),0,rootRecipe);
         var root=goal.Nodes[0];
-        bool craftedEnough=rootRecipe!=null && (long)Math.Max(0,crafted-goal.BaselineCrafts)*rootRecipe.Output>=goal.Count;
+        // Farmer.craftingRecipes stores produced units, not recipe executions.
+        bool craftedEnough=rootRecipe!=null && Math.Max(0,crafted-goal.BaselineCrafts)>=goal.Count;
         if(root.Missing==0 || craftedEnough) {
             goal.Status="fulfilled";goal.Reserved.Clear();goal.Summary=craftedEnough?"原生制作计数确认目标数量已完成":"当前实际库存确认已拥有目标数量";
         } else {
             int missing=goal.Nodes.Where(n=>n.Kind=="gather").Sum(n=>n.ToPrepare);
             goal.Summary=$"目标 {goal.Count} 份，已分配 {root.Owned} 份；基础材料还缺 {missing} 件";
             if(goal.Nodes.Any(n=>n.Status=="locked"))goal.Summary+="；有配方或设备条件尚未满足，仍可先备料";
-            else if(goal.Nodes.Any(n=>n.Status=="player_step"))goal.Summary+="；有一步备料齐全，等你制作";
+            else if(goal.Nodes.Any(n=>n.Status=="player_step"))goal.Summary+="；有一步备料齐全，可由玩家执行器完成制作或加工";
         }
         string fingerprint=goal.Status+"|"+string.Join(";",goal.Nodes.Select(n=>$"{n.Id}:{n.Owned}:{n.InProgress}:{n.Status}:{n.Owner}"));
         if(goal.Fingerprint!=fingerprint) {

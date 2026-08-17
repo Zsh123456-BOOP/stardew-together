@@ -64,7 +64,7 @@ public sealed class NativeMenuTools {
         if(previous!=observed || expected!=token || token.Length==0)throw new InvalidOperationException("stale_menu_read_again");
         var choice=choices.FirstOrDefault(c=>c.Id==AgentToolRegistry.Text(args,"id"))??throw new InvalidOperationException("unknown_menu_choice");
         if(observed is LevelUpMenu levelChoice) {
-            if(levelChoice.isProfessionChooser)throw new InvalidOperationException("profession_choice_requires_native_input_adapter");
+            if(levelChoice.isProfessionChooser){NativeMenuInput.ChooseProfession(levelChoice,choice.Bounds);return new{status="native_profession_selected",professions=Game1.player.professions.ToArray(),menu=Read()};}
             if(!levelChoice.isActive || !levelChoice.CanReceiveInput())throw new InvalidOperationException("menu_wait_for_ready");
             levelChoice.okButtonClicked();return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
         }

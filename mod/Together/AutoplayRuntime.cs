@@ -13,6 +13,7 @@ public sealed partial class ModEntry {
     private DateTime agentNext;
     private readonly Dictionary<string,(string Location,int X,int Y)> agentClaims=new();
     private int agentGeneration;
+    private string agentSaveEpoch=Guid.NewGuid().ToString("N");
     private DateTime agentRequestedWait;
     private readonly AgentFailureTracker agentFailures=new();
     private readonly Stopwatch agentWatch=new();
@@ -21,7 +22,7 @@ public sealed partial class ModEntry {
     private int agentReplyFailures;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption};agentTools=new(this,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
         Helper.Events.GameLoop.UpdateTicking+=(_,_)=>playerExecutor.ObserveNativeTransition();
         Helper.Events.GameLoop.Saved+=(_,_)=>playerExecutor.Saved();
@@ -55,7 +56,8 @@ public sealed partial class ModEntry {
             var p=Person(name);if(p.Job is {Status:"active" or "waiting"} j){if(j.Command!=null)api?.CancelAction(j.Command);if(j.TravelCommand!=null)api?.CancelAction(j.TravelCommand);j.Command=null;j.TravelCommand=null;j.Status="paused";}
         }
         ResetAgentRuntime();playerExecutor.ClearStopped();dayReviewed=-1;
-        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays};
+        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory};
+        AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
         Data.Autoplay.Goal=goal;Data.Autoplay.Status="running";Data.Autoplay.Detail="DeepSeek 接管；F10 或方向键随时暂停。";
@@ -102,6 +104,7 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
         TickAgentSchedule();ObserveAgentEvents();
+        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
         if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
@@ -152,8 +155,8 @@ public sealed partial class ModEntry {
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(true),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),
-            recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4)};
-        string serialized=AgentJson.Encode(context);
+            recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
+        string serialized=ContextCompression.Pack(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         agentPending=AutoplayModel.Ask(file,Settings.Model,serialized,agentCancellation.Token);
@@ -211,7 +214,8 @@ public sealed partial class ModEntry {
         }
         return false;
     }
-    internal object AgentReceipt(string id,bool cancel) {
+    internal object AgentReceipt(string id,bool cancel)=>ExecutionContract.Receipt(RawAgentReceipt(id,cancel),agentSaveEpoch,Data.Autoplay.Schedule.Revision,id.StartsWith("player:")?"player":"");
+    private object RawAgentReceipt(string id,bool cancel) {
         var task=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id);
         if(task!=null) {
             if(cancel)return AgentPlanCancel(JsonSerializer.SerializeToElement(new{ids=new[]{id}}));

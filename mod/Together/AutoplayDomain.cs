@@ -4,6 +4,9 @@ namespace Together;
 
 // Serializable checkpoints contain observations and intentions, never an API credential.
 public sealed class AutoplayState {
+    public MemoryCheckpoint Memory {get;set;}=new();
+    [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
+    public Action<string,string>? Archive {get;set;}
     public AgentSchedule Schedule {get;set;}=new();
     public DailyAgenda Agenda {get;set;}=new();
     public string RunId {get;set;}="";
@@ -23,6 +26,7 @@ public sealed class AutoplayState {
     }
     public List<AgentEvent> Journal {get;set;}=new();
     public void Record(string kind,string text) {
+        Archive?.Invoke(kind,text);
         Journal.Add(new(kind,text.Length>16000?AgentJson.Encode(new{truncated=true,prefix=text[..15000],note="观察过长已截断，未列出不代表不存在；用更小范围重新查询"}):text));
         if(Journal.Count>32)Journal.RemoveRange(0,Journal.Count-32);
     }

@@ -53,10 +53,11 @@ public sealed partial class PlayerExecutor {
         return (object?)Current??new{status="idle"};
     }
     private static object Snapshot()=>new{day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},
-        money=Game1.player.Money,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
+        money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
-        if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove || Game1.player.UsingTool)
+        bool buying=skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu;
+        if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
@@ -64,6 +65,10 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.combat":StartCombat(args);break;
+                case "player.mine_descend":StartMineDescent();break;
+                case "player.fish":StartFishing(args);break;
+                case "player.buy":StartPurchase(args);break;
                 case "player.craft":case "player.cook":StartProduction(skill,args);break;
                 case "player.eat":
                     SelectSlot(args,true);
@@ -169,7 +174,7 @@ public sealed partial class PlayerExecutor {
         if(!Busy || !Context.IsWorldReady)return;
         try {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
-            if((DateTime.UtcNow-started).TotalSeconds>180){Finish("failed","action_timeout");return;}
+            if((DateTime.UtcNow-started).TotalSeconds>(Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
             if(Current.skill=="player.eat") {
                 if(Game1.player.isEating || !Game1.player.CanMove)return;
                 var remaining=Game1.player.Items[eatingSlot];int count=remaining?.QualifiedItemId==eatingItem?remaining.Stack:0;
@@ -181,6 +186,10 @@ public sealed partial class PlayerExecutor {
             // movement gate, otherwise a travel task waits forever behind dialogue.
             if(Game1.eventUp){Finish("failed","event_interrupted_read_menu");return;}
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
+            if(Current.skill=="player.buy"){TickPurchase();return;}
+            if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.combat"){TickCombat();return;}
+            if(Current.skill=="player.mine_descend"){TickMineDescent();return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
             if(Current.skill=="player.work"){TickWork();return;}
             if(Current.skill=="player.use_tool") {
@@ -358,6 +367,9 @@ public sealed partial class PlayerExecutor {
     }
     private void Finish(string status,string? error=null) {
         if(Current==null)return;
+        if(Current.skill=="player.fish"&&status!="succeeded"&&Context.IsWorldReady) {
+            try{ReleaseFishing();}catch{error=(error??status)+":fishing_release_needs_review";}
+        }
         if(actionTargetBefore!=null && Context.IsWorldReady && Game1.currentLocation.NameOrUniqueName==origin) {
             var after=TileState(target);Current.effects.Add(new{before=actionTargetBefore,after,effect_observed=AgentJson.Encode(actionTargetBefore)!=AgentJson.Encode(after)});actionTargetBefore=null;
         }

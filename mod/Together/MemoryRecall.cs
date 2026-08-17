@@ -1,6 +1,10 @@
 namespace Together;
 
 public static class MemoryRecall {
+    public static string[] SearchTerms(string query) {
+        var related=Topics.Where(group=>group.Any(word=>query.Contains(word,StringComparison.OrdinalIgnoreCase))).SelectMany(g=>g);
+        return related.Concat(query.Split(new[]{' ','，','。',',',';','；','？','?'},StringSplitOptions.RemoveEmptyEntries)).Where(s=>s.Length>1).Distinct(StringComparer.OrdinalIgnoreCase).Take(16).ToArray();
+    }
     private static readonly string[][] Topics={
         new[]{"钓鱼","鱼","水边","海边"},new[]{"挖矿","矿洞","石头","铜矿"},
         new[]{"农场","农活","浇水","收获","作物"},new[]{"机器","补料","熔炉","加工"},

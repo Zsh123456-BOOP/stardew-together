@@ -155,7 +155,9 @@ namespace StardewCropCalculatorLibrary
             {
                 harvestDays.Add(harvestDate);
 
-                while (harvestDate + yieldRate <= numDays)
+                // Upstream uses -1 (and sometimes 1000) for a non-regrowing crop.
+                // A negative rate previously made this loop run backwards forever.
+                while (yieldRate > 0 && harvestDate + yieldRate <= numDays)
                 {
                     harvestDate += yieldRate;
                     harvestDays.Add(harvestDate);
@@ -234,4 +236,3 @@ namespace StardewCropCalculatorLibrary
         //}
     }
 }
-

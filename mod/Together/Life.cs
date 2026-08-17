@@ -1,6 +1,8 @@
 namespace Together;
 
 public sealed class LifeState {
+    [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
+    public Action<IEnumerable<Experience>>? ArchiveRemoved {get;set;}
     public double Interest {get;set;}=45;
     public double Company {get;set;}=35;
     public double Variety {get;set;}=30;
@@ -41,7 +43,7 @@ public sealed class LifeState {
         LastSkill=skill;
         if(personal){Interest=Math.Max(0,Interest-35);WishProgress=Math.Min(WishTarget,WishProgress+1);}
         Experiences.Add(new(){Id=Guid.NewGuid().ToString("N"),Day=day,Minute=minute,Summary=summary,Personal=personal});
-        if(Experiences.Count>120)Experiences.RemoveRange(0,Experiences.Count-120);
+        if(Experiences.Count>120){ArchiveRemoved?.Invoke(Experiences.Take(Experiences.Count-120).ToArray());Experiences.RemoveRange(0,Experiences.Count-120);}
     }
 }
 public sealed class Experience {

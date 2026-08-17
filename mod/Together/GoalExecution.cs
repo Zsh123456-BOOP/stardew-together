@@ -6,18 +6,21 @@ public sealed partial class ModEntry {
     internal object AgentGoalCreate(JsonElement args) {
         RefreshFacts(true);ReadGoalRecipes();
         string request=AgentToolRegistry.Text(args,"request_id"),entity=AgentToolRegistry.Text(args,"entity");
+        string completion=AgentToolRegistry.Text(args,"completion","owned");
+        if(completion is not ("owned" or "crafted"))throw new InvalidOperationException("invalid_completion_predicate");
         int count=AgentToolRegistry.Number(args,"count",1);
         if(request.Length is <1 or >64||!request.All(c=>char.IsLetterOrDigit(c)||c is '-' or '_')||count is <1 or >999)throw new InvalidOperationException("invalid_goal_request");
         string id="agent-"+request;
         var old=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);
         if(old!=null) {
-            if(old.Entity!=entity||old.Count!=count)throw new InvalidOperationException("goal_request_id_reused");
+            if(old.Entity!=entity||old.Count!=count||old.Completion!=completion)throw new InvalidOperationException("goal_request_id_reused");
             return old;
         }
         if(Data.SharedGoals.Count(g=>g.Status is "active" or "paused")>=16)throw new InvalidOperationException("active_goal_limit");
         string item=goalRecipes.TryGetValue(entity,out var recipe)?recipe.Item:entity;
+        if(completion=="crafted"&&recipe?.Kind!="craft")throw new InvalidOperationException("crafted_goal_requires_native_crafting_recipe");
         var definition=ItemRegistry.GetDataOrErrorItem(item);if(definition.IsErrorItem)throw new InvalidOperationException("known_item_or_recipe_required");
-        var goal=new SharedGoal{Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,CreatedDay=Facts.Day,
+        var goal=new SharedGoal{Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,CreatedDay=Facts.Day,Completion=completion,
             BaselineCrafts=recipe?.Kind=="craft"?Game1.player.craftingRecipes.GetValueOrDefault(recipe.Id[6..]):0};
         Data.SharedGoals.Add(goal);UpdateProjects();return goal;
     }
@@ -33,7 +36,7 @@ public sealed partial class ModEntry {
             // after it completes instead of spending predicted outputs in advance.
             var ready=goal.Nodes.FirstOrDefault(n=>n.Status=="player_step"&&n.Kind=="craft"&&n.Recipe.StartsWith("craft:"));
             if(ready!=null&&goalRecipes.TryGetValue(ready.Recipe,out var recipe)) {
-                int batches=(int)Math.Ceiling(ready.ToPrepare/(double)Math.Max(1,recipe.Output));
+                int batches=Math.Min(99,(int)Math.Ceiling(ready.ToPrepare/(double)Math.Max(1,recipe.Output)));
                 var carried=new GoalLedger(Game1.player.Items.Where(i=>i!=null).Select(i=>new GoalStock{Item=i.QualifiedItemId,Count=i.Stack,Quality=i.Quality,Category=i.Category}));
                 var stored=SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().Where(i=>i!=null)).ToArray();
                 var storedLedger=new GoalLedger(stored.Select(i=>new GoalStock{Item=i.QualifiedItemId,Count=i.Stack,Quality=i.Quality,Category=i.Category}));

@@ -14,16 +14,16 @@ public static class CapabilityCatalog {
         new("F03","工具装备",new[]{"inventory.read","player.use_tool"},new[]{"player"},"升级领取与装备策略", "实际工具与装备"),
         new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"硬木树桩/完整矿物劳动", "原生掉落与实际入包"),
         new("F05","农田布局",new[]{"farm.plan"},new[]{"player"},"未来用地/设施选址/后台计算", "未来占用图可达性"),
-        new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"完整资金排期/肥料/跨季优化", "地块/种子消耗/成熟日期"),
-        new("F07","动物照料",new[]{"companion.assign"},new[]{"companion"},"完整 Farmer 照料与批量流程", "动物原生照料/产物状态"),
+        new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"采购现金流/机器加工/设施布局优化", "地块/种子消耗/成熟日期"),
+        new("F07","动物照料",new[]{"companion.assign"},new[]{"companion"},"完整 Farmer 照料与多建筑续作", "动物原生照料/产物状态"),
         new("F08","仓储物流",new[]{"work.run"},new[]{"player","companion"},"扩容/全局品质预留", "源目标库存守恒"),
         new("F09","补给恢复",new[]{"work.run","player.eat"},new[]{"player"},"低健康撤退与补给预算完善", "水量/体力/物品消耗"),
         new("F10","制作烹饪",new[]{"player.craft","player.cook","goal.requirements","goal.prepare"},new[]{"player"},"完整配方解锁/替代材料与厨房覆盖", "原生配方计数+消耗+产物"),
         new("F11","生产加工",new[]{"companion.assign","player.interact"},new[]{"player","companion"},"连续加工与全机器条件", "机器在制品/原料/产物"),
-        new("F12","买卖出货",new[]{"companion.assign","player.ship","menu.choose"},new[]{"player","companion"},"完整高层买卖与商店覆盖", "钱/货品/次日收入"),
+        new("F12","买卖出货",new[]{"companion.assign","player.ship","shop.read","player.buy","menu.choose"},new[]{"player","companion"},"商店自动入店/兑换货币/特殊货品/出售覆盖", "钱/货品/次日收入"),
         new("F13","建造升级",new[]{"player.place","menu.choose"},new[]{"player"},"建筑/房屋/工具完整流程", "原生建筑与升级状态"),
-        new("F14","钓鱼",new[]{"companion.assign"},new[]{"companion"},"Farmer 原生钓鱼控制", "Farmer fishCaught；NPC货物不等价"),
-        new("F15","探索战斗",new[]{"player.travel","companion.assign"},new[]{"player","companion"},"Farmer 战斗与全矿层控制", "原生层数/击杀归属"),
+        new("F14","钓鱼",new[]{"player.fish","companion.assign"},new[]{"player","companion"},"鱼种/地点选择、宝箱奖励、补给和原生控杆验收", "Farmer fishCaught；NPC货物不等价"),
+        new("F15","探索战斗",new[]{"player.travel","player.combat","player.mine_descend","companion.assign"},new[]{"player","companion"},"敌种战术/撤退/入口电梯/全矿层控制", "原生层数/击杀归属"),
         new("F16","任务交付",new[]{"progress.read","player.interact","menu.choose"},new[]{"player"},"任务类型专属执行器", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.interact","menu.choose"},new[]{"player"},"献祭/捐赠/路线建设高层技能", "原生提交与解锁"),
         new("F18","社交关系",new[]{"companion.assign","player.interact","menu.choose"},new[]{"player","companion"},"Farmer 关系/家庭完整流程", "原生友情与剧情状态"),
@@ -34,7 +34,7 @@ public static class CapabilityCatalog {
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
         new("F25","百科检索",new[]{"knowledge.search","knowledge.get","goal.requirements"},new[]{"player","companion"},"特殊规则与完整条件覆盖", "游戏内容与现场条件"),
-        new("F26","记忆与调用",new[]{"memory.search","memory.evidence"},new[]{"player","companion"},"关系记忆归档/季摘要/经验失效", "证据ID/时间线/实际usage"),
+        new("F26","记忆与调用",new[]{"memory.search","memory.evidence"},new[]{"player","companion"},"失败经验条件化失效、全部调用预算与面板收口", "证据ID/时间线/实际usage"),
         new("F27","恢复与接管",new[]{"action.cancel","action.status","agent.pause"},new[]{"player","companion"},"全技能恢复与统一快照", "无重复消耗/晚到指令拒绝")
     };
     public static object Read()=>new{schema_version=1,scope="实现入口不等于完整技能验收；gap不为空则该类尚未齐全",capabilities=All};
@@ -50,7 +50,7 @@ public sealed partial class ModEntry {
         var rows=new List<NativeGoalDefinition>();var p=Game1.player;
         foreach(var pair in Game1.achievements.OrderBy(x=>x.Key)) {
             var text=pair.Value.Split('^');
-            rows.Add(new("achievement:"+pair.Key,text[0],"achievement",p.achievements.Contains(pair.Key),new[]{"F22"},Array.Empty<string>(),new{native_definition=pair.Value},"Farmer.achievements", "具体条件依赖适配待补，不能由名称猜完成步骤"));
+            rows.Add(new("achievement:"+pair.Key,text[0],"achievement",p.achievements.Contains(pair.Key),new[]{"F22"},Array.Empty<string>(),new{native_definition=pair.Value,rule=AchievementRules.Native(pair.Key)},"Farmer.achievements", "读取实际计数与部分原生条件；完整前置执行图仍待补"));
         }
         foreach(bool cooking in new[]{false,true}) {
             var definitions=cooking?DataLoader.CookingRecipes(Game1.content):DataLoader.CraftingRecipes(Game1.content);
@@ -68,6 +68,7 @@ public sealed partial class ModEntry {
         foreach(var g in Facts.Goals.Where(g=>g.Kind!="craft"))rows.Add(new(g.Id,g.Title,g.Kind=="special_order"?"order":g.Kind=="joja"?"route":"quest",g.Complete,new[]{g.Kind=="joja"?"F17":"F16"},Array.Empty<string>(),new{g.Kind,g.Deadline,g.Gold,g.Needs},"原生任务/订单/邮件条件",g.Complete?"":"专属交互执行待接通"));
         foreach(var b in Facts.Bundles)rows.Add(new("bundle:"+b.Id,b.Name,"bundle",b.Complete,new[]{"F08","F17"},new[]{"route:community"},new{b.RequiredSlots,b.CompletedSlots,b.Missing},"原生 bundle 状态",b.Complete?"":"献祭交互执行待接通"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
+        rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));
         var filtered=rows.Where(g=>kind.Length==0||g.kind==kind).ToArray();
         return new{schema_version=1,day=Game1.Date.TotalDays,save_id=Game1.uniqueIDForThisGame.ToString(),total=filtered.Length,offset,limit,next_offset=offset+limit<filtered.Length?(int?)(offset+limit):null,

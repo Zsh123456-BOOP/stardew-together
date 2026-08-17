@@ -23,6 +23,7 @@ public sealed partial class ModEntry {
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
         playerExecutor=new(){NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption};agentTools=new(this,playerExecutor);
+        FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
         Helper.Events.GameLoop.UpdateTicking+=(_,_)=>playerExecutor.ObserveNativeTransition();
         Helper.Events.GameLoop.Saved+=(_,_)=>playerExecutor.Saved();
@@ -104,7 +105,7 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
         TickAgentSchedule();ObserveAgentEvents();
-        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook")return;
+        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
         if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
@@ -154,7 +155,8 @@ public sealed partial class ModEntry {
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){PauseAutoplay("今日自主模型调用达到预算上限，进度已保留");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(true),companions=AgentCompanions(),ui=agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{})),decision_reasons=agentWakeReasons.ToArray(),
+        object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(true),companions=AgentCompanions(),ui,decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         string serialized=ContextCompression.Pack(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();

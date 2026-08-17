@@ -4,6 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableModDeploy>false</EnableModDeploy>
+    <EnableHarmony>true</EnableHarmony>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" /></ItemGroup>
   <ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" ExcludeAssets="runtime" /></ItemGroup>

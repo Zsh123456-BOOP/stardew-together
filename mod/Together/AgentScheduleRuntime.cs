@@ -92,7 +92,8 @@ public sealed partial class ModEntry {
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
-            if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null || !Game1.player.CanMove || Game1.player.UsingTool))continue;
+            bool purchasing=task.spec.tool=="player.buy"&&Game1.activeClickableMenu is StardewValley.Menus.ShopMenu;
+            if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
                 if(task.spec.actor=="player"&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
                 if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player"))throw new InvalidOperationException("finish_or_cancel_companion_work_before_sleep");

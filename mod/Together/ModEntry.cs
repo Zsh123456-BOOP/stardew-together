@@ -55,6 +55,7 @@ public sealed partial class ModEntry:Mod {
     public Companion Person(string name) {
         if(!Data.People.TryGetValue(name,out var person)) {
             Data.People[name]=person=new Companion();
+            BindCompanionArchive(name,person);
             if(Context.IsWorldReady){person.NewDay(Game1.Date.TotalDays);person.Life.Tick(Game1.Date.TotalDays,Minute,false,person.Profile);}
         }
         return person;
@@ -69,7 +70,7 @@ public sealed partial class ModEntry:Mod {
         };
         helper.Events.GameLoop.SaveLoaded+=(_,_)=>Load();
         helper.Events.GameLoop.DayEnding+=(_,_)=>CheckpointJobs();
-        helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist)Helper.Data.WriteSaveData("together-v2",Data);};
+        helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist){ArchiveCompanionCheckpoint();Helper.Data.WriteSaveData("together-v2",Data);}};
         helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();playerExecutor.ClearWorld();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
@@ -245,6 +246,7 @@ public sealed partial class ModEntry:Mod {
                 health=Game1.player.health,season=Game1.currentSeason,raining=Game1.isRaining,threats=world.GetProperty("threats")},
             shared_goals=GoalContext(),farm=PromptFarm(),projects=Data.Projects.Where(p=>p.Status=="active").Take(8),today=Data.Today.Take(12),social=PromptSocial(person),needs=person.Life.ModelState(),pace=Data.Pace,
             recalled_experiences=MemoryRecall.Select(person.Life.Experiences,message,Game1.Date.TotalDays),
+            archived_experiences=memoryArchive?.Read(message,Selected,2),
             memories=person.Memories.TakeLast(5).ToArray(),conversation=person.Chat.TakeLast(5).ToArray(),current_promise=person.Job,
             note="bond是本Mod亲近感，actor.relationship是真实好感。没有招募时可以聊天，行动需先邀请。"};
         Data.Calls++;RecordUsage();pendingName=Selected;pendingGeneration=generation;
@@ -471,6 +473,8 @@ public sealed partial class ModEntry:Mod {
         Persist();
     }
     private void AddLine(List<Line> list,string who,string text) {
+        string? owner=Data.People.FirstOrDefault(p=>ReferenceEquals(p.Value.Chat,list)||ReferenceEquals(p.Value.Memories,list)).Key;
+        if(owner!=null)memoryArchive?.Append(Game1.Date.TotalDays,owner,"conversation",AgentJson.Encode(new{who,text,kind=ReferenceEquals(Data.People[owner].Chat,list)?"chat":"event_memory"}));
         list.Add(new Line{Who=who,Text=text,Day=Game1.Date.TotalDays});
         if(list.Count>60)list.RemoveRange(0,list.Count-60);
     }

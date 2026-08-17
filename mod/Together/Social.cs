@@ -70,6 +70,8 @@ public sealed class PersonalWish {
     public List<string> Evidence {get;set;}=new();
 }
 public sealed class SocialState {
+    [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
+    public Action<IEnumerable<DiaryEntry>>? ArchiveRemoved {get;set;}
     public SharedChallenge? Challenge {get;set;}
     public bool TheirTurn {get;set;}
     public List<string> CelebratedProjects {get;set;}=new();
@@ -119,7 +121,8 @@ public sealed class SocialState {
         string text=facts.Length==0?"今天没有特别记下什么，留一页给你说说今天吧。":string.Join("；",facts.TakeLast(3).Select(DiarySentence))+"。";
         var promises=projects.Where(p=>p.Status=="active" && p.Remaining>0).Take(2).Select(p=>p.Title).ToArray();
         if(promises.Length>0)text+="还记着我们说好的："+string.Join("、",promises)+"，慢慢来。";
-        Diary.Add(new(){Day=day,Text=text,Sources=facts.Select(e=>e.Id).ToList(),PlayerNote=PlayerNotes.GetValueOrDefault(day,"")});Diary=Diary.TakeLast(28).ToList();
+        Diary.Add(new(){Day=day,Text=text,Sources=facts.Select(e=>e.Id).ToList(),PlayerNote=PlayerNotes.GetValueOrDefault(day,"")});
+        if(Diary.Count>28)ArchiveRemoved?.Invoke(Diary.Take(Diary.Count-28).ToArray());Diary=Diary.TakeLast(28).ToList();
     }
     private static string DiarySentence(Experience e) {
         if(e.Id.EndsWith(":partial"))return e.Summary;

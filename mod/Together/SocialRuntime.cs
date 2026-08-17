@@ -100,6 +100,7 @@ public sealed partial class ModEntry {
     }
     public void ClearMemories() {
         CancelKnowledge();
+        memoryArchive?.ForgetActor(Selected);
         generation++;pending=null;Current.Social.Forget();Current.Chat.Clear();Current.Memories.Clear();Current.Life.Experiences.Clear();Current.LastDecision=null;Current.Proposal=null;Current.ProposalAutonomous=false;bubbles.Remove(Selected);
         Notice="已清除这位伙伴的聊天、经历、话题、偏好、习惯和日记；关系与正在执行的工作保留。";Persist();
     }

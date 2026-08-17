@@ -6,6 +6,17 @@ public sealed class MemoryCheckpoint {
     public List<MemoryDaySummary> Days {get;set;}=new();
     public string LastError {get;set;}="";
     public List<ArchivedMemory> Pending {get;set;}=new();
+    public Dictionary<string,int> ActorGenerations {get;set;}=new();
+    public Dictionary<string,string> SourceHashes {get;set;}=new();
+    public List<MemorySeasonSummary> Seasons {get;set;}=new();
+}
+public sealed class MemorySeasonSummary {
+    public int SeasonIndex {get;set;}
+    public int Successful {get;set;}
+    public int Failed {get;set;}
+    public int CoveredUntilDay {get;set;}
+    public int SchemaVersion {get;set;}=1;
+    public List<string> Evidence {get;set;}=new();
 }
 public sealed class MemoryDaySummary {
     public int Day {get;set;}
@@ -14,7 +25,7 @@ public sealed class MemoryDaySummary {
     public Dictionary<string,int> RepeatedErrors {get;set;}=new();
     public List<string> Evidence {get;set;}=new();
 }
-public sealed record ArchivedMemory(string Id,int Sequence,int Day,string Actor,string Kind,string Text);
+public sealed record ArchivedMemory(string Id,int Sequence,int Day,string Actor,string Kind,string Text,int ActorGeneration=0);
 
 // Files are append-only; the cursor is checkpointed WITH the native save. Reloading
 // an earlier save cannot expose future events appended after that save's cursor.
@@ -27,10 +38,20 @@ public sealed class MemoryArchive {
     }
     public void Append(int day,string actor,string kind,string text) {
         string key=bucket+"-"+day;int sequence=checkpoint.Cursors.GetValueOrDefault(key)+1;
-        var entry=new ArchivedMemory(key+":"+sequence,sequence,day,actor,kind,text);
+        var entry=new ArchivedMemory(key+":"+sequence,sequence,day,actor,kind,text,checkpoint.ActorGenerations.GetValueOrDefault(actor));
         checkpoint.Cursors[key]=sequence;checkpoint.Pending.Add(entry);
         if(kind=="action_result")Summarize(entry);
         Flush();
+    }
+    public void Remember(int day,string actor,string kind,string source,object value) {
+        string text=AgentJson.Encode(new{source_id=source,value}),key=actor+":"+checkpoint.ActorGenerations.GetValueOrDefault(actor)+":"+source;
+        string hash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+        if(checkpoint.SourceHashes.GetValueOrDefault(key)==hash)return;
+        Append(day,actor,kind,text);checkpoint.SourceHashes[key]=hash;
+    }
+    public void ForgetActor(string actor) {
+        checkpoint.ActorGenerations[actor]=checkpoint.ActorGenerations.GetValueOrDefault(actor)+1;
+        foreach(var key in checkpoint.SourceHashes.Keys.Where(k=>k.StartsWith(actor+":",StringComparison.Ordinal)).ToArray())checkpoint.SourceHashes.Remove(key);
     }
     public void Flush() {
         try {
@@ -51,20 +72,26 @@ public sealed class MemoryArchive {
             using var doc=JsonDocument.Parse(entry.Text);var r=doc.RootElement;
             string status=r.TryGetProperty("status",out var s)?s.GetString()??"":"";
             if(status=="succeeded")day.Successful++;else if(status=="failed")day.Failed++;
+            var season=checkpoint.Seasons.FirstOrDefault(s=>s.SeasonIndex==entry.Day/28);
+            if(season==null){season=new(){SeasonIndex=entry.Day/28};checkpoint.Seasons.Add(season);}
+            if(status=="succeeded")season.Successful++;else if(status=="failed")season.Failed++;
+            season.CoveredUntilDay=Math.Max(season.CoveredUntilDay,entry.Day);
+            season.Evidence.Add(entry.Id);
             if(r.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String){string code=e.GetString()!;day.RepeatedErrors[code]=day.RepeatedErrors.GetValueOrDefault(code)+1;}
             day.Evidence.Add(entry.Id);if(day.Evidence.Count>12)day.Evidence.RemoveAt(0);
         }catch(JsonException){checkpoint.LastError="memory_event_invalid_json";}
     }
     public object Read(string query,string actor,int limit,int offset=0) {
         limit=Math.Clamp(limit,1,20);if(offset<0||offset>1000)throw new InvalidOperationException("invalid_memory_offset");
-        var matched=new List<ArchivedMemory>();bool incomplete=false;int scanned=0;
+        var matched=new List<ArchivedMemory>();bool incomplete=false;int scanned=0;var terms=MemoryRecall.SearchTerms(query);
         foreach(var pair in checkpoint.Cursors.Reverse()) {
             if(pair.Key.Any(c=>!char.IsLetterOrDigit(c)&&c!='-'))continue;
             for(int sequence=pair.Value;sequence>0;sequence--) {
                 if(++scanned>5000){incomplete=true;break;}
                 var entry=Find(pair.Key,sequence);if(entry==null){incomplete=true;continue;}
+                if(entry.ActorGeneration!=checkpoint.ActorGenerations.GetValueOrDefault(entry.Actor))continue;
                 if(entry==null||entry.Sequence>pair.Value||actor.Length>0&&entry.Actor!=actor)continue;
-                if(query.Length>0&&!entry.Text.Contains(query,StringComparison.OrdinalIgnoreCase)&&!entry.Kind.Contains(query,StringComparison.OrdinalIgnoreCase)&&entry.Id!=query)continue;
+                if(query.Length>0&&!terms.Any(t=>entry.Text.Contains(t,StringComparison.OrdinalIgnoreCase)||entry.Kind.Contains(t,StringComparison.OrdinalIgnoreCase))&&entry.Id!=query)continue;
                 matched.Add(entry);if(matched.Count>offset+limit)break;
             }
             if(matched.Count>offset+limit||scanned>5000)break;
@@ -82,6 +109,7 @@ public sealed class MemoryArchive {
         var parts=id.Split(':');
         if(parts.Length!=2||!int.TryParse(parts[1],out int sequence)||sequence<1||!checkpoint.Cursors.TryGetValue(parts[0],out int cursor)||sequence>cursor||parts[0].Any(c=>!char.IsLetterOrDigit(c)&&c!='-'))throw new InvalidOperationException("memory_evidence_outside_saved_timeline");
         var entry=Find(parts[0],sequence)??throw new InvalidOperationException("memory_evidence_missing");
+        if(entry.ActorGeneration!=checkpoint.ActorGenerations.GetValueOrDefault(entry.Actor))throw new InvalidOperationException("memory_evidence_forgotten");
         if(offset<0||offset>entry.Text.Length)throw new InvalidOperationException("invalid_evidence_offset");
         int length=Math.Min(4000,entry.Text.Length-offset);
         return new{entry.Id,entry.Actor,entry.Kind,entry.Day,text=entry.Text.Substring(offset,length),offset,total_characters=entry.Text.Length,next_offset=offset+length<entry.Text.Length?(int?)(offset+length):null};

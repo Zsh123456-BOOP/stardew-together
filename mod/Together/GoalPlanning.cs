@@ -9,6 +9,7 @@ public sealed class SharedGoal {
     public int Count {get;set;}=1;
     public int CreatedDay {get;set;}
     public int BaselineCrafts {get;set;}
+    public string Completion {get;set;}="owned";
     public string Status {get;set;}="active";
     public string Owner {get;set;}="together";
     public Dictionary<string,string> Assignments {get;set;}=new();
@@ -88,10 +89,11 @@ public static class GoalPlanner {
         string Expand(string item,int count,string path,HashSet<string> ancestors,int depth,GoalRecipe? selected=null) {
             var node=new GoalNode{Id=path,Item=item,Name=name(item),Required=count,Owner=goal.Assignments.GetValueOrDefault(path,goal.Owner),Source="当前存档库存"};
             goal.Nodes.Add(node);budget--;
-            node.Owned=ledger.Take(item,count);
-            if(node.Owned>0)goal.Reserved.Add(new(){Item=item,Count=node.Owned,Name=node.Name});
+            bool craftingEvidence=path=="root"&&goal.Completion=="crafted";
+            node.Owned=craftingEvidence?Math.Min(count,Math.Max(0,crafted-goal.BaselineCrafts)):ledger.Take(item,count);
+            if(node.Owned>0&&!craftingEvidence)goal.Reserved.Add(new(){Item=item,Count=node.Owned,Name=node.Name});
             if(node.Missing==0){node.Status="ready";node.Reason="这份目标已分配到足量库存";return path;}
-            node.InProgress=processing?.Take(item,node.Missing)??0;
+            node.InProgress=craftingEvidence?0:processing?.Take(item,node.Missing)??0;
             if(node.ToPrepare==0){node.Status="processing";node.Reason="原生机器中已有对应产物，等待加工或收取；还不算已获得。";return path;}
             if(goal.DirectGather.Contains(path)){node.Reason="你选择直接收集成品，暂不展开制作链；购买仍按已有清单和预算。";return path;}
             // Building a whole new processing facility is not an implicit prerequisite for collecting a common resource.

@@ -44,7 +44,8 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("withdraw" or "plant" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(actor=="player"&&goal is "pet" or "feed" or "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
         if(actor!="player" && goal is "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
@@ -134,7 +135,7 @@ public sealed partial class ModEntry {
         if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "stone" or "wood" or "fiber" or "harvest" or "forage";
+        bool gathering=j.goal is "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Count()>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         var origin=AgentMapOrigin(j.actor);
         if(origin.Location.NameOrUniqueName!=j.location) {
@@ -212,7 +213,7 @@ public sealed partial class ModEntry {
         StopSemanticWork(j,"no_reachable_water_source");
     }
     private void SelectCompanionWork(SemanticJob j,GameLocation l) {
-        var actor=WorkActor(j.actor);string skill=j.goal=="stone"?"mine":j.goal is "wood" or "fiber"?"clear":j.goal;
+        var actor=WorkActor(j.actor);string skill=j.goal=="stone"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
         // NPCs have no native Farmer stamina bar. Do not invent one; bound by time,
         // actual available skills, cargo capacity and the adapter's safety checks.
         if(j.Item.Length>0&&actor.GetProperty("cargo").EnumerateObject().Count()>=8){StopSemanticWork(j,"companion_cargo_needs_unloading");return;}
@@ -229,7 +230,9 @@ public sealed partial class ModEntry {
         bool any=j.goal switch {
             "water"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.state.Value==0&&!d.readyForHarvest()),
             "harvest"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.readyForHarvest()),
-            "forage"=>l.objects.Values.Any(o=>o.isForage()),_=>true};
+            "forage"=>l.objects.Values.Any(o=>o.isForage()),
+            "pet"=>Game1.getFarm().getAllFarmAnimals().Any(a=>a.currentLocation==l&&!a.wasPet.Value),
+            "collect"=>l.objects.Values.Any(o=>o.heldObject.Value!=null&&o.readyForHarvest.Value),_=>true};
         bool met=j.requested==0&&!any;
         StopSemanticWork(j,met?"all_current_targets_completed":claimed?"targets_claimed_by_other_actor":"no_eligible_targets_check_capability_path_or_cargo",met);
     }

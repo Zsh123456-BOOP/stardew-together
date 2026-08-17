@@ -5,6 +5,12 @@ public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool 
 public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
 
 public static class FarmLayout {
+    public static Dictionary<FarmCell,int> WaterDistances(IReadOnlyList<LayoutCell> source,IEnumerable<FarmCell> water) {
+        var cells=source.ToDictionary(c=>c.Tile);var result=new Dictionary<FarmCell,int>();var queue=new Queue<FarmCell>();
+        foreach(var stand in water.SelectMany(Neighbours).Distinct().Where(p=>cells.TryGetValue(p,out var c)&&c.Passable)) {result[stand]=0;queue.Enqueue(stand);}
+        while(queue.TryDequeue(out var p))foreach(var n in Neighbours(p))if(!result.ContainsKey(n)&&cells.TryGetValue(n,out var c)&&c.Passable){result[n]=result[p]+1;queue.Enqueue(n);}
+        return result;
+    }
     private static IEnumerable<FarmCell> Neighbours(FarmCell p) {yield return new(p.X+1,p.Y);yield return new(p.X-1,p.Y);yield return new(p.X,p.Y+1);yield return new(p.X,p.Y-1);}
     private static Dictionary<FarmCell,int> Distances(Dictionary<FarmCell,LayoutCell> cells,FarmCell start,HashSet<FarmCell> blocked) {
         var result=new Dictionary<FarmCell,int>{{start,0}};var queue=new Queue<FarmCell>();queue.Enqueue(start);

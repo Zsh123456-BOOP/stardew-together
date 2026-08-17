@@ -109,7 +109,15 @@ public sealed class Companion {
         EnergyDay=day;
     }
 }
+public sealed class StoragePolicy {
+    public bool AutoExpand {get;set;}=true;
+    public int MaxSharedChests {get;set;}=4;
+    public int WoodBudgetPerDay {get;set;}=100;
+    public int BudgetDay {get;set;}=-1;
+    public int WoodReserved {get;set;}
+}
 public sealed class SaveData {
+    public StoragePolicy Storage {get;set;}=new();
     public List<SharedGoal> SharedGoals {get;set;}=new();
     public KnowledgeNotebook Knowledge {get;set;}=new();
     public FarmPolicy FarmPolicy {get;set;}=new();

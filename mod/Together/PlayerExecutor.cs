@@ -126,7 +126,12 @@ public sealed partial class PlayerExecutor {
                 case "player.place":
                     target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,true);Face(target);
                     if(Game1.player.ActiveObject==null)throw new InvalidOperationException("slot_not_placeable_object");
-                    if(!Utility.tryToPlaceItem(Game1.currentLocation,Game1.player.ActiveObject,target.X*64,target.Y*64))throw new InvalidOperationException("native_placement_rejected");
+                    var placedItem=Game1.player.ActiveObject;string placedId=placedItem.QualifiedItemId;int placeBefore=Game1.player.Items.Where(i=>i?.QualifiedItemId==placedId).Sum(i=>i.Stack);
+                    ValidateConsumption?.Invoke(new Dictionary<Item,int>{{placedItem,1}},AgentToolRegistry.Text(args,"goal_id"),placedId);
+                    if(!Utility.tryToPlaceItem(Game1.currentLocation,placedItem,target.X*64,target.Y*64))throw new InvalidOperationException("native_placement_rejected");
+                    int placeConsumed=placeBefore-Game1.player.Items.Where(i=>i?.QualifiedItemId==placedId).Sum(i=>i.Stack);
+                    if(placeConsumed!=1)throw new InvalidOperationException("native_placement_consumption_not_verified");
+                    Current.effects.Add(new{kind="native_placement",item=placedId,consumed=placeConsumed,tile=target});
                     Finish("succeeded");break;
                 default:throw new InvalidOperationException("unsupported_player_skill");
             }

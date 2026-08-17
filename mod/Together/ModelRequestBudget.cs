@@ -57,6 +57,7 @@ public sealed class ModelRequestBudget {
         // conservative reservation, not an exact tokenizer or currency estimate.
         long bound=(long)bytes+output+8192;budget.Reserve(bound);
         var response=await client.SendAsync(request,cancellation);
+        try {
         string payload=await response.Content.ReadAsStringAsync(cancellation);
         try {
             using var parsed=JsonDocument.Parse(payload);
@@ -64,5 +65,6 @@ public sealed class ModelRequestBudget {
                 budget.Reconcile(bound,tokens);
         }catch(JsonException){/* Keep the reservation: no trustworthy usage. */}
         return response;
+        }catch{response.Dispose();throw;}
     }
 }

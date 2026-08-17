@@ -31,7 +31,8 @@ public sealed class SemanticJob {
     internal int Day,Reserve,Until,BeforeCount,BeforeWater,Attempts;
     internal DateTime Started=DateTime.UtcNow,Next=DateTime.MinValue;
     internal HashSet<string> Excluded=new();
-    internal Point? RefillTile,StorageTile;
+    internal Point? RefillTile,StorageTile,ExpansionTile;
+    internal string StorageLocation="";
     internal bool Storing;
     internal bool IncludeTrees;
     internal string PlanId="";
@@ -44,9 +45,9 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
-        if(actor=="player"&&goal is "pet" or "feed" or "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(goal is not ("milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
+        if(actor!="player" && goal is "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
@@ -112,9 +113,11 @@ public sealed partial class ModEntry {
             if(j.ChildKind=="labor")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
             if(!ok) {
                 string error=r.TryGetProperty("error",out var e)?e.GetString()??"child_failed":"child_failed";
+                if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
                 if(j.ChildKind=="labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}
             } else if(j.ChildKind=="labor") {j.completed++;j.phase="selecting";}
+            else if(j.ChildKind=="care_batch"){j.completed+=r.TryGetProperty("completed",out var done)?done.GetInt32():1;j.phase="selecting";}
             else if(j.ChildKind=="recovery_eat") {j.FoodUsed++;j.phase="selecting";}
             else if(j.ChildKind=="storage_deposit") {
                 j.Storing=false;
@@ -137,8 +140,12 @@ public sealed partial class ModEntry {
         if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
+        bool gathering=j.goal is "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Count()>=8)) {j.Storing=true;TickWorkStorage(j);return;}
+        if(j.actor=="player"&&j.goal is "pet" or "feed" or "milk" or "shear" or "animal_collect") {
+            if(j.goal is "milk" or "shear"&&Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"animal_care_energy_reserve");return;}
+            WorkChild(j,"player.care",new{mode=j.goal=="animal_collect"?"collect":j.goal,count=1},"care_batch");return;
+        }
         var origin=AgentMapOrigin(j.actor);
         if(origin.Location.NameOrUniqueName!=j.location) {
             WorkChild(j,j.actor=="player"?"player.travel":"companion.assign",j.actor=="player"?(object)new{location=j.location}:new{actor_id=j.actor,skill="travel",destination=j.location},"travel");return;

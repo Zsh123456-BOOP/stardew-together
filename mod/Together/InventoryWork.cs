@@ -6,6 +6,17 @@ using StardewValley.Objects;
 namespace Together;
 public sealed partial class ModEntry {
     private const string WorkChestRole="stardewagent.together/chest-role";
+    internal object ConfigureStoragePolicy(JsonElement args) {
+        var p=Data.Storage;
+        int cap=AgentToolRegistry.Number(args,"max_shared_chests",p.MaxSharedChests),budget=AgentToolRegistry.Number(args,"wood_budget_per_day",p.WoodBudgetPerDay);
+        if(cap is <0 or >32||budget is <0 or >999)throw new InvalidOperationException("invalid_storage_expansion_policy");
+        if(args.TryGetProperty("auto_expand",out var enabled)) {
+            if(enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("invalid_auto_expand");
+            p.AutoExpand=enabled.GetBoolean();
+        }
+        p.MaxSharedChests=cap;p.WoodBudgetPerDay=budget;
+        return new{policy=p,note="预算调整不退回今日已预留木材额度；原生制作仍保护其它目标材料，满包无制作空位会明确报告。"};
+    }
     internal object ConfigureStorage(JsonElement args) {
         if(playerExecutor.Busy||WorkActorBusy("player"))throw new InvalidOperationException("wait_for_player_before_storage_configuration");
         string location=AgentToolRegistry.Text(args,"location",Game1.currentLocation.NameOrUniqueName);
@@ -49,15 +60,18 @@ public sealed partial class ModEntry {
     private static bool OutputChest(Chest c)=>c.playerChest.Value&&c.modData.TryGetValue(WorkChestRole,out var role)&&role=="output";
     private int StoreCount(Item item) {
         if(item is not StardewValley.Object o||o.bigCraftable.Value||o.questItem.Value||o.Category==-74)return 0;
-        // Keep all tools/seeds/placeables, known reservations, and a small food stack.
-        int keep=Math.Max(Data.Reservations.GetValueOrDefault(item.QualifiedItemId),o.Edibility>0?2:0);
+        // Storage is not consumption: reserved materials remain owned in shared
+        // chests and are withdrawn by dependency tasks when actually needed.
+        int prior=Game1.player.Items.TakeWhile(i=>!ReferenceEquals(i,item)).Where(i=>i?.QualifiedItemId==item.QualifiedItemId).Sum(i=>i.Stack);
+        int keep=o.Edibility>0?Math.Max(0,2-prior):0;
         return Math.Max(0,item.Stack-keep);
     }
     private object InventoryPlanning()=>new{
         player_free_slots=Game1.player.Items.Count(i=>i==null),target_free_slots=2,
-        keep_policy="工具、种子、可放置设备、任务物品保留；已声明预留保留，食物每种至少2个。其它产物存入标记output的共享箱，不丢弃/出售。",
+        keep_policy="工具、种子、设备、任务物品保留，食物每种至少2个。目标预留材料可存共享箱但不能被其他用途消耗；需要时由依赖任务取回。",
         storable=Game1.player.Items.Select((item,slot)=>new{item,slot}).Where(x=>x.item!=null&&StoreCount(x.item)>0).Select(x=>new{x.slot,id=x.item.QualifiedItemId,count=StoreCount(x.item)}),
-        output_chests=Game1.getFarm().objects.Pairs.Where(p=>p.Value is Chest c&&OutputChest(c)).Select(p=>new{location="Farm",x=(int)p.Key.X,y=(int)p.Key.Y,capacity=((Chest)p.Value).GetActualCapacity(),used=((Chest)p.Value).GetItemsForPlayer().Count(i=>i!=null)})
+        expansion_policy=Data.Storage,
+        output_chests=SharedStorage().Select(s=>new{location=s.Location.NameOrUniqueName,x=(int)s.Tile.X,y=(int)s.Tile.Y,capacity=s.Chest.GetActualCapacity(),used=s.Chest.GetItemsForPlayer().Count(i=>i!=null)})
     };
     private void StorePlayerAt(Point tile,SemanticJob job) {
         var l=Game1.currentLocation;
@@ -79,27 +93,34 @@ public sealed partial class ModEntry {
     }
     private void TickWorkStorage(SemanticJob j) {
         var origin=AgentMapOrigin(j.actor);
-        if(origin.Location.NameOrUniqueName!="Farm") {
-            WorkChild(j,j.actor=="player"?"player.travel":"companion.assign",j.actor=="player"?(object)new{location="Farm"}:new{actor_id=j.actor,skill="travel",destination="Farm"},"storage_travel");return;
-        }
         if(j.actor!="player") {
+            if(origin.Location.NameOrUniqueName!="Farm"){WorkChild(j,"companion.assign",new{actor_id=j.actor,skill="travel",destination="Farm"},"storage_travel");return;}
             var actor=WorkActor(j.actor);var candidate=actor.GetProperty("candidates").EnumerateArray().FirstOrDefault(c=>c.GetProperty("skill").GetString()=="deposit");
             if(candidate.ValueKind!=JsonValueKind.Object){StopSemanticWork(j,"no_available_designated_storage");return;}
             WorkChild(j,"companion.assign",new{actor_id=j.actor,skill="deposit",target_id=candidate.GetProperty("target_id").GetString()},"storage_deposit");return;
         }
+        if(j.ExpansionTile.HasValue){TickStorageExpansion(j);return;}
         if(j.StorageTile is {} tile) {
-            StorePlayerAt(tile,j);j.StorageTile=null;j.Storing=false;
+            if(Game1.currentLocation.NameOrUniqueName!=j.StorageLocation){WorkChild(j,"player.travel",new{location=j.StorageLocation},"storage_travel");return;}
+            if(Math.Abs(Game1.player.TilePoint.X-tile.X)+Math.Abs(Game1.player.TilePoint.Y-tile.Y)>1) {
+                var stand=WorkStand(Game1.currentLocation,tile);if(!stand.HasValue)throw new InvalidOperationException("selected_storage_unreachable");
+                WorkChild(j,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_move");return;
+            }
+            StorePlayerAt(tile,j);j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
+            if(j.goal!="store"&&Game1.player.Items.Count(i=>i==null)>=2){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
+        }
+        if(!Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)) {
             if(j.goal=="store"){StopSemanticWork(j,"stored_available_cargo",true);return;}
-            if(!Game1.player.Items.Any(i=>i==null)){StopSemanticWork(j,"inventory_protected_or_storage_insufficient");return;}
-            return;
+            if(Game1.player.Items.Any(i=>i==null)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
+            StopSemanticWork(j,"inventory_contains_only_protected_items");return;
         }
-        if(!Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)){StopSemanticWork(j,"inventory_contains_only_protected_items");return;}
-        foreach(var pair in Game1.getFarm().objects.Pairs.Where(p=>p.Value is Chest c&&OutputChest(c)).OrderBy(p=>Vector2.DistanceSquared(p.Key,Game1.player.Tile))) {
-            var chest=(Chest)pair.Value;if(chest.GetMutex().IsLocked())continue;
+        foreach(var storage in SharedStorage().OrderBy(s=>s.Location==Game1.currentLocation?0:1).ThenBy(s=>Vector2.DistanceSquared(s.Tile,Game1.player.Tile))) {
+            var chest=storage.Chest;if(chest.GetMutex().IsLocked()||j.Excluded.Contains("storage:"+storage.Location.NameOrUniqueName+":"+(int)storage.Tile.X+":"+(int)storage.Tile.Y))continue;
             bool room=chest.GetItemsForPlayer().Count(i=>i!=null)<chest.GetActualCapacity()||Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0&&chest.GetItemsForPlayer().Any(s=>s!=null&&s.canStackWith(i)&&s.Stack<s.maximumStackSize()));
-            if(!room)continue;var at=WorkStand(Game1.getFarm(),pair.Key.ToPoint());if(at==null)continue;
-            j.StorageTile=pair.Key.ToPoint();WorkChild(j,"player.move",new{x=at.Value.X,y=at.Value.Y},"storage_move");return;
+            if(!room)continue;
+            j.StorageTile=storage.Tile.ToPoint();j.StorageLocation=storage.Location.NameOrUniqueName;return;
         }
-        StopSemanticWork(j,"no_available_designated_storage");
+        if(TryStartStorageExpansion(j))return;
+        StopSemanticWork(j,"no_available_designated_storage_or_expansion_budget");
     }
 }

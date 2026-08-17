@@ -20,7 +20,7 @@ public static class GoalChecks {
         check(g.Nodes[0].Status=="player_step" && g.Status=="active","materials ready requires real crafting, not a success flag");
         GoalPlanner.Rebuild(g,recipes,Ledger(("device",1)),2,id=>id);
         check(g.Status=="fulfilled" && g.Reserved.Count==0,"actual target stock fulfills and releases reservations");
-        g=Goal();g.BaselineCrafts=5;GoalPlanner.Rebuild(g,recipes,Ledger(),2,id=>id,5);
+        g=Goal();g.Completion="crafted";g.BaselineCrafts=5;GoalPlanner.Rebuild(g,recipes,Ledger(),2,id=>id,5);
         check(g.Status=="active","historical craft count does not fulfill a new goal");
         GoalPlanner.Rebuild(g,recipes,Ledger(),2,id=>id,6);check(g.Status=="fulfilled","new native craft count verifies a placed or moved result");
         var first=Goal();var second=Goal();var ledger=Ledger(("bar",2),("wood",10));

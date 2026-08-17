@@ -10,6 +10,11 @@ public sealed class SharedGoal {
     public int CreatedDay {get;set;}
     public int BaselineCrafts {get;set;}
     public string Completion {get;set;}="owned";
+    public bool AutoExecute {get;set;}
+    public string AutoBlockedReason {get;set;}="";
+    public string AutoBlockedConditions {get;set;}="";
+    public int AutoReviewDay {get;set;}=-1;
+    public int AutoReviewMinute {get;set;}=-1;
     public string Status {get;set;}="active";
     public string Owner {get;set;}="together";
     public Dictionary<string,string> Assignments {get;set;}=new();
@@ -89,7 +94,7 @@ public static class GoalPlanner {
         string Expand(string item,int count,string path,HashSet<string> ancestors,int depth,GoalRecipe? selected=null) {
             var node=new GoalNode{Id=path,Item=item,Name=name(item),Required=count,Owner=goal.Assignments.GetValueOrDefault(path,goal.Owner),Source="当前存档库存"};
             goal.Nodes.Add(node);budget--;
-            bool craftingEvidence=path=="root"&&goal.Completion=="crafted";
+            bool craftingEvidence=path=="root"&&goal.Completion is "crafted" or "cooked";
             node.Owned=craftingEvidence?Math.Min(count,Math.Max(0,crafted-goal.BaselineCrafts)):ledger.Take(item,count);
             if(node.Owned>0&&!craftingEvidence)goal.Reserved.Add(new(){Item=item,Count=node.Owned,Name=node.Name});
             if(node.Missing==0){node.Status="ready";node.Reason="这份目标已分配到足量库存";return path;}
@@ -118,7 +123,7 @@ public static class GoalPlanner {
         Expand(goal.Item,goal.Count,"root",new(),0,rootRecipe);
         var root=goal.Nodes[0];
         // Farmer.craftingRecipes stores produced units, not recipe executions.
-        bool craftedEnough=rootRecipe!=null && Math.Max(0,crafted-goal.BaselineCrafts)>=goal.Count;
+        bool craftedEnough=goal.Completion is "crafted" or "cooked" && rootRecipe!=null && Math.Max(0,crafted-goal.BaselineCrafts)>=goal.Count;
         if(root.Missing==0 || craftedEnough) {
             goal.Status="fulfilled";goal.Reserved.Clear();goal.Summary=craftedEnough?"原生制作计数确认目标数量已完成":"当前实际库存确认已拥有目标数量";
         } else {

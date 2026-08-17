@@ -4,6 +4,8 @@ using StardewCropCalculatorLibrary;
 
 public static class AutonomyDevelopmentChecks {
     public static void Run(Action<bool,string> check) {
+        check(ResourceRules.Clump(148)?.Output=="(O)390"&&ResourceRules.Clump(622)?.Output=="(O)386","quarry boulder is stone and meteorite is iridium");
+        check(ResourceRules.Nodes["751"]=="(O)378"&&ResourceRules.Clump(600)?.Output=="(O)709","resource selection resolves real node outputs");
         var failures=new FailureKnowledge();
         failures.Record("k","player","work.run","empty","state1","task1",1,600);
         check(failures.Block("k","state1",1,610)!=null,"repeat failure blocked only under unchanged conditions");
@@ -17,6 +19,9 @@ public static class AutonomyDevelopmentChecks {
         check(goal.Status=="active","native output count must not be multiplied by recipe batch size twice");
         GoalPlanner.Rebuild(goal,recipes,new(Array.Empty<GoalStock>()),1,id=>id,15);
         check(goal.Status=="fulfilled","native production delta satisfies explicit crafted goal");
+        var ownedGoal=new SharedGoal{Entity="craft:batch",Item="output",Count=5,Completion="owned"};
+        GoalPlanner.Rebuild(ownedGoal,recipes,new(Array.Empty<GoalStock>()),1,id=>id,99);
+        check(ownedGoal.Status=="active","historic craft counter cannot satisfy an owned inventory goal");
         check(new Crop("seed",4,-1,20,35).HarvestDays(1,28).SequenceEqual(new[]{5}),"single-harvest schedule terminates without backward regrow loop");
         var batch=new PlantBatch(new Crop("bean",10,3,60,40),1,1,28);
         check(new PlantBatch(batch).NumDays==28,"calendar clone preserves harvest horizon");

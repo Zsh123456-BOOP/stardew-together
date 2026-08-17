@@ -8,6 +8,7 @@ namespace Together;
 public sealed partial class PlayerExecutor {
     private string machineMode="",machineKind="",machineInput="",machineGoal="",machineOutput="";
     private int machineCount;
+    private bool machineUnreachable;
     private Point? machineTile;
     private readonly HashSet<Point> machinesVisited=new();
     private void StartMachines(JsonElement args) {
@@ -15,7 +16,7 @@ public sealed partial class PlayerExecutor {
         machineGoal=AgentToolRegistry.Text(args,"goal_id","");machineOutput=AgentToolRegistry.Text(args,"output","");machineCount=AgentToolRegistry.Number(args,"count",0);
         if(machineMode is not ("collect" or "load")||machineCount is <0 or >100||machineMode=="load"&&machineInput.Length==0)throw new InvalidOperationException("invalid_machine_work");
         destination=AgentToolRegistry.Text(args,"location",origin);if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_machine_location");
-        machinesVisited.Clear();machineTile=null;Current!.phase="machine_select";
+        machinesVisited.Clear();machineTile=null;machineUnreachable=false;Current!.phase="machine_select";
     }
     private void TickMachines() {
         var p=Game1.player;
@@ -27,9 +28,9 @@ public sealed partial class PlayerExecutor {
             var candidates=Game1.currentLocation.objects.Pairs.Where(pair=>!machinesVisited.Contains(pair.Key.ToPoint())&&pair.Value.GetMachineData()!=null&&(machineKind.Length==0||pair.Value.QualifiedItemId==machineKind)&&
                 (machineMode=="collect"?pair.Value.readyForHarvest.Value&&pair.Value.heldObject.Value!=null:pair.Value.heldObject.Value==null)).OrderBy(pair=>Vector2.DistanceSquared(pair.Key,p.Tile));
             foreach(var pair in candidates) {
-                try{var stand=Approach(pair.Key.ToPoint(),true);machineTile=pair.Key.ToPoint();Walk(stand);Current!.phase="machine_walk";break;}catch(InvalidOperationException){machinesVisited.Add(pair.Key.ToPoint());}
+                try{var stand=Approach(pair.Key.ToPoint(),true);machineTile=pair.Key.ToPoint();Walk(stand);Current!.phase="machine_walk";break;}catch(InvalidOperationException){machineUnreachable=true;machinesVisited.Add(pair.Key.ToPoint());}
             }
-            if(machineTile==null){Finish(machineCount==0?"succeeded":"failed",machineCount==0?null:"eligible_machines_exhausted");return;}
+            if(machineTile==null){bool complete=machineCount==0&&!machineUnreachable;Finish(complete?"succeeded":"failed",complete?null:machineUnreachable?"some_machine_targets_unreachable":"eligible_machines_exhausted");return;}
         }
         if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();var tile=machineTile.Value;Adjacent(tile);Face(tile);
         if(!Game1.currentLocation.objects.TryGetValue(tile.ToVector2(),out var machine)||machine.GetMachineData() is not {} data)throw new InvalidOperationException("machine_changed");

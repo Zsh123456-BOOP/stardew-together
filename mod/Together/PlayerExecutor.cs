@@ -22,6 +22,7 @@ public sealed class PlayerAction {
 public sealed partial class PlayerExecutor {
     private readonly Dictionary<string,PlayerAction> receipts=new();
     public PlayerAction? Current {get;private set;}
+    public Func<LevelUpMenu,bool>? ApplyProfession {get;set;}
     public Action<int>? NativeSleepRequested {get;set;}
     public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
@@ -56,7 +57,7 @@ public sealed partial class PlayerExecutor {
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
-        bool buying=skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu;
+        bool buying=skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
@@ -65,6 +66,9 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.donate_museum":StartMuseumDonation(args);break;
+                case "player.collect_reward":StartCollectReward();break;
+                case "player.service":StartService(args);break;
                 case "player.machine":StartMachines(args);break;
                 case "player.claim_reward":StartQuestReward(args);break;
                 case "player.care":StartAnimalCare(args);break;
@@ -84,7 +88,7 @@ public sealed partial class PlayerExecutor {
                     Current.phase="eating";break;
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "chop" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -192,6 +196,9 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.donate_museum"){TickMuseumDonation();return;}
+            if(Current.skill=="player.collect_reward"){TickCollectReward();return;}
+            if(Current.skill=="player.service"){TickService();return;}
             if(Current.skill=="player.machine"){TickMachines();return;}
             if(Current.skill=="player.claim_reward"){TickQuestReward();return;}
             if(Current.skill=="player.care"){TickAnimalCare();return;}
@@ -228,9 +235,10 @@ public sealed partial class PlayerExecutor {
             MonitorWalk();
         }catch(Exception e){Finish("failed",e is InvalidOperationException?e.Message:e.GetType().Name);}
     }
+    private static ResourceClump? ClumpAt(Point p)=>Game1.currentLocation.resourceClumps.FirstOrDefault(c=>p.X>=c.Tile.X&&p.X<c.Tile.X+c.width.Value&&p.Y>=c.Tile.Y&&p.Y<c.Tile.Y+c.height.Value);
     private static object TileState(Point p) {
-        var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
-        return new{x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
+        var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;var clump=ClumpAt(p);
+        return new{clump_id=clump?.parentSheetIndex.Value,clump_health=clump?.health.Value,x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
     private void TickWork() {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
@@ -239,7 +247,7 @@ public sealed partial class PlayerExecutor {
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
             // The last impact can finish before its debris reaches the Farmer. Let native
             // collection settle so receipts include the final crop/material where picked up.
-            if(workSkill is "harvest" or "clear" or "chop" or "clear_dead" or "forage") {
+            if(workSkill is "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage") {
                 if(Current!.phase!="settling_drops"){Current.phase="settling_drops";nextInteraction=DateTime.UtcNow.AddSeconds(1);}
                 if(DateTime.UtcNow<nextInteraction)return;
             }
@@ -264,6 +272,12 @@ public sealed partial class PlayerExecutor {
         }
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
+            if(workSkill=="break_clump") {
+                var clump=ClumpAt(tile)??throw new InvalidOperationException("resource_clump_gone");
+                var rule=ResourceRules.Clump(clump.parentSheetIndex.Value)??throw new InvalidOperationException("unknown_resource_clump");
+                var tool=Game1.player.Items[workSlot] as Tool;
+                if(tool==null||tool.UpgradeLevel<rule.Level||rule.Tool=="axe"&&tool is not StardewValley.Tools.Axe||rule.Tool=="pickaxe"&&tool is not StardewValley.Tools.Pickaxe)throw new InvalidOperationException("resource_clump_tool_upgrade_required");
+            }
             if(workSkill=="chop") {
                 if(f is not Tree tree || tree.growthStage.Value<5 || tree.tapped.Value)throw new InvalidOperationException("not_an_eligible_mature_tree");
                 if(Game1.player.Items[workSlot] is not StardewValley.Tools.Axe)throw new InvalidOperationException("chop_requires_axe");
@@ -273,7 +287,7 @@ public sealed partial class PlayerExecutor {
             if(workSkill=="clear") {
                 if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
-                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || resource.BaseName=="Stone" && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && Game1.player.CurrentTool?.isScythe()==true))throw new InvalidOperationException("wrong_resource_or_tool");
+                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || (resource.BaseName=="Stone"||ResourceRules.Nodes.ContainsKey(resource.ItemId)) && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && Game1.player.CurrentTool?.isScythe()==true))throw new InvalidOperationException("wrong_resource_or_tool");
                 if(Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
             }
             if(workSkill=="clear_dead") {
@@ -296,7 +310,7 @@ public sealed partial class PlayerExecutor {
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
-            if(workSkill is "water" or "till" or "clear" or "chop" or "clear_dead") {
+            if(workSkill is "water" or "till" or "clear" or "chop" or "break_clump" or "clear_dead") {
                 if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
@@ -309,11 +323,11 @@ public sealed partial class PlayerExecutor {
             var after=TileState(tile);
             if(JsonSerializer.Serialize(workBefore)==JsonSerializer.Serialize(after))throw new InvalidOperationException("work_effect_not_observed");
             Current.effects.Add(new{before=workBefore,after});
-            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill=="chop"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2())) {
+            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill=="chop"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2()) || workSkill=="break_clump"&&ClumpAt(tile)!=null) {
                 if(++workHits>=64)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
-            if(workSkill is "clear" or "chop" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
+            if(workSkill is "clear" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
             Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }
@@ -349,6 +363,7 @@ public sealed partial class PlayerExecutor {
     private void TickNight() {
         if(Current!.phase=="waking" && Game1.player.CanMove && !Game1.fadeToBlack && Game1.activeClickableMenu==null){Finish("succeeded");return;}
         if((DateTime.UtcNow-started).TotalSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
+        if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:true} chooser&&ApplyProfession?.Invoke(chooser)==true){Current!.effects.Add(new{kind="native_profession_policy",professions=Game1.player.professions.ToArray()});return;}
         // LevelUpMenu.receiveLeftClick is empty in 1.6; ordinary confirmations use
         // its native handler. Actual profession choices must never be auto-confirmed.
         if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:false,isActive:true} level && level.CanReceiveInput()) {

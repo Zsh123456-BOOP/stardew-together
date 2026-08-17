@@ -14,6 +14,7 @@ public sealed partial class ModEntry {
         if(goalRecipeRevision==Knowledge.Revision)return;
         goalRecipeRevision=Knowledge.Revision;goalRecipes.Clear();
         ReadProcessingRecipes();
+        ReadCookingGoalRecipes();
         foreach(var pair in DataLoader.CraftingRecipes(Game1.content)) {
             var fields=pair.Value.Split('/');if(fields.Length<5)continue;
             var output=fields[2].Split(' ',StringSplitOptions.RemoveEmptyEntries);
@@ -30,6 +31,15 @@ public sealed partial class ModEntry {
             goalRecipes["craft:"+pair.Key]=new(){Id="craft:"+pair.Key,Item=item,Name=recipe.DisplayName,Output=quantity,Unlock=unlock,
                 Source="游戏 Data/CraftingRecipes · "+pair.Key,
                 Inputs=recipe.recipeList.Select(p=>new Requirement{Item=ItemRegistry.QualifyItemId(p.Key)??p.Key,Name=KnowledgeCatalog.IngredientName(p.Key),Count=p.Value}).ToList()};
+        }
+    }
+    private void ReadCookingGoalRecipes() {
+        foreach(var pair in DataLoader.CookingRecipes(Game1.content)) {
+            var parts=pair.Value.Split('/');if(parts.Length<3)continue;var output=parts[2].Split(' ',StringSplitOptions.RemoveEmptyEntries);
+            if(output.Length<1)continue;string item=ItemRegistry.QualifyItemId(output[0])??output[0];if(ItemRegistry.GetDataOrErrorItem(item).IsErrorItem)continue;
+            var recipe=new CraftingRecipe(pair.Key,true);int count=output.Length>1&&int.TryParse(output[1],out int n)?n:1;
+            goalRecipes["cook:"+pair.Key]=new(){Id="cook:"+pair.Key,Kind="cook",Item=item,Name=recipe.DisplayName,Output=Math.Max(1,count),Source="游戏 Data/CookingRecipes · "+pair.Key,
+                Unlock="先解锁原生烹饪配方及可用厨房",Inputs=recipe.recipeList.Select(p=>new Requirement{Item=ItemRegistry.QualifyItemId(p.Key)??p.Key,Name=KnowledgeCatalog.IngredientName(p.Key),Count=p.Value}).ToList()};
         }
     }
     private void ReadProcessingRecipes() {
@@ -64,13 +74,14 @@ public sealed partial class ModEntry {
         var machines=new HashSet<string>();var processingStock=new List<GoalStock>();
         void Scan(GameLocation location){foreach(var o in location.objects.Values)if(o.bigCraftable.Value){machines.Add(o.QualifiedItemId);if(o.heldObject.Value is {} output)processingStock.Add(new(){Item=output.QualifiedItemId,Count=output.Stack,Category=output.Category,Quality=output.Quality});}foreach(var b in location.buildings)if(b.GetIndoors() is {} inside)Scan(inside);}
         Scan(Game1.getFarm());
-        foreach(var r in goalRecipes.Values)r.Known=r.Kind=="craft"?Game1.player.craftingRecipes.ContainsKey(r.Id[6..]):machines.Contains(r.Facility);
+        foreach(var r in goalRecipes.Values)r.Known=r.Kind=="craft"?Game1.player.craftingRecipes.ContainsKey(r.Id[6..]):r.Kind=="cook"?Game1.player.cookingRecipes.ContainsKey(r.Id[5..])&&Utility.getHomeOfFarmer(Game1.player).upgradeLevel>=1:machines.Contains(r.Facility);
         var ledger=new GoalLedger(Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Category=s.Category,Quality=s.Quality}));
         foreach(var need in Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).OrderByDescending(n=>n.Quality))ledger.Take(need.Item,need.Count,need.Quality);
         var processing=new GoalLedger(processingStock);
         foreach(var goal in Data.SharedGoals)GoalPlanner.Rebuild(goal,goalRecipes,ledger,Facts.Day,
-            id=>KnowledgeCatalog.IngredientName(id.StartsWith("(O)-")?id[3..]:id),goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):0,processing);
+            id=>KnowledgeCatalog.IngredientName(id.StartsWith("(O)-")?id[3..]:id),NativeGoalCount(goal),processing);
     }
+    private static int NativeGoalCount(SharedGoal goal)=>goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):goal.Entity.StartsWith("cook:")?Game1.player.recipesCooked.GetValueOrDefault(goal.Item.StartsWith("(O)")?goal.Item[3..]:goal.Item):0;
     public void OpenGoals() {if(Context.IsWorldReady){RefreshFacts(true);Game1.activeClickableMenu=new SharedGoalsMenu(this);}}
     public void AddSharedGoal(string entity,int count=1) {
         if(!Context.IsWorldReady)return;
@@ -179,7 +190,7 @@ public sealed partial class ModEntry {
     }
     private object GoalContext()=>new {
         observed=$"第{Facts.Day+1}天 {Facts.Time}",goals=Data.SharedGoals.Where(g=>g.Status=="active").Take(6).Select(g=>new {
-            g.Id,g.Title,g.Count,g.Summary,steps=g.Nodes.Where(n=>n.Missing>0).Take(16).ToArray(),history=g.History.TakeLast(3).ToArray()}).ToArray(),
+            g.Id,g.Title,g.Count,g.Summary,g.Completion,g.AutoExecute,g.AutoBlockedReason,steps=g.Nodes.Where(n=>n.Missing>0).Take(16).ToArray(),history=g.History.TakeLast(3).ToArray()}).ToArray(),
         note="来自原生配方与实际库存；数量已经扣除其他目标预留。未解锁仍可备料；无对应可执行选项时讨论分工或查资料，不能编造动作或完成。"};
     private bool TryGoalShare(string name,Companion p,Situation s) {
         if(p.Social.Mode!="normal" || s.Threat)return false;

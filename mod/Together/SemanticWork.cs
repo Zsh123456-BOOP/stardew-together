@@ -44,17 +44,18 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "pet" or "feed" or "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
-        int count=AgentToolRegistry.Number(args,"count",goal is "stone" or "wood" or "fiber"?20:0);
+        int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
         int reserve=AgentToolRegistry.Number(args,"reserve_stamina",20),until=AgentToolRegistry.Number(args,"until",2200);
-        if(count<0||count>999||goal is "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>2300||until%100>59)throw new InvalidOperationException("invalid_work_limits");
+        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>2300||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
-        var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        if(goal=="resource"&&!ResourceRules.Nodes.Values.Contains(job.Item))throw new InvalidOperationException("resource_item_has_no_known_native_node_route");
         job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
         if(goal=="withdraw") {
             job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
@@ -136,7 +137,7 @@ public sealed partial class ModEntry {
         if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
+        bool gathering=j.goal is "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Count()>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         var origin=AgentMapOrigin(j.actor);
         if(origin.Location.NameOrUniqueName!=j.location) {
@@ -154,11 +155,11 @@ public sealed partial class ModEntry {
             if(j.goal=="refill"||can.WaterLeft==0||j.RefillTile!=null){RefillWork(j,slot,can);return;}
         }
         var candidates=new List<(Point Tile,string Skill,int Slot,float Energy,string Item)>();
-        int tool=WorkSlot(i=>j.goal switch{"stone"=>i is Pickaxe,"wood"=>i is Axe,"fiber" or "clear_dead"=>i is Tool t&&t.isScythe(),"water"=>i is WateringCan,_=>false});
-        if(j.goal is "stone" or "wood" or "fiber" or "clear_dead" or "water" && tool<0){StopSemanticWork(j,"required_tool_missing");return;}
+        int tool=WorkSlot(i=>j.goal switch{"resource" or "stone"=>i is Pickaxe,"hardwood" or "wood"=>i is Axe,"fiber" or "clear_dead"=>i is Tool t&&t.isScythe(),"water"=>i is WateringCan,_=>false});
+        if(j.goal is "resource" or "hardwood" or "stone" or "wood" or "fiber" or "clear_dead" or "water" && tool<0){StopSemanticWork(j,"required_tool_missing");return;}
         foreach(var pair in l.objects.Pairs) {
             var o=pair.Value;
-            bool match=j.goal switch{"stone"=>o.BaseName=="Stone","wood"=>o.IsTwig(),"fiber"=>o.IsWeeds(),"forage"=>o.isForage()&&!o.bigCraftable.Value,_=>false};
+            bool match=j.goal switch{"resource"=>ResourceRules.Nodes.GetValueOrDefault(o.ItemId)==j.Item,"stone"=>o.BaseName=="Stone","wood"=>o.IsTwig(),"fiber"=>o.IsWeeds(),"forage"=>o.isForage()&&!o.bigCraftable.Value,_=>false};
             if(match)candidates.Add((pair.Key.ToPoint(),j.goal=="forage"?"forage":"clear",tool,j.goal is "fiber" or "forage"?0:Math.Max(4,o.MinutesUntilReady*2+2),j.Item.Length>0?j.Item:o.QualifiedItemId));
         }
         foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt d&&d.crop!=null) {
@@ -168,6 +169,14 @@ public sealed partial class ModEntry {
         if(j.goal=="wood"&&j.IncludeTrees)foreach(var pair in l.terrainFeatures.Pairs)
             if(pair.Value is Tree t&&t.growthStage.Value>=5&&!t.tapped.Value)
                 candidates.Add((pair.Key.ToPoint(),"chop",tool,Math.Max(4,t.health.Value*2+10),j.Item));
+        if(j.goal is "resource" or "hardwood" or "stone")foreach(var clump in l.resourceClumps) {
+            var rule=ResourceRules.Clump(clump.parentSheetIndex.Value);if(rule==null||rule.Value.Output!=j.Item)continue;
+            int clumpSlot=WorkSlot(i=>i is Tool t&&t.UpgradeLevel>=rule.Value.Level&&(rule.Value.Tool=="axe"?i is Axe:i is Pickaxe));
+            if(clumpSlot<0)continue;
+            float energy=(float)Math.Ceiling(clump.health.Value/Math.Max(1,(Game1.player.Items[clumpSlot] as Tool)!.UpgradeLevel*.75+.75))*2+4;
+            foreach(var at in new[]{clump.Tile.ToPoint(),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y),new Point((int)clump.Tile.X,(int)clump.Tile.Y+clump.height.Value-1),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y+clump.height.Value-1)}.Distinct())
+                candidates.Add((at,"break_clump",clumpSlot,energy,j.Item));
+        }
         string? constraint=null;
         foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
             string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key))continue;
@@ -214,7 +223,7 @@ public sealed partial class ModEntry {
         StopSemanticWork(j,"no_reachable_water_source");
     }
     private void SelectCompanionWork(SemanticJob j,GameLocation l) {
-        var actor=WorkActor(j.actor);string skill=j.goal=="stone"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
+        var actor=WorkActor(j.actor);string skill=j.goal is "stone" or "resource"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
         // NPCs have no native Farmer stamina bar. Do not invent one; bound by time,
         // actual available skills, cargo capacity and the adapter's safety checks.
         if(j.Item.Length>0&&actor.GetProperty("cargo").EnumerateObject().Count()>=8){StopSemanticWork(j,"companion_cargo_needs_unloading");return;}
@@ -223,6 +232,7 @@ public sealed partial class ModEntry {
             var tile=c.GetProperty("tile");int x=tile[0].GetInt32(),y=tile[1].GetInt32();string key=$"{x},{y}";
             if(j.Excluded.Contains(key))continue;
             l.objects.TryGetValue(new Vector2(x,y),out var o);
+            if(j.goal=="resource"&&(o==null||ResourceRules.Nodes.GetValueOrDefault(o.ItemId)!=j.Item))continue;
             if(j.goal=="wood"&&o?.IsTwig()!=true||j.goal=="fiber"&&o?.IsWeeds()!=true)continue;
             if(playerExecutor.ClaimsTile(l.NameOrUniqueName,x,y)||AgentTileBusy(l.NameOrUniqueName,x,y)){claimed=true;continue;}
             WorkChild(j,"companion.assign",new{actor_id=j.actor,skill,target_id=c.GetProperty("target_id").GetString()},"labor",key);return;

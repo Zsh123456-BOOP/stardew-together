@@ -4,6 +4,7 @@ namespace Together;
 
 // Serializable checkpoints contain observations and intentions, never an API credential.
 public sealed class AutoplayState {
+    public Dictionary<string,int> ProfessionChoices {get;set;}=new();
     public FailureKnowledge Failures {get;set;}=new();
     public MemoryCheckpoint Memory {get;set;}=new();
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]

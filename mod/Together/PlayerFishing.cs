@@ -42,6 +42,10 @@ public sealed partial class PlayerExecutor {
             if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Current.phase="fishing";
         }
         if(Game1.activeClickableMenu is BobberBar){Current.phase="fishing_minigame";return;}
+        if(Game1.activeClickableMenu is ItemGrabMenu reward&&reward.context is FishingRod) {
+            if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(180);
+            Current.effects.Add(NativeRewards.Step(reward).Evidence);return;
+        }
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("fishing_reward_menu_requires_collection");
         if(rod.isNibbling&&!rod.hit) {rod.DoFunction(Game1.currentLocation,(int)rod.bobber.X,(int)rod.bobber.Y,1,Game1.player);return;}
         if(rod.fishCaught){rod.doneHoldingFish(Game1.player);return;}

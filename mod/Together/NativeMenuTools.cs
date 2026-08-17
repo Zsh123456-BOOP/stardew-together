@@ -9,6 +9,7 @@ using StardewValley.Menus;
 
 namespace Together;
 public sealed class NativeMenuTools {
+    public Action<int,int,int>? ProfessionSelected {get;set;}
     private sealed record Choice(string Id,string Label,Rectangle Bounds);
     private readonly List<Choice> choices=new();
     private IClickableMenu? observed;
@@ -64,7 +65,7 @@ public sealed class NativeMenuTools {
         if(previous!=observed || expected!=token || token.Length==0)throw new InvalidOperationException("stale_menu_read_again");
         var choice=choices.FirstOrDefault(c=>c.Id==AgentToolRegistry.Text(args,"id"))??throw new InvalidOperationException("unknown_menu_choice");
         if(observed is LevelUpMenu levelChoice) {
-            if(levelChoice.isProfessionChooser){NativeMenuInput.ChooseProfession(levelChoice,choice.Bounds);return new{status="native_profession_selected",professions=Game1.player.professions.ToArray(),menu=Read()};}
+            if(levelChoice.isProfessionChooser){var state=NativeMenuInput.ProfessionState(levelChoice);int index=choice.Bounds==levelChoice.leftProfession.bounds?0:1;NativeMenuInput.ChooseProfession(levelChoice,choice.Bounds);if(state.Choices.Count>index)ProfessionSelected?.Invoke(state.Skill,state.Level,state.Choices[index]);return new{status="native_profession_selected",professions=Game1.player.professions.ToArray(),menu=Read()};}
             if(!levelChoice.isActive || !levelChoice.CanReceiveInput())throw new InvalidOperationException("menu_wait_for_ready");
             levelChoice.okButtonClicked();return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
         }

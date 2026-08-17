@@ -9,6 +9,12 @@ namespace Together;
 // Scope the input to that native handler and restore SMAPI's input in finally.
 // No OS cursor movement, profession mutation or global input interception.
 internal sealed class NativeMenuInput : InputState {
+    internal static (int Skill,int Level,List<int> Choices) ProfessionState(LevelUpMenu menu) {
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        int Read(string name)=>(int)(typeof(LevelUpMenu).GetField(name,flags)?.GetValue(menu)??throw new InvalidOperationException("native_profession_schema_changed"));
+        var choices=typeof(LevelUpMenu).GetField("professionsToChoose",flags)?.GetValue(menu) as List<int>??new();
+        return(Read("currentSkill"),Read("currentLevel"),choices.ToList());
+    }
     private readonly MouseState mouse;
     private NativeMenuInput(int x,int y,ButtonState button) {
         float scale=Game1.uiMode?Game1.options.uiScale:Game1.options.zoomLevel;

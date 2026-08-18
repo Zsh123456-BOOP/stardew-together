@@ -18,7 +18,7 @@ public sealed partial class PlayerExecutor {
     private void StartService(JsonElement args) {
         service=AgentToolRegistry.Text(args,"service","shop");serviceShop=AgentToolRegistry.Text(args,"shop","");destination=AgentToolRegistry.Text(args,"location",origin);
         if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_service_location");
-        if(service is not ("shop" or "build" or "upgrade_house" or "upgrade_tools" or "animals" or "geodes" or "claim_tool" or "museum_donate" or "museum_reward"))throw new InvalidOperationException("unknown_native_service");
+        if(service is not ("shop" or "build" or "upgrade_house" or "upgrade_tools" or "animals" or "geodes" or "claim_tool" or "museum_donate" or "museum_reward" or "daily_quests" or "special_orders" or "qi_orders"))throw new InvalidOperationException("unknown_native_service");
         if(service=="shop"&&serviceShop.Length==0)throw new InvalidOperationException("observed_shop_id_required");
         serviceTile=null;serviceSelected=false;servicePages=0;Current!.phase="service_travel";
     }
@@ -27,6 +27,7 @@ public sealed partial class PlayerExecutor {
             var menu=Game1.activeClickableMenu;
             bool ready=service switch {
                 "shop"=>menu is ShopMenu shop&&shop.ShopId==serviceShop,
+                "daily_quests"=>menu is Billboard,"special_orders"=>menu is SpecialOrdersBoard {boardType:""},"qi_orders"=>menu is SpecialOrdersBoard {boardType:"Qi"},
                 "museum_donate"=>menu is MuseumMenu,"museum_reward"=>menu is ItemGrabMenu,
                 "build"=>menu is CarpenterMenu,"upgrade_tools"=>menu is ShopMenu toolShop&&toolShop.ShopId=="ClintUpgrade",
                 "animals"=>menu is PurchaseAnimalsMenu,"geodes"=>menu is GeodeMenu,
@@ -57,6 +58,8 @@ public sealed partial class PlayerExecutor {
                 var action=l.GetTilePropertySplitBySpaces("Action","Buildings",x,y);if(action.Length==0)continue;
                 bool match=service switch {
                     "shop"=>ShopFromAction(l,action)==serviceShop,
+                    "daily_quests"=>action[0]=="Billboard"&&action.Length>1&&action[1]=="3",
+                    "special_orders"=>action[0]=="SpecialOrders","qi_orders"=>action[0]=="QiChallengeBoard",
                     "museum_donate" or "museum_reward"=>action[0]=="Gunther",
                     "build" or "upgrade_house"=>action[0]=="Carpenter",
                     "animals"=>action[0]=="AnimalShop",_=>action[0]=="Blacksmith"

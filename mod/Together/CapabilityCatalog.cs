@@ -11,7 +11,7 @@ public static class CapabilityCatalog {
     public static readonly CapabilityDefinition[] All={
         new("F01","状态与地图",new[]{"world.read","map.read","map.scan","inventory.read"},new[]{"player","companion"},"全状态变更索引与离线规划隔离", "原生快照"),
         new("F02","移动与跨图",new[]{"player.travel","player.move","companion.assign"},new[]{"player","companion"},"特殊区域通道覆盖", "角色实际位置"),
-        new("F03","工具装备",new[]{"inventory.read","player.use_tool"},new[]{"player"},"装备策略/特殊工具领取覆盖", "实际工具与装备"),
+        new("F03","工具装备",new[]{"inventory.read","equipment.read","player.equip","player.use_tool"},new[]{"player"},"饰品/工具附件/装备策略与实机验收", "实际工具与装备"),
         new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"特殊地图再生/全矿种实机覆盖", "原生掉落与实际入包"),
         new("F05","农田布局",new[]{"farm.plan","farm.economy","farm.economy_status","farm.execute"},new[]{"player"},"未来跨季用地和全部设施布局", "未来占用图可达性"),
         new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"多轮再投资/机器加工/未知商店排期优化", "地块/种子消耗/成熟日期"),
@@ -24,7 +24,7 @@ public static class CapabilityCatalog {
         new("F13","建造升级",new[]{"player.service","construction.read","player.build","player.upgrade_house","player.place","menu.choose"},new[]{"player"},"特殊建筑完整流程与房屋/建造验收", "原生建筑与升级状态"),
         new("F14","钓鱼",new[]{"player.fish","companion.assign"},new[]{"player","companion"},"鱼种/地点选择、宝箱奖励、补给和原生控杆验收", "Farmer fishCaught；NPC货物不等价"),
         new("F15","探索战斗",new[]{"player.travel","player.combat","player.mine_descend","player.mine_access","work.run","companion.assign"},new[]{"player","companion"},"特殊敌种战术/骷髅矿/火山适配及矿洞闭环实机验收", "原生层数/击杀归属"),
-        new("F16","任务交付",new[]{"progress.read","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单多目标交付/非金币领奖与任务接取", "quest/order 原生完成条件"),
+        new("F16","任务交付",new[]{"progress.read","quest_board.read","player.accept_quest","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单多目标交付/非金币领奖与接取验收", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/Joja路线/领奖与献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),

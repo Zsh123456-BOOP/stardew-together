@@ -55,9 +55,10 @@ public sealed partial class PlayerExecutor {
     }
     private static object Snapshot()=>new{day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
+    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
-        bool buying=skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
+        bool buying=AcceptsNativeMenu(skill);
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
@@ -66,6 +67,10 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.animal":StartAnimalManagement(args);break;
+                case "player.geodes":StartGeodes(args);break;
+                case "player.buy_animal":StartLivestockPurchase(args);break;
+                case "player.upgrade_house":StartHouseUpgrade(args);break;
                 case "player.mine_access":StartMineAccess(args);break;
                 case "player.bundle":StartBundle(args);break;
                 case "player.build":StartConstruction(args);break;
@@ -204,6 +209,10 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.animal"){TickAnimalManagement();return;}
+            if(Current.skill=="player.geodes"){TickGeodes();return;}
+            if(Current.skill=="player.buy_animal"){TickLivestockPurchase();return;}
+            if(Current.skill=="player.upgrade_house"){TickHouseUpgrade();return;}
             if(Current.skill=="player.mine_access"){TickMineAccess();return;}
             if(Current.skill=="player.bundle"){TickBundle();return;}
             if(Current.skill=="player.build"){TickConstruction();return;}

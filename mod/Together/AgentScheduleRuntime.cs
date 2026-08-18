@@ -55,7 +55,7 @@ public sealed partial class ModEntry {
         string location=actor=="player"?Game1.currentLocation.NameOrUniqueName:"";
         if(previous?.spec.tool=="player.travel")location=AgentToolRegistry.Text(previous.spec.args,"location",location);
         else if(previous!=null && previous.spec.location.Length>0)location=previous.spec.location;
-        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool is "player.mine_access" or "player.bundle" or "player.travel" or "player.sleep" or "player.service" or "player.social" or "player.care" or "player.machine" or "player.cook" or "work.run"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
+        var task=new AgentTaskSpec{id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=call.tool is "player.animal" or "player.upgrade_house" or "player.mine_access" or "player.bundle" or "player.travel" or "player.sleep" or "player.service" or "player.social" or "player.care" or "player.machine" or "player.cook" or "work.run"?"":location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
         if(previous!=null)task.after.Add(previous.spec.id);
         Data.Autoplay.Schedule.Submit(task.id,Data.Autoplay.Schedule.Revision,new(){task},Game1.Date.TotalDays);
         return new{status="queued",task_id=task.id,actor,revision=Data.Autoplay.Schedule.Revision};
@@ -97,7 +97,7 @@ public sealed partial class ModEntry {
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
-            bool purchasing=task.spec.tool=="player.mine_access"&&Game1.activeClickableMenu is StardewValley.Menus.MineElevatorMenu || task.spec.tool=="player.bundle"&&Game1.activeClickableMenu is StardewValley.Menus.JunimoNoteMenu || task.spec.tool=="player.build"&&Game1.activeClickableMenu is StardewValley.Menus.CarpenterMenu || task.spec.tool=="player.donate_museum"&&Game1.activeClickableMenu is StardewValley.Menus.MuseumMenu || task.spec.tool=="player.buy"&&Game1.activeClickableMenu is StardewValley.Menus.ShopMenu || task.spec.tool=="player.collect_reward"&&Game1.activeClickableMenu is StardewValley.Menus.ItemGrabMenu;
+            bool purchasing=PlayerExecutor.AcceptsNativeMenu(task.spec.tool);
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
                 if(task.spec.actor=="player"&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");

@@ -33,6 +33,7 @@ public sealed partial class PlayerExecutor {
                 "upgrade_house"=>serviceSelected&&menu is DialogueBox {isQuestion:true},
                 "claim_tool"=>Game1.player.toolBeingUpgraded.Value==null&&Game1.player.Items.OfType<Tool>().Any(t=>t.QualifiedItemId==serviceAction),_=>false
             };
+            if(ready&&Current.skill=="player.upgrade_house"){Current.phase="house_confirm";return;}
             if(ready){Current.effects.Add(new{kind="native_service_opened",service,shop=(menu as ShopMenu)?.ShopId,menu=menu?.GetType().Name,note="服务已打开；购买/建造/升级决策仍需执行并核验"});Finish("succeeded");return;}
             if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(400);
             if(menu is DialogueBox dialogue) {

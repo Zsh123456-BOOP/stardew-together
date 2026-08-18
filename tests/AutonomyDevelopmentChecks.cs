@@ -34,6 +34,13 @@ public static class AutonomyDevelopmentChecks {
         check(layout.Tiles.Count==0,"trellis cannot block the only path to an exit");
         check(!FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(4,0)},new[]{new FarmCell(2,0)},Array.Empty<FarmCell>()),"building footprint cannot sever the only exit corridor");
         check(FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(3,0)},new[]{new FarmCell(4,0)},new[]{new FarmCell(3,0)}),"building at dead end keeps its entrance and existing access reachable");
+        var seedQuote=new SeedQuote("seed","shop","shop-map",1,10,99,1);
+        var economySeed=new EconomySeed("seed",0,seedQuote,30,-1,28,false,1,1,cells.ToDictionary(c=>c.Tile,c=>4),new());
+        var economy=new EconomySnapshot(1,1,100,30,80,5,2,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed});
+        var portfolio=CropPortfolio.Plan(economy);
+        check(portfolio.Spent<=20&&portfolio.Manual<=2&&portfolio.Plants.Count<=2,"economic planting respects wallet reserve, purchase budget and daily care capacity");
+        var calendar=new GameStateCalendar(28,5,100);CalendarCashFlow.Apply(calendar,1,new Crop("seed",4,-1,10,30),1,28);
+        check(calendar.GameStates[5].Wallet==90&&calendar.GameStates[6].Wallet==120,"crop proceeds become spendable only the day after harvest");
         var water=FarmLayout.WaterDistances(cells,new[]{new FarmCell(5,0)});
         check(water[new(0,0)]==4,"water access is measured over walkable route");
         string root=Path.Combine(Path.GetTempPath(),"together-memory-check-"+Guid.NewGuid().ToString("N"));

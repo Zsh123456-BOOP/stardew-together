@@ -324,7 +324,9 @@ public sealed partial class PlayerExecutor {
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
             } else if(workSkill=="plant") {
-                if(Game1.player.ActiveObject==null || !Utility.tryToPlaceItem(Game1.currentLocation,Game1.player.ActiveObject,tile.X*64,tile.Y*64))throw new InvalidOperationException("native_plant_rejected");
+                if(Game1.player.ActiveObject is not {} seed)throw new InvalidOperationException("plant_seed_missing");
+                ValidateConsumption?.Invoke(new Dictionary<Item,int>{{seed,1}},"","plant:"+seed.QualifiedItemId);
+                if(!Utility.tryToPlaceItem(Game1.currentLocation,seed,tile.X*64,tile.Y*64))throw new InvalidOperationException("native_plant_rejected");
             } else if(!Game1.tryToCheckAt(tile.ToVector2(),Game1.player))throw new InvalidOperationException("native_harvest_rejected");
             Current.phase="work_impact";return;
         }

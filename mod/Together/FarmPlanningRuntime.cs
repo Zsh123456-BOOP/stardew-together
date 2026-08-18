@@ -117,6 +117,12 @@ public sealed partial class ModEntry {
                 int slot=WorkSlot(i=>i is Hoe);if(slot<0){StopSemanticWork(j,"hoe_missing");return;}
                 WorkChild(j,"player.work",new{skill="till",slot,tiles=new[]{new{x=tile.X,y=tile.Y}}},"plant_till");return;
             }
+            string seedId=plan.Seed.StartsWith("(O)")?plan.Seed[3..]:plan.Seed;
+            if(!DataLoader.Crops(Game1.content).TryGetValue(seedId,out var cropData))throw new InvalidOperationException("planned_crop_definition_changed");
+            bool isPaddy=cropData.IsPaddyCrop&&Enumerable.Range(-3,7).Any(dx=>Enumerable.Range(-3,7).Any(dy=>l.CanRefillWateringCanOnTile(tile.X+dx,tile.Y+dy)));
+            int growth=CropGrowth.Stages(cropData.DaysInPhase,dirt.GetFertilizerSpeedBoost(),Game1.player.professions.Contains(5),isPaddy).Sum();
+            int lastDay=CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,cropData.Seasons.Select(s=>(int)s).ToHashSet(),l.SeedsIgnoreSeasonsHere());
+            if(Game1.dayOfMonth+growth>lastDay)throw new InvalidOperationException("crop_would_miss_actual_season_replan");
             int seedSlot=WorkSlot(i=>i.QualifiedItemId==plan.Seed);if(seedSlot<0){StopSemanticWork(j,"planned_seed_supply_missing");return;}
             WorkChild(j,"player.work",new{skill="plant",slot=seedSlot,tiles=new[]{new{x=tile.X,y=tile.Y}}},"plant_seed");return;
         }

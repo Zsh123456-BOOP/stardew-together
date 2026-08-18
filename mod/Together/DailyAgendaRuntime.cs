@@ -18,7 +18,7 @@ public sealed partial class ModEntry {
             policy="正常时间；农务完成后选择有价值的下一批工作，不能只因种完就睡。程序估算时间与体力，模型决定优先级和分工。",
             budget=new{stamina=Game1.player.Stamina,energy_reserve=15,work_minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),return_reserve_minutes=ReturnReserve(),return_by=2300,home,estimate_note="路线格数来自当前地图原生寻路；耗时按移动速度加动作余量估算，跨图返家预留为保守预算，非到达保证"},
             chores=new{Facts.DryCrops,Facts.RipeCrops,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.MachinesReady},
-            priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),
+            routine=Data.Autoplay.Routine,priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),
             shared_goals=GoalContext(),quests=Facts.Quests.Take(8),
             watering=AgentWatering(),options,resource_policy="材料优先满足day.plan目标库存和共同心愿缺口；同时保留木材50/石料25/纤维20的基础经营储备。useful=false表示当前没有已声明用途，不要求清空整个农场。",options_scope="仅当前地图最近一批已核验路径的农活、石块、树枝和采集物，非全世界；空列表不能证明没有可做的事，换地点、查百科/任务、整理与补给也要考虑。",
             next_review="每批完成、换地图、换日或失败后刷新；不要按每个格子调用模型。伙伴可通过world.read并行派工；出货前先核对材料预留。",

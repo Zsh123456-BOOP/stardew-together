@@ -23,7 +23,7 @@ public static class CapabilityCatalog {
         new("F12","买卖出货",new[]{"companion.assign","player.ship","shop.read","player.buy","menu.choose"},new[]{"player","companion"},"移动商人/特殊商品/出售覆盖", "钱/货品/次日收入"),
         new("F13","建造升级",new[]{"player.service","construction.read","player.build","player.place","menu.choose"},new[]{"player"},"房屋/特殊建筑完整流程与建造验收", "原生建筑与升级状态"),
         new("F14","钓鱼",new[]{"player.fish","companion.assign"},new[]{"player","companion"},"鱼种/地点选择、宝箱奖励、补给和原生控杆验收", "Farmer fishCaught；NPC货物不等价"),
-        new("F15","探索战斗",new[]{"player.travel","player.combat","player.mine_descend","companion.assign"},new[]{"player","companion"},"敌种战术/撤退/入口电梯/全矿层控制", "原生层数/击杀归属"),
+        new("F15","探索战斗",new[]{"player.travel","player.combat","player.mine_descend","player.mine_access","work.run","companion.assign"},new[]{"player","companion"},"特殊敌种战术/骷髅矿/火山适配及矿洞闭环实机验收", "原生层数/击杀归属"),
         new("F16","任务交付",new[]{"progress.read","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单多目标交付/非金币领奖与任务接取", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/Joja路线/领奖与献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),

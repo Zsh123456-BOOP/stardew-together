@@ -57,7 +57,7 @@ public sealed partial class PlayerExecutor {
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
-        bool buying=skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
+        bool buying=skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
@@ -66,6 +66,7 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.mine_access":StartMineAccess(args);break;
                 case "player.bundle":StartBundle(args);break;
                 case "player.build":StartConstruction(args);break;
                 case "player.donate_museum":StartMuseumDonation(args);break;
@@ -203,6 +204,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.mine_access"){TickMineAccess();return;}
             if(Current.skill=="player.bundle"){TickBundle();return;}
             if(Current.skill=="player.build"){TickConstruction();return;}
             if(Current.skill=="player.donate_museum"){TickMuseumDonation();return;}

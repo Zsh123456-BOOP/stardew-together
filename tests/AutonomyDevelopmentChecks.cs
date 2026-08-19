@@ -62,6 +62,17 @@ public static class AutonomyDevelopmentChecks {
                 check(pending.Pending.Count==0&&evidence.RootElement.GetProperty("text").GetString()!.Length==1000,"retry archive and page complete long evidence");
             }finally{File.Delete(blocked);}
         }finally{if(Directory.Exists(root))Directory.Delete(root,true);}
+        var qualityRecipe=new GoalRecipe{Id="craft:quality",Item="(O)900",Known=true,Inputs=new(){new(){Item="(O)24",Count=1,Quality=2}}};
+        var qualityGoal=new SharedGoal{Entity="craft:quality",Item="(O)900"};
+        GoalPlanner.Rebuild(qualityGoal,new Dictionary<string,GoalRecipe>{{qualityRecipe.Id,qualityRecipe}},new GoalLedger(new[]{new GoalStock{Item="(O)24",Count=10,Quality=0}}),1,id=>id);
+        check(qualityGoal.Nodes[0].Status!="player_step"&&qualityGoal.Nodes.Any(n=>n.Item=="(O)24"&&n.Quality==2&&n.Owned==0),"recipe ingredient quality survives dependency expansion and low-quality stock cannot satisfy it");
+        var protectedStock=new[]{new GoalStock{Item="(O)24",Quality=2,Category=-75,Count=10}};
+        var overlapping=new[]{new Requirement{Item="(O)24",Count=5},new Requirement{Item="(O)24",Quality=2,Count=5}};
+        check(!ReservationAllocation.Preserves(protectedStock,overlapping,new[]{new GoalStock{Item="(O)24",Quality=2,Category=-75,Count=1}}),"normal and gold reservations cannot both spend the same physical unit");
+        var substitutes=new[]{new GoalStock{Item="(O)24",Category=-75,Count=1},new GoalStock{Item="(O)188",Category=-75,Count=1}};
+        var demands=new[]{new Requirement{Item="-75",Count=1},new Requirement{Item="(O)24",Count=1}};
+        check(ReservationAllocation.Allocate(substitutes,demands).SequenceEqual(new[]{1,1}),"category reservation reroutes to preserve the specifically requested crop");
+        check(ReservationAllocation.Preserves(substitutes,new[]{new Requirement{Item="(O)24",Count=10}},new[]{new GoalStock{Item="(O)188",Category=-75,Count=1}}),"already missing materials do not block spending unrelated surplus");
         var context=ContextCompression.Pack(new{recent=new object[]{new{error="unresolved",detail=new string('x',1000)},new{okay="old",detail=new string('y',1000)},new{okay="new"},new{okay="latest"}},schedule=new{active="must_survive"}},500);
         check(context.Contains("unresolved")&&context.Contains("must_survive")&&!context.Contains(new string('y',1000)),"context pressure drops old successes while retaining unresolved errors and active plan");
     }

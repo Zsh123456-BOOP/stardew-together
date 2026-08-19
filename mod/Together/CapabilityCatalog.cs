@@ -30,7 +30,7 @@ public static class CapabilityCatalog {
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
         new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
-        new("F22","成就目标图",new[]{"progress.catalog","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
+        new("F22","成就目标图",new[]{"progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
         new("F25","百科检索",new[]{"knowledge.search","knowledge.get","goal.requirements"},new[]{"player","companion"},"特殊规则与完整条件覆盖", "游戏内容与现场条件"),
@@ -47,6 +47,12 @@ public sealed partial class ModEntry {
         RefreshFacts(true);
         string kind=AgentToolRegistry.Text(args,"kind");int offset=AgentToolRegistry.Number(args,"offset",0),limit=Math.Clamp(AgentToolRegistry.Number(args,"limit",30),1,80);
         if(offset<0)throw new InvalidOperationException("invalid_offset");
+        var rows=ReadNativeGoalRows();
+        var filtered=rows.Where(g=>kind.Length==0||g.kind==kind).ToArray();
+        return new{schema_version=1,day=Game1.Date.TotalDays,save_id=Game1.uniqueIDForThisGame.ToString(),total=filtered.Length,offset,limit,next_offset=offset+limit<filtered.Length?(int?)(offset+limit):null,
+            goals=filtered.Skip(offset).Take(limit),policy=new{routes="路线互斥需逐条件核查，独立路线存档分开统计",repeatable="只枚举当前已接原生任务；重复委托没有有限全部完成终点",unknown="未适配条件明确标 gap，不伪造依赖或完成",actor="进度默认归属 Farmer，NPC 劳动不自动等于原生计数"}};
+    }
+    private List<NativeGoalDefinition> ReadNativeGoalRows() {
         var rows=new List<NativeGoalDefinition>();var p=Game1.player;
         foreach(var pair in Game1.achievements.OrderBy(x=>x.Key)) {
             var text=pair.Value.Split('^');
@@ -70,8 +76,7 @@ public sealed partial class ModEntry {
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
         rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));
-        var filtered=rows.Where(g=>kind.Length==0||g.kind==kind).ToArray();
-        return new{schema_version=1,day=Game1.Date.TotalDays,save_id=Game1.uniqueIDForThisGame.ToString(),total=filtered.Length,offset,limit,next_offset=offset+limit<filtered.Length?(int?)(offset+limit):null,
-            goals=filtered.Skip(offset).Take(limit),policy=new{routes="路线互斥需逐条件核查，独立路线存档分开统计",repeatable="只枚举当前已接原生任务；重复委托没有有限全部完成终点",unknown="未适配条件明确标 gap，不伪造依赖或完成",actor="进度默认归属 Farmer，NPC 劳动不自动等于原生计数"}};
+        return rows;
     }
+
 }

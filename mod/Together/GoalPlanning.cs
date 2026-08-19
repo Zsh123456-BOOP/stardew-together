@@ -39,6 +39,7 @@ public sealed class GoalNode {
     public string Recipe {get;set;}="";
     public string Status {get;set;}="missing";
     public int Required {get;set;}
+    public int Quality {get;set;}
     public int Owned {get;set;}
     public int InProgress {get;set;}
     public int Missing=>Math.Max(0,Required-Owned);
@@ -91,16 +92,17 @@ public static class GoalPlanner {
         if(goal.Status!="active"){goal.Reserved.Clear();return;}
         goal.Nodes=new();goal.Reserved=new();
         int budget=96;
-        string Expand(string item,int count,string path,HashSet<string> ancestors,int depth,GoalRecipe? selected=null) {
-            var node=new GoalNode{Id=path,Item=item,Name=name(item),Required=count,Owner=goal.Assignments.GetValueOrDefault(path,goal.Owner),Source="当前存档库存"};
+        string Expand(string item,int count,string path,HashSet<string> ancestors,int depth,GoalRecipe? selected=null,int quality=0) {
+            var node=new GoalNode{Id=path,Item=item,Name=name(item),Required=count,Quality=quality,Owner=goal.Assignments.GetValueOrDefault(path,goal.Owner),Source="当前存档库存"};
             goal.Nodes.Add(node);budget--;
             bool craftingEvidence=path=="root"&&goal.Completion is "crafted" or "cooked";
-            node.Owned=craftingEvidence?Math.Min(count,Math.Max(0,crafted-goal.BaselineCrafts)):ledger.Take(item,count);
-            if(node.Owned>0&&!craftingEvidence)goal.Reserved.Add(new(){Item=item,Count=node.Owned,Name=node.Name});
+            node.Owned=craftingEvidence?Math.Min(count,Math.Max(0,crafted-goal.BaselineCrafts)):ledger.Take(item,count,quality);
+            if(node.Owned>0&&!craftingEvidence)goal.Reserved.Add(new(){Item=item,Count=node.Owned,Quality=quality,Name=node.Name});
             if(node.Missing==0){node.Status="ready";node.Reason="这份目标已分配到足量库存";return path;}
-            node.InProgress=craftingEvidence?0:processing?.Take(item,node.Missing)??0;
+            node.InProgress=craftingEvidence?0:processing?.Take(item,node.Missing,quality)??0;
             if(node.ToPrepare==0){node.Status="processing";node.Reason="原生机器中已有对应产物，等待加工或收取；还不算已获得。";return path;}
             if(goal.DirectGather.Contains(path)){node.Reason="你选择直接收集成品，暂不展开制作链；购买仍按已有清单和预算。";return path;}
+            if(quality>0){node.Reason="需要达到最低品质的实际物品；不把普通品质制作产物预测成高品质。";return path;}
             // Building a whole new processing facility is not an implicit prerequisite for collecting a common resource.
             var alternatives=recipes.Values.Where(r=>r.Item==item && (r.Kind!="process" || r.Known || depth==0)).ToArray();
             var recipe=selected??alternatives.OrderByDescending(r=>r.Known).ThenBy(r=>r.Kind=="craft"?0:1).ThenBy(r=>r.Output).ThenBy(r=>r.Id,StringComparer.Ordinal).FirstOrDefault();
@@ -114,7 +116,7 @@ public static class GoalPlanner {
             foreach(var input in recipe.Inputs) {
                 long required=(long)batches*input.Count;
                 if(budget<=0 || required>100000 || required<1){node.Status="blocked";node.Reason="依赖规模或材料数量超过自动规划范围，请分成较小目标；没有省略后宣称备齐。";break;}
-                node.DependsOn.Add(Expand(input.Item,(int)required,path+"/"+input.Item,new(ancestors),depth+1));
+                node.DependsOn.Add(Expand(input.Item,(int)required,path+"/"+input.Item,new(ancestors),depth+1,quality:input.Quality));
             }
             if(node.Status!="blocked" && recipe.Known && node.DependsOn.All(id=>goal.Nodes.First(n=>n.Id==id).Status=="ready"))node.Status="player_step";
             return path;

@@ -15,6 +15,8 @@ public sealed class AgentToolRegistry {
     public static readonly Dictionary<string,string> Catalog=new(){
         ["strategy.profession"]="{skill:0..4,level:5|10,profession:0..29}: 持久保存职业方向（技能编号为游戏原生顺序），检查前后分支一致性；夜间遇到真实对应选项自动原生选择，不修改已有职业。未配置或冲突仍需模型选择",
         ["usage.read"]="{}: 今日模型预算、API报告Token、失败请求保留额度、剩余和请求大小上限；额度外部持久记录，读档不回退，不等同于人民币账单",
+        ["progress.pursue"]="{targets?:原生目标ID数组,enabled?:bool}: 持久追踪目标并自动连续完成当前具备条件的制作/烹饪配方，按实际成就核验。其他路线明确阻碍，暂停取消未执行依赖、不打断已经消耗的动作",
+        ["progress.dependencies"]="{id:成就/配方/任务/物品ID,depth?:1..8,limit?:10..600}: 展开原生证据依赖图、数量/品质/替代分支与具体工具入口，明确未适配和截断；只读不授予进度",
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
         ["memory.search"]="{query?:string,actor?:string,limit?:1..20,offset?:int}: 检索本存档已归档事件/回执，不含读档后的未来记录；返回证据ID和截断提示",
         ["memory.evidence"]="{id:string,offset?:int}: 按归档证据ID读取原文，每页最多4000字符；继续next_offset能读完整记录；不能访问本存档时间线之外的历史",
@@ -108,7 +110,7 @@ public sealed class AgentToolRegistry {
         }
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
-            "capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),
+            "progress.pursue"=>mod.ConfigureProgressCampaign(args),"progress.dependencies"=>mod.ReadProgressDependencies(args),"capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),
             "memory.search"=>mod.ReadAgentMemory(args),
             "memory.evidence"=>mod.ReadMemoryEvidence(args),
             "map.scan"=>mod.ScanMap(args),

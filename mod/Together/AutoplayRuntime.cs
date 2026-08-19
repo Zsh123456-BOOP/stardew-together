@@ -57,7 +57,7 @@ public sealed partial class ModEntry {
             var p=Person(name);if(p.Job is {Status:"active" or "waiting"} j){if(j.Command!=null)api?.CancelAction(j.Command);if(j.TravelCommand!=null)api?.CancelAction(j.TravelCommand);j.Command=null;j.TravelCommand=null;j.Status="paused";}
         }
         ResetAgentRuntime();playerExecutor.ClearStopped();dayReviewed=-1;
-        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Failures=Data.Autoplay.Failures,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine};
+        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Failures=Data.Autoplay.Failures,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine,Campaign=Data.Autoplay.Campaign};
         AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
@@ -104,7 +104,7 @@ public sealed partial class ModEntry {
         playerExecutor.Tick();TickSemanticWork();
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        TickAgentSchedule();TickDailyAutomation();TickGoalAutomation();ObserveAgentEvents();
+        TickAgentSchedule();TickDailyAutomation();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();
         try{if(TickAutomaticMenus())return;}catch(Exception e){PauseAutoplay("automatic_menu_requires_review:"+e.Message);return;}
         if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.

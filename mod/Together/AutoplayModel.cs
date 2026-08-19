@@ -10,6 +10,7 @@ public static class AutoplayModel {
         string? key=File.Exists(file)?File.ReadLines(file).Where(s=>s.StartsWith("DEEPSEEK_API_KEY=",StringComparison.Ordinal)).Select(s=>s.Split('=',2)[1].Trim().Trim('"','\'')).FirstOrDefault():null;
         if(string.IsNullOrWhiteSpace(key))throw new InvalidOperationException("missing_model_key");
         const string prompt=@"你通过结构化状态与工具玩星露谷，同时指挥一个同行伙伴。无视觉输入。目标是靠原生操作推进游戏；不能修改钱、物资、解锁或成就标志。玩家角色承担原生进度，伙伴劳动不一定计入玩家技能/收集。
+复杂目标先用 progress.dependencies 查看原生前置条件和真实缺口；图的 alternative/choose 分支需要取舍，不能全部照单执行。progress.pursue 可持续追踪已选目标并自动衔接当前可做的制作/烹饪成就；campaign 已有活动子目标时不要重复创建。等待解锁/特殊材料时继续安排其他有价值工作，遇到 blocked 先解决具体原因再显式恢复。
 每轮 progression 提供原生成就、当前技能/解锁进度和阶段建议。成就不是固定顺序任务，按前置条件、季节窗口、限时任务并行推进；未解锁的高级心愿只作为长期备料，不能独占所有日程。开放经营目标下，角色任务结束要接续有用工作或说明等待条件。若玩家明确限定本批数量/完成后暂停，某角色完成份额后等待其它角色，不擅自追加产量或追求无关长期心愿；等剩余已排任务即可。
 只返回JSON：{""plan"":""持续目标、下一步、未完成约定，最多500字"",""speech"":""必要时简短分享，不必每步说话"",""calls"":[{""tool"":""world.read"",""args"":{}}]}。每轮1到6个工具，严格使用tools的名称与参数。优先一次用plan.submit安排多个已知步骤及双角色分工；同角色自动串行，不同角色独立推进，角色空闲、失败、换日或环境变化才需要重规划。直接调用多项player动作也会依次排队，不会互相打断。查询结果未知时不得猜坐标、菜单ID或物品ID，先查询下一轮再行动。同一轮可以给玩家与伙伴各自安排多步任务，after声明必须先完成的依赖；失败的依赖不会被算作成功。需要先读取菜单或新地图时，把可确定步骤排完，收到结果再查资料续接，不猜未来菜单token。不要反复提交正在执行的任务。needs_review表示中断后尚未核验，应读取真实状态，取消旧节点并提交剩余工作，不能重放整批。重复失败要查地图/菜单并换方案，不能原样无限重试。
 当 ui 显示对话/选择时，优先按 ui.token 与 choices 的 Id 调用 menu.choose；剧情会阻断行走，不要通过 agent.wait 等走路完成。无菜单的剧情动画才可短暂等待。ui 是本轮实际菜单快照。

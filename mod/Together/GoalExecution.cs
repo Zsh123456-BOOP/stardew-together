@@ -75,8 +75,8 @@ public sealed partial class ModEntry {
                 foreach(var node in goal.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0&&tasks.Count==0)) {
                     string skill=node.Item switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber","(O)709"=>"hardwood",_=>ResourceRules.Nodes.Values.Contains(node.Item)?"resource":""};
                     string? resourceLocation=skill is "resource" or "hardwood"?FindGoalResourceLocation(node.Item,skill):"Farm";
-                    if(skill.Length>0&&resourceLocation!=null){Add("work.run",new{goal=skill,item=node.Item,count=Math.Min(node.ToPrepare,999),location=resourceLocation,include_trees=skill=="wood"},"为"+goal.Title+"收集"+node.Name);break;}
-                    gaps.Add(new{node=node.Id,item=node.Item,reason="acquisition_route_requires_choice_or_missing_executor",node.ToPrepare});
+                    if(skill.Length>0&&resourceLocation!=null&&node.Quality==0){Add("work.run",new{goal=skill,item=node.Item,count=Math.Min(node.ToPrepare,999),location=resourceLocation,include_trees=skill=="wood"},"为"+goal.Title+"收集"+node.Name);break;}
+                    gaps.Add(new{node=node.Id,item=node.Item,node.Quality,reason="acquisition_route_requires_choice_or_missing_executor",node.ToPrepare});
                 }
                 foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process")))gaps.Add(new{node=node.Id,node.Status,node.Reason});
             }

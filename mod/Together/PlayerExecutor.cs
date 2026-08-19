@@ -55,7 +55,7 @@ public sealed partial class PlayerExecutor {
     }
     private static object Snapshot()=>new{day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
-    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
+    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
         bool buying=AcceptsNativeMenu(skill);
@@ -67,6 +67,9 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.place_facility":StartFacilityPlacement(args);break;
+                case "player.ship_items":StartShipping(args);break;
+                case "player.order_donate":StartOrderDonation(args);break;
                 case "player.equip":StartEquipment(args);break;
                 case "player.accept_quest":StartQuestAcceptance(args);break;
                 case "player.animal":StartAnimalManagement(args);break;
@@ -211,6 +214,9 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill=="player.place_facility"){TickFacilityPlacement();return;}
+            if(Current.skill=="player.ship_items"){TickShipping();return;}
+            if(Current.skill=="player.order_donate"){TickOrderDonation();return;}
             if(Current.skill=="player.animal"){TickAnimalManagement();return;}
             if(Current.skill=="player.geodes"){TickGeodes();return;}
             if(Current.skill=="player.buy_animal"){TickLivestockPurchase();return;}

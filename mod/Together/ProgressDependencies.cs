@@ -87,7 +87,7 @@ public sealed partial class ModEntry {
                 string item=id[6..];node.kind="catch";node.state=Game1.player.fishCaught.ContainsKey(item)?"complete":"unmet";node.evidence=new{native="Farmer.fishCaught",item};
                 node.actions.Add(Action("knowledge.get",new{id=item}));node.gaps.Add("指定鱼种的地点/钓点/时段与补给执行策略待全覆盖；拥有鱼不替代亲自捕获记录");
             }else if(id.StartsWith("ship:")) {
-                string item=id[5..];node.kind="shipping";node.state="observed";node.evidence=new{shipped=Game1.player.basicShipped.GetValueOrDefault(item.Replace("(O)",""))};node.dependencies.Add(new(item));node.actions.Add(Action("inventory.read",new{}));node.actions.Add(Action("player.ship",new{slot="matching_unreserved_inventory_slot_after_walking_to_shipping_bin"}));
+                string item=id[5..];node.kind="shipping";node.state="observed";node.evidence=new{shipped=Game1.player.basicShipped.GetValueOrDefault(item.Replace("(O)",""))};node.dependencies.Add(new(item));node.actions.Add(Action("player.ship_items",new{items=new[]{new{item,count=1}}}));
             }else {
                 bool category=int.TryParse(id.Replace("(O)",""),out int cat)&&cat<0;var itemDefinition=ItemRegistry.GetData(id);
                 if(category||itemDefinition!=null) {

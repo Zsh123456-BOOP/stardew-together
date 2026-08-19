@@ -41,6 +41,12 @@ public sealed partial class ModEntry {
             tasks.Add(new(){id="goal-"+Guid.NewGuid().ToString("N"),actor="player",tool=tool,args=JsonSerializer.SerializeToElement(arguments),purpose=purpose,goal_id=goal.Id,day=Game1.Date.TotalDays,deadline=2200});
         }
         if(goal.Status=="active") {
+            var facilityNode=goal.Nodes.FirstOrDefault(n=>n.Kind=="process"&&n.Status=="locked"&&goalRecipes.TryGetValue(n.Recipe,out var r)&&r.Facility.Length>0&&goal.Nodes.Any(child=>child.Item==r.Facility&&child.Owned>0));
+            if(facilityNode!=null&&goalRecipes.TryGetValue(facilityNode.Recipe,out var facilityRecipe)) {
+                if(!Game1.player.Items.Any(i=>i?.QualifiedItemId==facilityRecipe.Facility))Add("work.run",new{goal="withdraw",item=facilityRecipe.Facility,count=1},"取出已制作的加工设备");
+                Add("player.place_facility",new{item=facilityRecipe.Facility,location="Farm",goal_id=goal.Id},"算法选址并原生放置设备，之后继续投料加工");
+                return new(goal,Data.Autoplay.Schedule.Revision,tasks,gaps);
+            }
             // Prepare one ready production node at a time. Re-read native inventory
             // after it completes instead of spending predicted outputs in advance.
             var ready=goal.Nodes.FirstOrDefault(n=>n.Status=="player_step"&&n.Kind is "craft" or "cook" or "process");

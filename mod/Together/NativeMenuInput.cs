@@ -16,13 +16,22 @@ internal sealed class NativeMenuInput : InputState {
         return(Read("currentSkill"),Read("currentLevel"),choices.ToList());
     }
     private readonly MouseState mouse;
-    private NativeMenuInput(int x,int y,ButtonState button) {
+    private NativeMenuInput(int x,int y,ButtonState button,ButtonState right=ButtonState.Released) {
         float scale=Game1.uiMode?Game1.options.uiScale:Game1.options.zoomLevel;
-        mouse=new MouseState((int)Math.Ceiling(x*scale),(int)Math.Ceiling(y*scale),0,button,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
+        mouse=new MouseState((int)Math.Ceiling(x*scale),(int)Math.Ceiling(y*scale),0,button,ButtonState.Released,right,ButtonState.Released,ButtonState.Released);
     }
     public override MouseState GetMouseState()=>mouse;
     public override KeyboardState GetKeyboardState()=>default;
     public override GamePadState GetGamePadState()=>default;
+    public static bool InteractWorld(Point tile) {
+        var input=Game1.input;var previous=Game1.oldMouseState;
+        try {
+            int x=tile.X*64+32-Game1.viewport.X,y=tile.Y*64+32-Game1.viewport.Y;
+            Game1.oldMouseState=new MouseState(x,y,0,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);
+            Game1.input=new NativeMenuInput(x,y,ButtonState.Released,ButtonState.Pressed);
+            return Game1.tryToCheckAt(tile.ToVector2(),Game1.player);
+        }finally{Game1.input=input;Game1.oldMouseState=previous;}
+    }
     public static void ClickWorld(IClickableMenu menu,Point tile) {
         int rawX=tile.X*64+32-Game1.viewport.X,rawY=tile.Y*64+32-Game1.viewport.Y;
         int x=(int)Utility.ModifyCoordinateForUIScale(rawX),y=(int)Utility.ModifyCoordinateForUIScale(rawY);

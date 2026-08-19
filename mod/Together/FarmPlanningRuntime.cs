@@ -24,6 +24,14 @@ public sealed class FarmPlantPlan {
 }
 public sealed partial class ModEntry {
     private readonly Dictionary<string,FarmPlantPlan> farmPlantPlans=new();
+    private bool IsPlacementProtected(string location,Point tile) {
+        if(Data.FarmPolicy.Areas.Any(a=>a.Enabled&&a.Location==location&&tile.X>=a.X&&tile.X<a.X+a.Width&&tile.Y>=a.Y&&tile.Y<a.Y+a.Height)||AgentTileBusy(location,tile.X,tile.Y))return true;
+        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant")) {
+            string id=AgentToolRegistry.Text(task.spec.args,"plan_id");
+            if(farmPlantPlans.TryGetValue(id,out var plan)&&plan.Epoch==agentSaveEpoch&&plan.Day==Game1.Date.TotalDays&&plan.Location==location&&plan.Tiles.Contains(new(tile.X,tile.Y)))return true;
+        }
+        return false;
+    }
     internal object PlanFarm(JsonElement args) {
         var l=Game1.currentLocation;
         if(!l.IsFarm&&!l.IsGreenhouse)throw new InvalidOperationException("plan_on_farm_or_greenhouse");

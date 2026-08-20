@@ -16,12 +16,20 @@ public sealed partial class PlayerExecutor {
         string? key=Game1.netWorldState.Value.BundleData.Keys.FirstOrDefault(k=>k.Split('/').Last()==donationBundle.ToString());
         if(key==null)throw new InvalidOperationException("native_bundle_not_found");
         donationArea=CommunityCenter.getAreaNumberFromName(key.Split('/')[0]);
-        if(donationArea is <0 or >5)throw new InvalidOperationException("special_bundle_location_requires_adapter");
-        destination="CommunityCenter";donationClosing=false;donationNote=null;donationBlocked.Clear();Current!.phase="bundle_travel";
+        if(donationArea is <0 or >6)throw new InvalidOperationException("special_bundle_location_requires_adapter");
+        destination=donationArea==6?"AbandonedJojaMart":"CommunityCenter";donationClosing=false;donationNote=null;donationBlocked.Clear();Current!.phase="bundle_travel";
         if(Game1.activeClickableMenu is JunimoNoteMenu menu&&(menu.fromGameMenu||menu.fromThisMenu||menu.whichArea!=donationArea||menu.heldItem!=null||menu.partialDonationItem!=null))throw new InvalidOperationException("physical_matching_bundle_menu_required");
     }
     private void TickBundle() {
         if(Game1.activeClickableMenu is JunimoNoteMenu menu) {TickBundleMenu(menu);return;}
+        if(donationClosing&&Game1.activeClickableMenu is ItemGrabMenu {context:JunimoNoteMenu origin} rewards&&origin.whichArea==donationArea) {
+            if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(200);
+            var ccRewards=Game1.RequireLocation<CommunityCenter>("CommunityCenter");
+            var pending=rewards.ItemsToGrabMenu.actualInventory.Where(i=>i!=null).Select(i=>i.SpecialVariable).Distinct().Where(id=>ccRewards.bundleRewards.TryGetValue(id,out bool available)&&available).ToArray();
+            var step=NativeRewards.Step(rewards);Current!.effects.Add(step.Evidence);
+            foreach(int id in pending.Where(id=>!ccRewards.bundleRewards[id]))Current.effects.Add(new{kind="native_bundle_reward_claimed",bundle=id});
+            return;
+        }
         if(donationClosing) {
             if(Game1.activeClickableMenu==null){Finish("succeeded");return;}
             throw new InvalidOperationException("bundle_exit_requires_review");
@@ -29,10 +37,19 @@ public sealed partial class PlayerExecutor {
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("bundle_route_menu_requires_review");
         if(Game1.locationRequest!=null||Game1.fadeToBlack||!Game1.player.CanMove)return;
         if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
-        var cc=(CommunityCenter)Game1.currentLocation;
+        var cc=Game1.currentLocation;
         if(donationNote==null) {
-            var method=typeof(CommunityCenter).GetMethod("getNotePosition",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)??throw new InvalidOperationException("native_note_schema_changed");
-            var note=(Point)method.Invoke(cc,new object[]{donationArea})!;
+            Point note;
+            if(donationArea==6) {
+                var layer=cc.Map.GetLayer("Buildings");Point? found=null;
+                for(int y=0;y<layer.LayerHeight&&found==null;y++)for(int x=0;x<layer.LayerWidth;x++) {
+                    int index=cc.getTileIndexAt(x,y,"Buildings");if(index==1799||index is >=1824 and <=1833){found=new Point(x,y);break;}
+                }
+                note=found??throw new InvalidOperationException("missing_bundle_note_not_visible");
+            } else {
+                var method=typeof(CommunityCenter).GetMethod("getNotePosition",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)??throw new InvalidOperationException("native_note_schema_changed");
+                note=(Point)method.Invoke(cc,new object[]{donationArea})!;
+            }
             int tile=cc.getTileIndexAt(note.X,note.Y,"Buildings");
             if(tile!=1799&&(tile<1824||tile>1833))throw new InvalidOperationException("bundle_note_not_visible_unlock_or_claim_rewards");
             bool reached=false;foreach(var stand in new[]{new Point(note.X,note.Y+1),new Point(note.X-1,note.Y),new Point(note.X+1,note.Y),new Point(note.X,note.Y-1)}) {
@@ -52,6 +69,7 @@ public sealed partial class PlayerExecutor {
             if(menu.heldItem!=null){menu.heldItem=menu.inventory.tryToAddItem(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("bundle_remainder_inventory_full");}
             if(menu.partialDonationItem!=null)throw new InvalidOperationException("bundle_partial_items_require_recovery");
             if(menu.specificBundlePage){var back=menu.backButton?.bounds??menu.upperRightCloseButton.bounds;menu.receiveLeftClick(back.Center.X,back.Center.Y);return;}
+            if(menu.presentButton!=null) {var bounds=menu.presentButton.bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);return;}
             if(menu.readyToClose())menu.exitThisMenu();return;
         }
         if(!menu.specificBundlePage) {

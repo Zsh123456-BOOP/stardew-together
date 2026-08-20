@@ -25,7 +25,7 @@ public static class CapabilityCatalog {
         new("F14","钓鱼",new[]{"player.fish","companion.assign"},new[]{"player","companion"},"鱼种/地点选择、宝箱奖励、补给和原生控杆验收", "Farmer fishCaught；NPC货物不等价"),
         new("F15","探索战斗",new[]{"player.travel","player.combat","player.mine_descend","player.mine_access","work.run","companion.assign"},new[]{"player","companion"},"特殊敌种战术/骷髅矿/火山适配及矿洞闭环实机验收", "原生层数/击杀归属"),
         new("F16","任务交付",new[]{"progress.read","quest_board.read","player.accept_quest","order_donations.read","player.order_donate","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单跨目标计数/非金币领奖与接取交付验收", "quest/order 原生完成条件"),
-        new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/Joja路线/领奖与献祭捐赠实机验收", "原生提交与解锁"),
+        new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","joja.read","player.joja","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/领奖与Joja及献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),

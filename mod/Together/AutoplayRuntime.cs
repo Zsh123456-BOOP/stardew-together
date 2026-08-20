@@ -104,7 +104,7 @@ public sealed partial class ModEntry {
         playerExecutor.Tick();TickSemanticWork();
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        TickAgentSchedule();TickDailyAutomation();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();
+        TickAgentSchedule();TickDailyAutomation();TickFarmInvestment();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();
         try{if(TickAutomaticMenus())return;}catch(Exception e){PauseAutoplay("automatic_menu_requires_review:"+e.Message);return;}
         if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.

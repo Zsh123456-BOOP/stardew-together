@@ -118,6 +118,7 @@ public sealed class StoragePolicy {
 }
 public sealed class SaveData {
     public StoragePolicy Storage {get;set;}=new();
+    public FarmInvestmentPolicy FarmInvestment {get;set;}=new();
     public List<SharedGoal> SharedGoals {get;set;}=new();
     public KnowledgeNotebook Knowledge {get;set;}=new();
     public FarmPolicy FarmPolicy {get;set;}=new();

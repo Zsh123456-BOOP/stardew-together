@@ -55,7 +55,7 @@ public sealed partial class PlayerExecutor {
     }
     private static object Snapshot()=>new{day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
-    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
+    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.read_mail"&&Game1.activeClickableMenu is LetterViewerMenu || skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
         bool buying=AcceptsNativeMenu(skill);
@@ -67,11 +67,13 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.read_mail":case "player.watch_tv":StartInformation(args);break;
                 case "player.joja":StartJoja(args);break;
                 case "player.place_facility":StartFacilityPlacement(args);break;
                 case "player.ship_items":StartShipping(args);break;
                 case "player.order_donate":StartOrderDonation(args);break;
                 case "player.equip":StartEquipment(args);break;
+                case "player.attach":StartAttachment(args);break;
                 case "player.accept_quest":StartQuestAcceptance(args);break;
                 case "player.animal":StartAnimalManagement(args);break;
                 case "player.geodes":StartGeodes(args);break;
@@ -102,7 +104,7 @@ public sealed partial class PlayerExecutor {
                     Current.phase="eating";break;
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "fertilize" or "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -221,6 +223,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
+            if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}
             if(Current.skill=="player.joja"){TickJoja();return;}
             if(Current.skill=="player.place_facility"){TickFacilityPlacement();return;}
             if(Current.skill=="player.ship_items"){TickShipping();return;}
@@ -274,7 +277,7 @@ public sealed partial class PlayerExecutor {
     private static ResourceClump? ClumpAt(Point p)=>Game1.currentLocation.resourceClumps.FirstOrDefault(c=>p.X>=c.Tile.X&&p.X<c.Tile.X+c.width.Value&&p.Y>=c.Tile.Y&&p.Y<c.Tile.Y+c.height.Value);
     private static object TileState(Point p) {
         var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;var clump=ClumpAt(p);
-        return new{clump_id=clump?.parentSheetIndex.Value,clump_health=clump?.health.Value,x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
+        return new{clump_id=clump?.parentSheetIndex.Value,clump_health=clump?.health.Value,x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,fertilizer=dirt?.fertilizer.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
     private void TickWork() {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
@@ -336,6 +339,11 @@ public sealed partial class PlayerExecutor {
             }
             if(workSkill=="forage" && (!Game1.currentLocation.objects.TryGetValue(v,out var forage) || !forage.isForage() || forage.bigCraftable.Value))throw new InvalidOperationException("not_a_forage_target");
             bool already=workSkill=="water"&&dirt?.state.Value==1 || workSkill=="till"&&dirt!=null;
+            if(workSkill=="fertilize") {
+                if(Game1.player.Items[workSlot] is not StardewValley.Object {Category:-19} fertilizer||dirt==null)throw new InvalidOperationException("fertilizer_and_tilled_tile_required");
+                already=ItemRegistry.QualifyItemId(dirt.fertilizer.Value)==fertilizer.QualifiedItemId;
+                if(!already&&!dirt.CanApplyFertilizer(fertilizer.QualifiedItemId))throw new InvalidOperationException("native_fertilizer_rules_reject_tile");
+            }
             if(already){Current.effects.Add(new{tile=workBefore,status="already_satisfied"});workIndex++;return;}
             if(workSkill=="water"&&dirt?.crop==null || workSkill=="plant"&&(dirt==null||dirt.crop!=null) || workSkill=="harvest"&&dirt?.readyForHarvest()!=true)
                 throw new InvalidOperationException("work_target_not_eligible");
@@ -350,10 +358,12 @@ public sealed partial class PlayerExecutor {
                 if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
-            } else if(workSkill=="plant") {
+            } else if(workSkill is "plant" or "fertilize") {
                 if(Game1.player.ActiveObject is not {} seed)throw new InvalidOperationException("plant_seed_missing");
-                ValidateConsumption?.Invoke(new Dictionary<Item,int>{{seed,1}},"","plant:"+seed.QualifiedItemId);
+                ValidateConsumption?.Invoke(new Dictionary<Item,int>{{seed,1}},"",workSkill+":"+seed.QualifiedItemId);
+                int beforeStack=Game1.player.Items.Where(i=>i?.QualifiedItemId==seed.QualifiedItemId).Sum(i=>i.Stack);
                 if(!Utility.tryToPlaceItem(Game1.currentLocation,seed,tile.X*64,tile.Y*64))throw new InvalidOperationException("native_plant_rejected");
+                if(beforeStack-Game1.player.Items.Where(i=>i?.QualifiedItemId==seed.QualifiedItemId).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_seed_or_fertilizer_consumption_not_verified");
             } else if(!Game1.tryToCheckAt(tile.ToVector2(),Game1.player))throw new InvalidOperationException("native_harvest_rejected");
             Current.phase="work_impact";return;
         }

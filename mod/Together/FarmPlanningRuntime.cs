@@ -11,6 +11,7 @@ public sealed class FarmPlantPlan {
     public int Day {get;set;}
     public string Location {get;set;}="";
     public string Seed {get;set;}="";
+    public string Fertilizer {get;set;}="";
     public List<FarmCell> Tiles {get;set;}=new();
     public int GrowDays {get;set;}
     public int Harvests {get;set;}
@@ -37,6 +38,13 @@ public sealed partial class ModEntry {
         if(!l.IsFarm&&!l.IsGreenhouse)throw new InvalidOperationException("plan_on_farm_or_greenhouse");
         if(playerExecutor.Busy || WorkActorBusy("player"))throw new InvalidOperationException("wait_for_player_before_layout");
         string requested=AgentToolRegistry.Text(args,"seed");int max=Math.Clamp(AgentToolRegistry.Number(args,"count",24),1,96);
+        string fertilizer=AgentToolRegistry.Text(args,"fertilizer");
+        if(fertilizer.Length>0) {
+            fertilizer=ItemRegistry.QualifyItemId(fertilizer)??throw new InvalidOperationException("invalid_fertilizer_id");
+            if(fertilizer is not ("(O)368" or "(O)369" or "(O)919" or "(O)370" or "(O)371" or "(O)920" or "(O)465" or "(O)466" or "(O)918"))throw new InvalidOperationException("crop_fertilizer_required");
+            max=Math.Min(max,Game1.player.Items.Where(i=>i?.QualifiedItemId==fertilizer).Sum(i=>i.Stack));
+            if(max==0)throw new InvalidOperationException("planned_fertilizer_not_carried");
+        }
         int manual=Math.Clamp(AgentToolRegistry.Number(args,"max_daily_manual_water",24),0,96);
         bool protectedOnly=args.TryGetProperty("require_scarecrow",out var protect)&&protect.ValueKind==JsonValueKind.True;
         var owned=Game1.player.Items.Where(i=>i?.Category==-74).GroupBy(i=>i!.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
@@ -76,18 +84,19 @@ public sealed partial class ModEntry {
             var seedGrid=grid.Select(c=>{
                 bool paddy=data.IsPaddyCrop&&paddyTiles.Contains(c.Tile);
                 var dirt=l.terrainFeatures.GetValueOrDefault(new Vector2(c.Tile.X,c.Tile.Y)) as HoeDirt;
-                growth[c.Tile]=CropGrowth.Stages(data.DaysInPhase,dirt?.GetFertilizerSpeedBoost()??0,p.professions.Contains(5),paddy).Sum();
+                float speed=dirt?.HasFertilizer()==true?dirt.GetFertilizerSpeedBoost():fertilizer switch{"(O)465"=>.1f,"(O)466"=>.25f,"(O)918"=>.33f,_=>0};
+                growth[c.Tile]=CropGrowth.Stages(data.DaysInPhase,speed,p.professions.Contains(5),paddy).Sum();
                 return c with{Irrigated=c.Irrigated||paddy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
             }).ToList();
             var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),data.IsRaised,manual,protectedOnly);
             if(chosen.Tiles.Count==0)continue;
             int harvests=calc.NumHarvests(Game1.dayOfMonth,horizon);
             var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,Tiles=chosen.Tiles,GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};
-            farmPlantPlans[plan.Id]=plan;
+            plan.Fertilizer=fertilizer;farmPlantPlans[plan.Id]=plan;
             double gross=plan.GrowthByTile.Values.Sum(d=>new StardewCropCalculatorLibrary.Crop(seed.Key,d,calc.yieldRate,0,calc.sellPrice).NumHarvests(Game1.dayOfMonth,horizon)*calc.sellPrice);
             bool missing=!p.basicShipped.ContainsKey(data.HarvestItemId)||Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(n=>n.Item=="(O)"+data.HarvestItemId));
             double score=priority=="collection"?(missing?100000:0)+gross:priority=="low_labor"?gross/Math.Max(1,plan.ManualWatering*Math.Max(1,horizon-Game1.dayOfMonth)):gross;
-            options.Add((score,new{plan_id=plan.Id,plan.Seed,count=plan.Tiles.Count,tiles=plan.Tiles,harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
+            options.Add((score,new{plan_id=plan.Id,plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
@@ -124,6 +133,11 @@ public sealed partial class ModEntry {
                 if(Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"energy_reserve_reached");return;}
                 int slot=WorkSlot(i=>i is Hoe);if(slot<0){StopSemanticWork(j,"hoe_missing");return;}
                 WorkChild(j,"player.work",new{skill="till",slot,tiles=new[]{new{x=tile.X,y=tile.Y}}},"plant_till");return;
+            }
+            if(plan.Fertilizer.Length>0&&!dirt.HasFertilizer()) {
+                int fertilizerSlot=WorkSlot(i=>i.QualifiedItemId==plan.Fertilizer);
+                if(fertilizerSlot<0){StopSemanticWork(j,"planned_fertilizer_supply_missing");return;}
+                WorkChild(j,"player.work",new{skill="fertilize",slot=fertilizerSlot,tiles=new[]{new{x=tile.X,y=tile.Y}}},"plant_fertilizer");return;
             }
             string seedId=plan.Seed.StartsWith("(O)")?plan.Seed[3..]:plan.Seed;
             if(!DataLoader.Crops(Game1.content).TryGetValue(seedId,out var cropData))throw new InvalidOperationException("planned_crop_definition_changed");

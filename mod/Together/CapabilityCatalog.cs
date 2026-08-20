@@ -11,7 +11,7 @@ public static class CapabilityCatalog {
     public static readonly CapabilityDefinition[] All={
         new("F01","状态与地图",new[]{"world.read","map.read","map.scan","inventory.read"},new[]{"player","companion"},"全状态变更索引与离线规划隔离", "原生快照"),
         new("F02","移动与跨图",new[]{"player.travel","player.move","companion.assign"},new[]{"player","companion"},"特殊区域通道覆盖", "角色实际位置"),
-        new("F03","工具装备",new[]{"inventory.read","equipment.read","player.equip","player.use_tool"},new[]{"player"},"饰品/工具附件/装备策略与实机验收", "实际工具与装备"),
+        new("F03","工具装备",new[]{"inventory.read","equipment.read","player.equip","player.attach","player.use_tool"},new[]{"player"},"装备策略与附件/饰品实机验收", "实际工具与装备"),
         new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"特殊地图再生/全矿种实机覆盖", "原生掉落与实际入包"),
         new("F05","农田布局",new[]{"farm.autonomy","farm.plan","farm.economy","farm.economy_status","farm.execute"},new[]{"player"},"未来跨季用地和全部设施布局", "未来占用图可达性"),
         new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"未来多轮现金流优化/加工收益/特殊商店排期；逐日再投资已接但未实测", "地块/种子消耗/成熟日期"),
@@ -28,7 +28,7 @@ public static class CapabilityCatalog {
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","joja.read","player.joja","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/领奖与Joja及献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
-        new("F20","菜单过夜",new[]{"player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
+        new("F20","菜单过夜",new[]{"player.read_mail","player.watch_tv","player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
         new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
         new("F22","成就目标图",new[]{"progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),

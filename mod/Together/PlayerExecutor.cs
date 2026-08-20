@@ -68,6 +68,7 @@ public sealed partial class PlayerExecutor {
         try {
             switch(skill) {
                 case "player.read_mail":case "player.watch_tv":StartInformation(args);break;
+                case "player.transport":case "player.repair_boat":StartTransit(args);break;
                 case "player.joja":StartJoja(args);break;
                 case "player.place_facility":StartFacilityPlacement(args);break;
                 case "player.ship_items":StartShipping(args);break;
@@ -210,6 +211,7 @@ public sealed partial class PlayerExecutor {
                 Current.effects.Add(new{kind="native_eat",item=eatingItem,consumed=eatingBefore-count,stamina=Game1.player.Stamina,health=Game1.player.health});
                 Finish(eatingBefore-count==1?"succeeded":"failed",eatingBefore-count==1?null:"food_consumption_not_verified");return;
             }
+            if(Current.skill is "player.transport" or "player.repair_boat"){TickTransit();return;}
             ObserveNativeTransition();
             // Events often set CanMove=false. Report the interruption before the
             // movement gate, otherwise a travel task waits forever behind dialogue.

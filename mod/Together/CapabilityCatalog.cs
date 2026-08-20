@@ -10,7 +10,7 @@ public sealed record CapabilityDefinition(string id,string title,string[] tools,
 public static class CapabilityCatalog {
     public static readonly CapabilityDefinition[] All={
         new("F01","状态与地图",new[]{"world.read","map.read","map.scan","inventory.read"},new[]{"player","companion"},"全状态变更索引与离线规划隔离", "原生快照"),
-        new("F02","移动与跨图",new[]{"player.travel","player.move","companion.assign"},new[]{"player","companion"},"特殊区域通道覆盖", "角色实际位置"),
+        new("F02","移动与跨图",new[]{"transport.read","player.transport","player.repair_boat","player.travel","player.move","companion.assign"},new[]{"player","companion"},"特殊区域通道覆盖", "角色实际位置"),
         new("F03","工具装备",new[]{"inventory.read","equipment.read","player.equip","player.attach","player.use_tool"},new[]{"player"},"装备策略与附件/饰品实机验收", "实际工具与装备"),
         new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"特殊地图再生/全矿种实机覆盖", "原生掉落与实际入包"),
         new("F05","农田布局",new[]{"farm.autonomy","farm.plan","farm.economy","farm.economy_status","farm.execute"},new[]{"player"},"未来跨季用地和全部设施布局", "未来占用图可达性"),

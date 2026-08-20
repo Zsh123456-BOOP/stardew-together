@@ -6,9 +6,14 @@ public sealed partial class ModEntry {
     private DateTime progressCampaignAt;
     internal object ConfigureProgressCampaign(JsonElement args) {
         RefreshFacts(true);var campaign=Data.Autoplay.Campaign;var known=ReadNativeGoalRows().Select(r=>r.id).ToHashSet();
+        int budget=AgentToolRegistry.Number(args,"budget_per_day",campaign.BudgetPerDay),keep=AgentToolRegistry.Number(args,"keep_gold",campaign.KeepGold);
+        string route=AgentToolRegistry.Text(args,"route",campaign.Route);
+        if(budget is <0 or >10000000||keep<0||route is not ("" or "community" or "joja"))throw new InvalidOperationException("invalid_progress_budget_or_route");
+        if(route=="community"&&Game1.player.hasOrWillReceiveMail("JojaMember")||route=="joja"&&Game1.player.mailReceived.Contains("ccIsComplete"))throw new InvalidOperationException("progress_route_conflicts_with_native_save");
+        campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;
         if(args.TryGetProperty("targets",out var raw)) {
             var targets=JsonSerializer.Deserialize<List<string>>(raw.GetRawText());
-            if(targets==null||targets.Count is <1 or >16||targets.Distinct().Count()!=targets.Count||targets.Any(id=>!known.Contains(id)))throw new InvalidOperationException("one_to_sixteen_observed_progress_targets_required");
+            if(targets==null||targets.Count is <1 or >128||targets.Distinct().Count()!=targets.Count||targets.Any(id=>!known.Contains(id)))throw new InvalidOperationException("one_to_128_observed_progress_targets_required");
             foreach(var prior in campaign.Targets.Where(p=>!targets.Contains(p.Target)))PausePursuitChild(prior);
             campaign.Targets=targets.Select(id=>campaign.Targets.FirstOrDefault(p=>p.Target==id)??new(){Target=id}).ToList();
         }
@@ -21,9 +26,10 @@ public sealed partial class ModEntry {
             }
         }
         progressCampaignAt=DateTime.MinValue;
-        return new{campaign,note="持续追踪原生目标；当前自动衔接已解锁制作/烹饪成就，其他目标保留具体阻碍供模型规划。不把子任务成功记作原生成就完成。"};
+        return new{campaign,note="按预算持续衔接已绑定的原生目标，备料与购买不代表成就完成；任务或材料条件改变后继续。未绑定的特殊条件明确报告。"};
     }
     private void PausePursuitChild(ProgressPursuit pursuit) {
+        Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>pursuit.Tasks.Contains(t.spec.id)&&!t.Terminal&&t.state!="running").Select(t=>t.spec.id).ToArray());
         var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==pursuit.ChildGoal);
         if(goal is {Status:"active"})AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id,mode="pause"}));
     }
@@ -37,8 +43,15 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning||!Data.Autoplay.Campaign.Enabled||DateTime.UtcNow<progressCampaignAt)return;progressCampaignAt=DateTime.UtcNow.AddSeconds(3);
         if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||Game1.timeOfDay>=2100||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
         RefreshFacts(true);var native=ReadNativeGoalRows().GroupBy(r=>r.id).ToDictionary(g=>g.Key,g=>g.First());
+        var policy=Data.Autoplay.Campaign;if(policy.BudgetDay!=Game1.Date.TotalDays){policy.BudgetDay=Game1.Date.TotalDays;policy.ReservedGold=0;}
         foreach(var pursuit in Data.Autoplay.Campaign.Targets) {
-            if(!native.TryGetValue(pursuit.Target,out var target)){PursuitState(pursuit,"blocked","native_target_no_longer_available");continue;}
+            if(!ReconcilePursuitTasks(pursuit))continue;
+            if(!native.TryGetValue(pursuit.Target,out var target)) {
+                if(pursuit.CompletionObserved&&pursuit.State!="blocked"&&pursuit.Target.StartsWith("quest:"))PursuitState(pursuit,"complete","已观察原生完成，领奖后从活动日志移除");
+                else PursuitState(pursuit,"blocked","native_target_no_longer_available");continue;
+            }
+            pursuit.CompletionObserved=target.completed==true;
+            if(TryClaimPursuitReward(pursuit)){return;}
             if(target.completed==true){PausePursuitChild(pursuit);PursuitState(pursuit,"complete",target.evidence);continue;}
             if(pursuit.State=="complete")PursuitState(pursuit,"pending","native_progress_changed_reobserve");
             if(pursuit.State=="blocked")continue;
@@ -50,6 +63,8 @@ public sealed partial class ModEntry {
                 PursuitState(pursuit,"running","执行当前依赖，普通子动作由队列续接");return;
             }
             if(current is {Status:"paused"}){PursuitState(pursuit,"blocked","dependent_shared_goal_paused");continue;}
+            try {if(TryAdvanceNativePursuit(pursuit,target)) {if(pursuit.State=="running")return;continue;}}
+            catch(Exception e){PursuitState(pursuit,"blocked",e is InvalidOperationException?e.Message:e.GetType().Name);continue;}
             IEnumerable<string>? candidates=null;
             if(pursuit.Target.StartsWith("craft:")||pursuit.Target.StartsWith("cook:"))candidates=new[]{pursuit.Target};
             else if(pursuit.Target.StartsWith("achievement:")&&int.TryParse(pursuit.Target[12..],out int id)&&id is 15 or 16 or 17 or 20 or 21 or 22) {

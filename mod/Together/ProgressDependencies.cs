@@ -51,7 +51,22 @@ public sealed partial class ModEntry {
                 }else if(definition.kind=="bundle") {
                     var bundle=Facts.Bundles.First(b=>"bundle:"+b.Id==id);
                     foreach(var item in bundle.Missing)node.dependencies.Add(new(item.Item,item.Count,item.Quality,"choose_missing_slots"));
-                    node.actions.Add(Action("player.bundle",new{bundle=bundle.Id}));
+                    node.actions.Add(Action("player.bundle",new{bundle=int.Parse(bundle.Id)}));
+                }else if(definition.kind=="house") {
+                    int targetLevel=int.Parse(id[6..]);node.state=Game1.player.daysUntilHouseUpgrade.Value>=0?"waiting_construction":"unmet";
+                    if(targetLevel>1)node.dependencies.Add(new("house:"+(targetLevel-1)));
+                    int cost=targetLevel==1?10000:targetLevel==2?65000:100000;node.dependencies.Add(new("gold",cost));
+                    if(targetLevel<3)node.dependencies.Add(new(targetLevel==1?"(O)388":"(O)709",targetLevel==1?450:100));
+                    node.actions.Add(Action("player.upgrade_house",new{budget=cost,keep_gold=500}));
+                }else if(definition.kind=="boat") {
+                    var part=id[5..];var need=part switch{"hull"=>("(O)709",200),"anchor"=>("(O)337",5),_=>("(O)787",5)};
+                    node.dependencies.Add(new(need.Item1,need.Item2));node.actions.Add(Action("player.repair_boat",new{part}));
+                    node.gaps.Add("需先通过原生剧情开放船坞；捐料登记后施工仍需过夜");
+                }else if(definition.kind=="shipping") {
+                    string item=id[5..];node.dependencies.Add(new(item));node.actions.Add(Action("player.ship_items",new{items=new[]{new{item,count=1}}}));
+                }else if(id.StartsWith("joja:")) {
+                    var project=Facts.Goals.First(g=>g.Id==id);node.dependencies.Add(new("gold",project.Gold));
+                    node.actions.Add(Action("player.joja",new{route="joja",mode="project",project=id[5..],budget=project.Gold,keep_gold=500}));
                 }else if(definition.kind is "quest" or "order") {
                     var quest=Facts.Goals.FirstOrDefault(g=>g.Id==id);
                     if(quest!=null)foreach(var requirement in quest.Needs)node.dependencies.Add(new(requirement.Item,requirement.Count,requirement.Quality));
@@ -67,7 +82,7 @@ public sealed partial class ModEntry {
                     if(targetLevel<3)node.dependencies.Add(new(targetLevel==1?"(O)388":"(O)709",targetLevel==1?450:100));
                     node.actions.Add(Action("player.upgrade_house",new{budget=cost,keep_gold=500}));
                 }
-            }else if(id.StartsWith("unlock:")) {
+            }else if(id.StartsWith("unlock:craft:")||id.StartsWith("unlock:cook:")) {
                 node.kind="recipe_unlock";string recipeId=id[7..];bool cook=recipeId.StartsWith("cook:");string key=recipeId[(cook?5:6)..];
                 var recipes=cook?DataLoader.CookingRecipes(Game1.content):DataLoader.CraftingRecipes(Game1.content);var fields=recipes.GetValueOrDefault(key,"").Split('/');string raw=fields.Length>(cook?3:4)?fields[cook?3:4]:"";
                 bool learned=cook?Game1.player.cookingRecipes.ContainsKey(key):Game1.player.craftingRecipes.ContainsKey(key);node.state=learned?"complete":"locked";node.evidence=new{raw,learned};
@@ -76,6 +91,8 @@ public sealed partial class ModEntry {
                     if(parts.Length==2&&int.TryParse(parts[1],out int skillLevel)&&new[]{"farming","fishing","mining","foraging","combat"}.Contains(parts[0].ToLowerInvariant()))node.dependencies.Add(new("skill:"+parts[0].ToLowerInvariant(),skillLevel));
                     else if(parts.Length==3&&parts[0]=="f"&&int.TryParse(parts[2],out int hearts))node.dependencies.Add(new("friendship:"+parts[1],hearts*250));
                     else node.gaps.Add("shop_event_or_special_recipe_unlock_requires_native_source_adapter");
+                    if(cook)node.actions.Add(Action("player.watch_tv",new{channel="cooking"}));
+                    node.actions.Add(Action("player.read_mail",new{}));
                     node.gaps.Add("满足等级或关系条件后仍需原生升级/邮件/菜单真正授予配方");
                 }
             }else if(id=="gold") {node.kind="currency";node.state="observed";node.evidence=new{amount=Game1.player.Money,pending_shipping_not_spendable=true};}

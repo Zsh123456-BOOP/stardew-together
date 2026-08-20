@@ -15,7 +15,7 @@ public sealed class AgentToolRegistry {
     public static readonly Dictionary<string,string> Catalog=new(){
         ["strategy.profession"]="{skill:0..4,level:5|10,profession:0..29}: 持久保存职业方向（技能编号为游戏原生顺序），检查前后分支一致性；夜间遇到真实对应选项自动原生选择，不修改已有职业。未配置或冲突仍需模型选择",
         ["usage.read"]="{}: 今日模型预算、API报告Token、失败请求保留额度、剩余和请求大小上限；额度外部持久记录，读档不回退，不等同于人民币账单",
-        ["progress.pursue"]="{targets?:原生目标ID数组,enabled?:bool}: 持久追踪目标并自动连续完成当前具备条件的制作/烹饪配方，按实际成就核验。其他路线明确阻碍，暂停取消未执行依赖、不打断已经消耗的动作",
+        ["progress.pursue"]="{targets?:1..128个原生目标ID,enabled?:bool,budget_per_day?:int,keep_gold?:int,route?:community|joja}: 持久推进已绑定制作/烹饪、房屋、献祭/Joja、修船、馆藏、普通交付、出货与普通矿底目标；算法备料和排队，按真实进度核验，每日金额预算先预留。暂停取消未执行依赖，未知后期目标仍明确阻碍",
         ["progress.dependencies"]="{id:成就/配方/任务/物品ID,depth?:1..8,limit?:10..600}: 展开原生证据依赖图、数量/品质/替代分支与具体工具入口，明确未适配和截断；只读不授予进度",
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
         ["memory.search"]="{query?:string,actor?:string,limit?:1..20,offset?:int}: 检索本存档已归档事件/回执，不含读档后的未来记录；返回证据ID和截断提示",
@@ -69,7 +69,7 @@ public sealed class AgentToolRegistry {
         ["farm.economy_status"]="{plan_id:string}: 查看后台经济规划及条件现金流；过日或读档必须重算",
         ["farm.execute"]="{plan_id:string}: 幂等把规划的采购/共享箱取种子/实际布局播种接入队列，真实预算/供货/占地再次核验",
         ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:0..96,require_scarecrow?:bool,priority?:income|collection|low_labor}: 在农场/温室按已有种子和真实可达地形生成地块方案，保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)自动翻土播种浇水补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
-        ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
+        ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|house|boat|shipping|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
         ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色依次执行，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
         ["plan.cancel"]="{ids:[任务id]}: 取消指定任务；保存开始后不可取消。失败后取消受阻旧计划，再根据真实状态提交新任务",

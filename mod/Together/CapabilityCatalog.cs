@@ -30,7 +30,7 @@ public static class CapabilityCatalog {
         new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.read_mail","player.watch_tv","player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
         new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
-        new("F22","成就目标图",new[]{"progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
+        new("F22","成就目标图",new[]{"progress.pursue","progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
         new("F25","百科检索",new[]{"knowledge.search","knowledge.get","goal.requirements"},new[]{"player","companion"},"特殊规则与完整条件覆盖", "游戏内容与现场条件"),
@@ -73,6 +73,9 @@ public sealed partial class ModEntry {
         }
         foreach(var g in Facts.Goals.Where(g=>g.Kind!="craft"))rows.Add(new(g.Id,g.Title,g.Kind=="special_order"?"order":g.Kind=="joja"?"route":"quest",g.Complete,new[]{g.Kind=="joja"?"F17":"F16"},Array.Empty<string>(),new{g.Kind,g.Deadline,g.Gold,g.Needs},"原生任务/订单/邮件条件",g.Complete?"":"专属交互执行待接通"));
         foreach(var b in Facts.Bundles)rows.Add(new("bundle:"+b.Id,b.Name,"bundle",b.Complete,new[]{"F08","F17"},new[]{"route:community"},new{b.RequiredSlots,b.CompletedSlots,b.Missing},"原生 bundle 状态",b.Complete?"":"献祭交互执行待接通"));
+        foreach(int level in new[]{1,2,3})rows.Add(new("house:"+level,"房屋升级 "+level,"house",p.HouseUpgradeLevel>=level,new[]{"F13"},Array.Empty<string>(),new{current=p.HouseUpgradeLevel,required=level,construction_days=p.daysUntilHouseUpgrade.Value},"Farmer.HouseUpgradeLevel","工期保持原生；预算与材料须具备"));
+        foreach(var part in new[]{("hull","willyBoatHull","(O)709",200),("anchor","willyBoatAnchor","(O)337",5),("ticket_machine","willyBoatTicketMachine","(O)787",5)})rows.Add(new("boat:"+part.Item1,"修船部件："+part.Item1,"boat",Game1.MasterPlayer.hasOrWillReceiveMail(part.Item2),new[]{"F02","F04"},Array.Empty<string>(),new{item=part.Item3,count=part.Item4,pending=Game1.MasterPlayer.hasOrWillReceiveMail(part.Item2)},"原生部件捐料邮件；整体竣工另验","需要船坞可进入及真实材料"));
+        foreach(var item in ShippingCollection())rows.Add(new("ship:"+item.QualifiedItemId,item.DisplayName,"shipping",p.basicShipped.GetValueOrDefault(item.ItemId)>0,new[]{"F12"},Array.Empty<string>(),new{item=item.QualifiedItemId,count=p.basicShipped.GetValueOrDefault(item.ItemId)},"Farmer.basicShipped","放进出货箱不等于已过夜计入出货记录"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
         rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));

@@ -27,9 +27,9 @@ public static class CapabilityCatalog {
         new("F16","任务交付",new[]{"progress.read","quest_board.read","player.accept_quest","order_donations.read","player.order_donate","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单跨目标计数/非金币领奖与接取交付验收", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","joja.read","player.joja","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/领奖与Joja及献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),
-        new("F19","特殊剧情区域",new[]{"player.mastery","mastery.read","player.read_book","menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
+        new("F19","特殊剧情区域",new[]{"player.arcade","arcade.read","player.mastery","mastery.read","player.read_book","menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.read_mail","player.watch_tv","player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
-        new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
+        new("F21","小游戏",new[]{"player.arcade","arcade.read"},new[]{"player"},"街机控制器已接，通关成功率/无伤及节日小游戏尚未验收", "正常通关与原生奖励"),
         new("F22","成就目标图",new[]{"progress.pursue","progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
@@ -78,6 +78,7 @@ public sealed partial class ModEntry {
         foreach(var item in ShippingCollection())rows.Add(new("ship:"+item.QualifiedItemId,item.DisplayName,"shipping",p.basicShipped.GetValueOrDefault(item.ItemId)>0,new[]{"F12"},Array.Empty<string>(),new{item=item.QualifiedItemId,count=p.basicShipped.GetValueOrDefault(item.ItemId)},"Farmer.basicShipped","放进出货箱不等于已过夜计入出货记录"));
         foreach(int skill in Enumerable.Range(0,5))rows.Add(new("mastery:"+skill,"技能精通 "+skill,"mastery",p.stats.Get(StardewValley.Constants.StatKeys.Mastery(skill))>0,new[]{"F19"},Array.Empty<string>(),new{skill,available=StardewValley.Menus.MasteryTrackerMenu.getCurrentMasteryLevel()-(int)Game1.stats.Get("masteryLevelsSpent")},"原生精通领取记录","需实际经验、洞窟开放和领取空间"));
         foreach(var item in Game1.objectData.Where(kv=>kv.Value.Category==-102))rows.Add(new("book:(O)"+item.Key,item.Value.DisplayName,"book",p.stats.Get(item.Key)>0,new[]{"F19"},Array.Empty<string>(),new{item="(O)"+item.Key,reads=p.stats.Get(item.Key)},"Farmer.stats 对应书籍键","先取得书籍，通过原生使用消费并学习"));
+        foreach(var arcade in new[]{("prairie","completedPrairieKing"),("deathless","completedPrairieKingWithoutDying"),("kart","completedJunimoKart")})rows.Add(new("arcade:"+arcade.Item1,"街机原生目标 "+arcade.Item1,"arcade",p.stats.Get(arcade.Item2)>0,new[]{"F21"},Array.Empty<string>(),new{stat=arcade.Item2,value=p.stats.Get(arcade.Item2)},"Farmer.stats 原生小游戏完成计数","控制器为启发式；完成必须具有实际原生通关证据"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
         rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));

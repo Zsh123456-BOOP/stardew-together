@@ -26,7 +26,11 @@ public sealed partial class ModEntry {
             if(native.TryGetValue(id,out var definition)) {
                 node.title=definition.title;node.kind=definition.kind;node.state=definition.completed==true?"complete":"unmet";node.evidence=definition.requirements;
                 if(definition.completed==true)return;
-                if(id.StartsWith("achievement:")&&int.TryParse(id[12..],out int achievement)) {
+                if(id.StartsWith("arcade:")) {
+                    node.actions.Add(Action("player.arcade",new{game=id=="arcade:kart"?"kart":"prairie",mode=id=="arcade:kart"?"progress":id=="arcade:deathless"?"deathless":"continue",seconds=1800,attempts=3}));
+                    node.gaps.Add("原生通关成功率及无伤仍待集中实机验收，算法不会直接设置完成标记");
+                }
+                else if(id.StartsWith("achievement:")&&int.TryParse(id[12..],out int achievement)) {
                     var rule=JsonSerializer.SerializeToElement(AchievementRules.Native(achievement));node.evidence=new{native=definition.evidence,rule};
                     if(rule.TryGetProperty("known",out var known)&&known.GetBoolean()) {
                         if(rule.TryGetProperty("details",out var details)&&details.ValueKind==JsonValueKind.Object&&details.TryGetProperty("missing",out var missing)&&missing.ValueKind==JsonValueKind.Array) {

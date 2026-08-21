@@ -67,6 +67,7 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.arcade":StartArcade(args);break;
                 case "player.read_mail":case "player.watch_tv":StartInformation(args);break;
                 case "player.transport":case "player.repair_boat":StartTransit(args);break;
                 case "player.read_book":StartReadBook(args);break;
@@ -207,13 +208,14 @@ public sealed partial class PlayerExecutor {
         if(!Busy || !Context.IsWorldReady)return;
         try {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
-            if((DateTime.UtcNow-started).TotalSeconds>(Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
+            if((DateTime.UtcNow-started).TotalSeconds>(Current.skill=="player.arcade"?arcadeSeconds+180:Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
             if(Current.skill=="player.eat") {
                 if(Game1.player.isEating || !Game1.player.CanMove)return;
                 var remaining=Game1.player.Items[eatingSlot];int count=remaining?.QualifiedItemId==eatingItem?remaining.Stack:0;
                 Current.effects.Add(new{kind="native_eat",item=eatingItem,consumed=eatingBefore-count,stamina=Game1.player.Stamina,health=Game1.player.health});
                 Finish(eatingBefore-count==1?"succeeded":"failed",eatingBefore-count==1?null:"food_consumption_not_verified");return;
             }
+            if(Current.skill=="player.arcade"){TickArcade();return;}
             if(Current.skill is "player.transport" or "player.repair_boat"){TickTransit();return;}
             ObserveNativeTransition();
             // Events often set CanMove=false. Report the interruption before the

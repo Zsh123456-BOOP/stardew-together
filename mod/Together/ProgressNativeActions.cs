@@ -63,6 +63,13 @@ public sealed partial class ModEntry {
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("arcade:")||id is "platform-condition:Achievement_PrairieKing" or "platform-condition:Achievement_FectorsChallenge") {
+            string mode=id is "arcade:deathless" or "platform-condition:Achievement_FectorsChallenge"?"deathless":id=="arcade:kart"?"progress":"continue";
+            string stat=mode=="deathless"?"completedPrairieKingWithoutDying":mode=="progress"?"completedJunimoKart":"completedPrairieKing";
+            if(p.stats.Get(stat)>0){PursuitState(pursuit,"waiting","小游戏原生条件已满足；平台成就须独立核验");return true;}
+            if(Game1.timeOfDay<1200||Game1.timeOfDay>2000){PursuitState(pursuit,"waiting","街机安排在酒吧开放且有返程时间的时段");return true;}
+            QueuePursuit(pursuit,new[]{("player.arcade",(object)new{game=mode=="progress"?"kart":"prairie",mode,seconds=1800,attempts=3})});return true;
+        }
         if(id.StartsWith("mastery:")&&int.TryParse(id[8..],out int mastery)) {
             if(StardewValley.Menus.MasteryTrackerMenu.getCurrentMasteryLevel()<=Game1.stats.Get("masteryLevelsSpent")){PursuitState(pursuit,"waiting","需通过原生劳动继续获得精通经验");return true;}
             if(p.Items.Count(i=>i==null)<3)actions.Add(("work.run",new{goal="store"}));

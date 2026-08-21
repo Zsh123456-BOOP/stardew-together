@@ -67,6 +67,8 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.treasure":StartTreasure();break;
+                case "player.walnuts":StartWalnuts(args);break;
                 case "player.forge":StartForge(args);break;
                 case "player.island_upgrade":StartIslandUpgrade(args);break;
                 case "player.arcade":StartArcade(args);break;
@@ -232,6 +234,8 @@ public sealed partial class PlayerExecutor {
             }
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
+            if(Current.skill=="player.treasure"){TickTreasure();return;}
+            if(Current.skill=="player.walnuts"){TickWalnuts();return;}
             if(Current.skill=="player.forge"){TickForge();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
             if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}

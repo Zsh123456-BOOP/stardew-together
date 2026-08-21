@@ -21,7 +21,7 @@ internal static class NativeRewards {
             menu.exitThisMenu();return(true,new{kind="native_reward_menu_empty"});
         }
         var item=inventory[slot];
-        bool unlock=item.IsRecipe||item.QualifiedItemId is "(O)326" or "(O)102" or "(O)434";
+        bool unlock=item.IsRecipe||item is StardewValley.Objects.SpecialItem||item.QualifiedItemId is "(O)326" or "(O)102" or "(O)434";
         if(!unlock&&!Game1.player.couldInventoryAcceptThisItem(item))throw new InvalidOperationException("reward_inventory_full_menu_preserved");
         string qid=item.QualifiedItemId;int amount=item.Stack,beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         int beforeSource=inventory.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
@@ -29,6 +29,7 @@ internal static class NativeRewards {
         int remaining=inventory.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         int added=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack)-beforeBag;
         if(beforeSource-remaining<=0||!unlock&&added<=0)throw new InvalidOperationException("reward_pickup_not_verified");
+        if(item is StardewValley.Objects.SpecialItem special&&!PlayerExecutor.SpecialRewardPresent(special.which.Value))throw new InvalidOperationException("native_special_reward_not_verified");
         return(false,new{kind="native_reward_received",item=qid,source_reduction=beforeSource-remaining,inventory_increase=added,native_unlock_item=unlock});
     }
 }

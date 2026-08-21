@@ -38,6 +38,8 @@ public sealed class SemanticJob {
     internal string PlanId="";
     internal int MinimumQuality;
     internal int MineTarget,MineFloor=-1;
+    internal string MineRegion="normal";
+    internal int MineTravelBudget,MineKeepGold=500;
     internal string MineReturnReason="";
     internal int FoodUsed,MaxFood=3;
 }
@@ -58,7 +60,11 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
-        if(goal=="mine_trip") {job.MineTarget=AgentToolRegistry.Number(args,"target_level",Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5));if(job.MineTarget is <1 or >120)throw new InvalidOperationException("invalid_mine_target");job.requested=0;}
+        if(goal=="mine_trip") {
+            job.MineRegion=AgentToolRegistry.Text(args,"region","normal");job.MineTarget=AgentToolRegistry.Number(args,"target_level",job.MineRegion=="skull"?25:Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5));
+            job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
+            if(job.MineRegion is not ("normal" or "skull")||job.MineTarget<1||job.MineTarget>(job.MineRegion=="skull"?1000:120)||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_mine_target_or_budget");job.requested=0;
+        }
         if(goal=="resource"&&!ResourceRules.Nodes.Values.Contains(job.Item))throw new InvalidOperationException("resource_item_has_no_known_native_node_route");
         job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
         if(goal=="withdraw") {

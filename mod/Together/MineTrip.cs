@@ -15,8 +15,10 @@ public sealed partial class ModEntry {
         }
         if(p.Items.Count(i=>i==null)<2&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_inventory_return";
         if(Game1.currentLocation is MineShaft mine) {
-            job.completed=Math.Max(job.completed,mine.mineLevel);
-            if(mine.mineLevel>=job.MineTarget&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_target_depth_reached";
+            if((mine.mineLevel>120)!=(job.MineRegion=="skull")){job.MineReturnReason="mine_region_changed";WorkChild(job,"player.mine_access",new{mode="leave"},"mine_exit");return;}
+            int depth=mine.mineLevel-(job.MineRegion=="skull"?120:0);job.completed=Math.Max(job.completed,depth);
+            if(job.MineReturnReason.Length==0&&PlayerExecutor.TreasureChests(mine).Any()){WorkChild(job,"player.treasure",new{},"mine_treasure");return;}
+            if(depth>=job.MineTarget&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_target_depth_reached";
             if(job.MineReturnReason.Length>0){WorkChild(job,"player.mine_access",new{mode="leave"},"mine_exit");return;}
             if(job.MineFloor!=mine.mineLevel){job.MineFloor=mine.mineLevel;job.Excluded.Clear();}
             if(mine.characters.OfType<Monster>().Any(m=>m.Health>0&&Vector2.DistanceSquared(m.Position,p.Position)<320*320)) {
@@ -36,6 +38,14 @@ public sealed partial class ModEntry {
             job.MineReturnReason="mine_no_reachable_progress_route";return;
         }
         if(job.MineReturnReason.Length>0){StopSemanticWork(job,job.MineReturnReason,job.MineReturnReason=="mine_target_depth_reached");return;}
+        if(job.MineRegion=="skull") {
+            if(!p.hasSkullKey&&!Utility.IsPassiveFestivalDay("DesertFestival")){StopSemanticWork(job,"native_skull_key_required_collect_floor_120_chest");return;}
+            if(Game1.currentLocation.NameOrUniqueName is not ("Desert" or "SkullCave")) {
+                if(job.MineTravelBudget<=0){StopSemanticWork(job,"desert_trip_requires_explicit_travel_budget_or_existing_arrival");return;}
+                WorkChild(job,"player.transport",new{route="desert",budget=job.MineTravelBudget,keep_gold=job.MineKeepGold},"mine_bus");job.MineTravelBudget=0;return;
+            }
+            WorkChild(job,"player.mine_access",new{mode="skull"},"mine_enter");return;
+        }
         int stop=Math.Min(MineShaft.lowestLevelReached,job.MineTarget-1)/5*5;
         WorkChild(job,"player.mine_access",new{mode=stop>=5?"elevator":"enter",level=stop>=5?stop:1},"mine_enter");
     }

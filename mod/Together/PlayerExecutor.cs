@@ -55,7 +55,7 @@ public sealed partial class PlayerExecutor {
     }
     private static object Snapshot()=>new{day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},
         money=Game1.player.Money,health=Game1.player.health,stamina=Game1.player.Stamina,inventory=AgentToolRegistry.Inventory(),menu=Game1.activeClickableMenu?.GetType().Name};
-    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.read_mail"&&Game1.activeClickableMenu is LetterViewerMenu || skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
+    internal static bool AcceptsNativeMenu(string skill)=>skill=="player.forge"&&Game1.activeClickableMenu is ForgeMenu || skill=="player.read_mail"&&Game1.activeClickableMenu is LetterViewerMenu || skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
         bool buying=AcceptsNativeMenu(skill);
@@ -67,6 +67,8 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.forge":StartForge(args);break;
+                case "player.island_upgrade":StartIslandUpgrade(args);break;
                 case "player.arcade":StartArcade(args);break;
                 case "player.read_mail":case "player.watch_tv":StartInformation(args);break;
                 case "player.transport":case "player.repair_boat":StartTransit(args);break;
@@ -216,6 +218,7 @@ public sealed partial class PlayerExecutor {
                 Finish(eatingBefore-count==1?"succeeded":"failed",eatingBefore-count==1?null:"food_consumption_not_verified");return;
             }
             if(Current.skill=="player.arcade"){TickArcade();return;}
+            if(Current.skill=="player.island_upgrade"){TickIslandUpgrade();return;}
             if(Current.skill is "player.transport" or "player.repair_boat"){TickTransit();return;}
             ObserveNativeTransition();
             // Events often set CanMove=false. Report the interruption before the
@@ -229,6 +232,7 @@ public sealed partial class PlayerExecutor {
             }
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
+            if(Current.skill=="player.forge"){TickForge();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
             if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}
             if(Current.skill=="player.read_book"){TickReadBook();return;}

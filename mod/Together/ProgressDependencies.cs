@@ -56,6 +56,10 @@ public sealed partial class ModEntry {
                     var bundle=Facts.Bundles.First(b=>"bundle:"+b.Id==id);
                     foreach(var item in bundle.Missing)node.dependencies.Add(new(item.Item,item.Count,item.Quality,"choose_missing_slots"));
                     node.actions.Add(Action("player.bundle",new{bundle=int.Parse(bundle.Id)}));
+                }else if(definition.kind=="island-upgrade") {
+                    var parts=id.Split(':');var perch=PlayerExecutor.IslandPerches().First(p=>p.Location.NameOrUniqueName==parts[1]&&p.Perch.upgradeName.Value==parts[2]).Perch;
+                    node.dependencies.Add(new("currency:walnuts",perch.requiredNuts.Value));node.actions.Add(Action("player.island_upgrade",new{location=parts[1],upgrade=parts[2],budget_nuts=perch.requiredNuts.Value}));
+                    if(!perch.IsAvailable())node.gaps.Add("未满足原生前置邮件："+perch.requiredMail.Value);
                 }else if(definition.kind=="mastery") {
                     int skill=int.Parse(id[8..]);node.actions.Add(Action("player.mastery",new{skill}));node.gaps.Add("原生五技能与精通经验达标后才能领取；经验通过实际劳动获得");
                 }else if(definition.kind=="book") {
@@ -103,7 +107,8 @@ public sealed partial class ModEntry {
                     node.actions.Add(Action("player.read_mail",new{}));
                     node.gaps.Add("满足等级或关系条件后仍需原生升级/邮件/菜单真正授予配方");
                 }
-            }else if(id=="gold") {node.kind="currency";node.state="observed";node.evidence=new{amount=Game1.player.Money,pending_shipping_not_spendable=true};}
+            }else if(id=="currency:walnuts") {node.kind="currency";node.state="observed";node.evidence=new{available=Game1.netWorldState.Value.GoldenWalnuts,found=Game1.netWorldState.Value.GoldenWalnutsFound};}
+            else if(id=="gold") {node.kind="currency";node.state="observed";node.evidence=new{amount=Game1.player.Money,pending_shipping_not_spendable=true};}
             else if(id.StartsWith("skill:")) {
                 string skill=id[6..];int value=skill switch{"farming"=>Game1.player.FarmingLevel,"fishing"=>Game1.player.FishingLevel,"mining"=>Game1.player.MiningLevel,"foraging"=>Game1.player.ForagingLevel,"combat"=>Game1.player.CombatLevel,_=>-1};
                 node.kind="skill";node.state=value<0?"unknown":"observed";node.evidence=new{level=value};

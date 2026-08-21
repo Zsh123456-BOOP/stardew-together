@@ -6,6 +6,9 @@ public sealed class ProgressCampaign {
     public int KeepGold {get;set;}=500;
     public int BudgetDay {get;set;}=-1;
     public int ReservedGold {get;set;}
+    public int NutsPerDay {get;set;}
+    public int KeepNuts {get;set;}
+    public int ReservedNuts {get;set;}
     public string Route {get;set;}="";
 }
 public sealed class ProgressPursuit {

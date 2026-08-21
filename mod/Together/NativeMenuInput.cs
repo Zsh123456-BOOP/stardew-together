@@ -41,6 +41,11 @@ internal sealed class NativeMenuInput : InputState {
             Game1.pressActionButton(default,scoped.GetMouseState(),default);
         }finally {Game1.input=input;Game1.oldMouseState=mouse;Game1.oldKBState=keys;Game1.oldPadState=pad;}
     }
+    internal static void ClickMenu(IClickableMenu menu,Rectangle bounds) {
+        var input=Game1.input;var keys=Game1.oldKBState;
+        try{Game1.input=new NativeMenuInput(bounds.Center.X,bounds.Center.Y,ButtonState.Pressed);Game1.oldKBState=default;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);}
+        finally{Game1.input=input;Game1.oldKBState=keys;}
+    }
     public static void ClickWorld(IClickableMenu menu,Point tile) {
         int rawX=tile.X*64+32-Game1.viewport.X,rawY=tile.Y*64+32-Game1.viewport.Y;
         int x=(int)Utility.ModifyCoordinateForUIScale(rawX),y=(int)Utility.ModifyCoordinateForUIScale(rawY);

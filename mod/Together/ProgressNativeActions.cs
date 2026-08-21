@@ -63,6 +63,26 @@ public sealed partial class ModEntry {
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("island-upgrade:")) {
+            var parts=id.Split(':');var perch=PlayerExecutor.IslandPerches().FirstOrDefault(t=>t.Location.NameOrUniqueName==parts[1]&&t.Perch.upgradeName.Value==parts[2]).Perch;
+            if(perch==null||!perch.IsAvailable()){PursuitState(pursuit,"waiting","鹦鹉建设尚缺原生前置条件");return true;}
+            int cost=perch.requiredNuts.Value;
+            if(cost>policy.NutsPerDay-policy.ReservedNuts||Game1.netWorldState.Value.GoldenWalnuts-cost<policy.KeepNuts){PursuitState(pursuit,"waiting","需要真实金核桃及专用每日核桃预算");return true;}
+            if(QueuePursuit(pursuit,new[]{("player.island_upgrade",(object)new{location=parts[1],upgrade=parts[2],budget_nuts=cost,keep_nuts=policy.KeepNuts})}))policy.ReservedNuts+=cost;
+            return true;
+        }
+        if(id=="achievement:42") {
+            if(p.Items.Any(i=>i?.QualifiedItemId is "(W)62" or "(W)63" or "(W)64")){PursuitState(pursuit,"waiting","已拥有无尽武器，等待原生成就登记");return true;}
+            var soul=ItemRegistry.Create("(O)896");var weapon=p.Items.OfType<StardewValley.Tools.MeleeWeapon>().FirstOrDefault(w=>w.CanForge(soul));
+            if(weapon==null){PursuitState(pursuit,"waiting","先取得可接受银河之魂的原生武器");return true;}
+            int level=weapon.enchantments.OfType<StardewValley.Enchantments.GalaxySoulEnchantment>().Select(e=>e.GetLevel()).FirstOrDefault(),need=Math.Max(1,3-level);
+            if(!PursuitMaterials(pursuit,new[]{("(O)896",need,0),("(O)848",20*need,0)},actions))return true;
+            if(actions.Count>0){QueuePursuit(pursuit,actions);return true;}
+            int left=p.Items.IndexOf(weapon),right=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId=="(O)896",-1);
+            if(right<0)return false;
+            if(p.Items.Count(i=>i==null)<2){QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="store"})});return true;}
+            int count=Math.Min(need,p.Items[right].Stack);QueuePursuit(pursuit,new[]{("player.forge",(object)new{left_slot=left,right_slot=right,count,budget_shards=20*count})});return true;
+        }
         if(id.StartsWith("arcade:")||id is "platform-condition:Achievement_PrairieKing" or "platform-condition:Achievement_FectorsChallenge") {
             string mode=id is "arcade:deathless" or "platform-condition:Achievement_FectorsChallenge"?"deathless":id=="arcade:kart"?"progress":"continue";
             string stat=mode=="deathless"?"completedPrairieKingWithoutDying":mode=="progress"?"completedJunimoKart":"completedPrairieKing";

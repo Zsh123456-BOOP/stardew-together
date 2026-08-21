@@ -26,6 +26,7 @@ public sealed class FarmPlantPlan {
 public sealed partial class ModEntry {
     private readonly Dictionary<string,FarmPlantPlan> farmPlantPlans=new();
     private bool IsPlacementProtected(string location,Point tile) {
+        if(Game1.getLocationFromName(location) is {} orchard&&PlayerExecutor.ProtectsOrchardGrowth(orchard,tile))return true;
         if(Data.FarmPolicy.Areas.Any(a=>a.Enabled&&a.Location==location&&tile.X>=a.X&&tile.X<a.X+a.Width&&tile.Y>=a.Y&&tile.Y<a.Y+a.Height)||AgentTileBusy(location,tile.X,tile.Y))return true;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant")) {
             string id=AgentToolRegistry.Text(task.spec.args,"plan_id");
@@ -62,7 +63,7 @@ public sealed partial class ModEntry {
         for(int y=0;y<height;y++)for(int x=0;x<width;x++) {
             var v=new Vector2(x,y);l.terrainFeatures.TryGetValue(v,out var feature);var dirt=feature as HoeDirt;
             bool passable=PlayerExecutor.Passable(l,new(x,y));
-            bool plantable=passable&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null;
+            bool plantable=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&passable&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null;
             if(l.doesTileHaveProperty(x,y,"NoSpawn","Back")=="All" || l.doesTileHaveProperty(x,y,"Action","Buildings")!=null || l.doesTileHaveProperty(x,y,"TouchAction","Back")!=null)plantable=false;
             bool irrigation=irrigated.Contains(v)&&l.doesTileHaveProperty(x,y,"NoSprinklers","Back")!="T";
             grid.Add(new(new(x,y),plantable,passable,dirt?.state.Value==1,irrigation,l.IsGreenhouse||scares.Any(s=>Vector2.Distance(s.Key,v)<s.Value.GetRadiusForScarecrow()),dirt!=null,0));

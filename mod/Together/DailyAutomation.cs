@@ -12,7 +12,7 @@ public sealed partial class ModEntry {
             if(assignments.Count>10)throw new InvalidOperationException("routine_size_limit");
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
             foreach(var pair in assignments) {
-                if(pair.Key is not ("mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
+                if(pair.Key is not ("orchard" or "mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "orchard" or "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
             }
             policy.Assignments=assignments;policy.Version++;policy.SubmittedDay=-1;
         }
@@ -28,9 +28,13 @@ public sealed partial class ModEntry {
         try {
             RefreshFacts(true);var tasks=new List<AgentTaskSpec>();var skips=new List<object>();
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
-            foreach(string goal in new[]{"cooking_tv","mail","harvest","water","feed","pet","animal_collect","milk","shear"}) {
+            foreach(string goal in new[]{"cooking_tv","mail","harvest","water","feed","pet","animal_collect","milk","shear","orchard"}) {
                 if(!policy.Assignments.TryGetValue(goal,out string? actor))continue;
                 if(!actors.Contains(actor)){skips.Add(new{goal,reason="assigned_companion_not_available"});continue;}
+                if(goal=="orchard") {
+                    foreach(var location in Game1.locations.Concat(Game1.getFarm().buildings.Select(b=>b.GetIndoors()).Where(l=>l!=null)).Distinct().Where(l=>l.terrainFeatures.Values.Any(t=>t is StardewValley.TerrainFeatures.FruitTree tree&&tree.fruit.Count>0)).Take(4))tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-orchard-{tasks.Count}",actor="player",tool="player.orchard",args=JsonSerializer.SerializeToElement(new{mode="harvest",location=location.NameOrUniqueName,count=0}),purpose="收取已结果果树",day=Game1.Date.TotalDays,deadline=1800});
+                    continue;
+                }
                 if(goal is "mail" or "cooking_tv") {
                     bool available=goal=="mail"?Game1.mailbox.Count>0:Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Sun"||Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Wed"&&Game1.stats.DaysPlayed>7;
                     if(available)tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-{goal}",actor="player",tool=goal=="mail"?"player.read_mail":"player.watch_tv",args=JsonSerializer.SerializeToElement(new{channel="cooking"}),purpose="按持续政策阅读今日邮件/烹饪节目",day=Game1.Date.TotalDays,deadline=1800});

@@ -52,6 +52,10 @@ public sealed partial class ModEntry {
                     var bundle=Facts.Bundles.First(b=>"bundle:"+b.Id==id);
                     foreach(var item in bundle.Missing)node.dependencies.Add(new(item.Item,item.Count,item.Quality,"choose_missing_slots"));
                     node.actions.Add(Action("player.bundle",new{bundle=int.Parse(bundle.Id)}));
+                }else if(definition.kind=="mastery") {
+                    int skill=int.Parse(id[8..]);node.actions.Add(Action("player.mastery",new{skill}));node.gaps.Add("原生五技能与精通经验达标后才能领取；经验通过实际劳动获得");
+                }else if(definition.kind=="book") {
+                    string item=id[5..];node.dependencies.Add(new(item));node.actions.Add(Action("inventory.read",new{}));node.actions.Add(Action("player.read_book",new{item,slot="observed_book_slot"}));
                 }else if(definition.kind=="house") {
                     int targetLevel=int.Parse(id[6..]);node.state=Game1.player.daysUntilHouseUpgrade.Value>=0?"waiting_construction":"unmet";
                     if(targetLevel>1)node.dependencies.Add(new("house:"+(targetLevel-1)));

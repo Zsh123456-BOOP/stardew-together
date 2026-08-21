@@ -32,7 +32,7 @@ public sealed partial class ModEntry {
         for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++) {
             var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;bool pass=PlayerExecutor.Passable(l,new(x,y));
             if(l.CanRefillWateringCanOnTile(x,y))water.Add(at);
-            bool legal=pass&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
+            bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
             grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0));
         }
         var distances=FarmLayout.WaterDistances(grid,water);grid=grid.Select(c=>c with{DistanceToWater=distances.GetValueOrDefault(c.Tile,10000)}).ToList();

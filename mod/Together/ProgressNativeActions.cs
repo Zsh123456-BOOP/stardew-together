@@ -63,6 +63,19 @@ public sealed partial class ModEntry {
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("mastery:")&&int.TryParse(id[8..],out int mastery)) {
+            if(StardewValley.Menus.MasteryTrackerMenu.getCurrentMasteryLevel()<=Game1.stats.Get("masteryLevelsSpent")){PursuitState(pursuit,"waiting","需通过原生劳动继续获得精通经验");return true;}
+            if(p.Items.Count(i=>i==null)<3)actions.Add(("work.run",new{goal="store"}));
+            actions.Add(("player.mastery",new{skill=mastery}));QueuePursuit(pursuit,actions);return true;
+        }
+        if(id.StartsWith("book:")||id=="achievement:35") {
+            string[] missing=id.StartsWith("book:")?new[]{id[5..]}:JsonSerializer.SerializeToElement(AchievementRules.Native(35)).GetProperty("details").GetProperty("missing").EnumerateArray().Select(v=>"(O)"+v.GetString()).ToArray();
+            int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]!=null&&missing.Contains(p.Items[i].QualifiedItemId),-1);
+            if(slot>=0){QueuePursuit(pursuit,new[]{("player.read_book",(object)new{slot,item=p.Items[slot].QualifiedItemId})});return true;}
+            string? stored=SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer()).FirstOrDefault(i=>i!=null&&missing.Contains(i.QualifiedItemId))?.QualifiedItemId;
+            if(stored!=null){QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="withdraw",item=stored,count=1})});return true;}
+            PursuitState(pursuit,"waiting","尚未拥有目标书籍，需采购或探索取得后继续原生阅读");return true;
+        }
         bool House(int target) {
             if(p.HouseUpgradeLevel>=target||p.daysUntilHouseUpgrade.Value>=0){PursuitState(pursuit,"waiting","等待原生房屋施工或成就登记");return true;}
             int level=p.HouseUpgradeLevel+1,cost=level==1?10000:level==2?65000:100000;

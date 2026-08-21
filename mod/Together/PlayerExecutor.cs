@@ -69,6 +69,9 @@ public sealed partial class PlayerExecutor {
             switch(skill) {
                 case "player.read_mail":case "player.watch_tv":StartInformation(args);break;
                 case "player.transport":case "player.repair_boat":StartTransit(args);break;
+                case "player.read_book":StartReadBook(args);break;
+                case "player.mastery":StartMastery(args);break;
+                case "player.orchard":StartOrchard(args);break;
                 case "player.joja":StartJoja(args);break;
                 case "player.place_facility":StartFacilityPlacement(args);break;
                 case "player.ship_items":StartShipping(args);break;
@@ -226,6 +229,9 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
             if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}
+            if(Current.skill=="player.read_book"){TickReadBook();return;}
+            if(Current.skill=="player.mastery"){TickMastery();return;}
+            if(Current.skill=="player.orchard"){TickOrchard();return;}
             if(Current.skill=="player.joja"){TickJoja();return;}
             if(Current.skill=="player.place_facility"){TickFacilityPlacement();return;}
             if(Current.skill=="player.ship_items"){TickShipping();return;}

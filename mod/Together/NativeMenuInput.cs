@@ -32,6 +32,15 @@ internal sealed class NativeMenuInput : InputState {
             return Game1.tryToCheckAt(tile.ToVector2(),Game1.player);
         }finally{Game1.input=input;Game1.oldMouseState=previous;}
     }
+    public static void PressAction(Point tile) {
+        var input=Game1.input;var mouse=Game1.oldMouseState;var keys=Game1.oldKBState;var pad=Game1.oldPadState;
+        try {
+            int x=tile.X*64+32-Game1.viewport.X,y=tile.Y*64+32-Game1.viewport.Y;
+            var scoped=new NativeMenuInput(x,y,ButtonState.Released,ButtonState.Pressed);Game1.input=scoped;
+            Game1.oldMouseState=new MouseState();Game1.oldKBState=default;Game1.oldPadState=default;
+            Game1.pressActionButton(default,scoped.GetMouseState(),default);
+        }finally {Game1.input=input;Game1.oldMouseState=mouse;Game1.oldKBState=keys;Game1.oldPadState=pad;}
+    }
     public static void ClickWorld(IClickableMenu menu,Point tile) {
         int rawX=tile.X*64+32-Game1.viewport.X,rawY=tile.Y*64+32-Game1.viewport.Y;
         int x=(int)Utility.ModifyCoordinateForUIScale(rawX),y=(int)Utility.ModifyCoordinateForUIScale(rawY);

@@ -14,7 +14,7 @@ public static class CapabilityCatalog {
         new("F03","工具装备",new[]{"inventory.read","equipment.read","player.equip","player.attach","player.use_tool"},new[]{"player"},"装备策略与附件/饰品实机验收", "实际工具与装备"),
         new("F04","连续采集",new[]{"work.run"},new[]{"player","companion"},"特殊地图再生/全矿种实机覆盖", "原生掉落与实际入包"),
         new("F05","农田布局",new[]{"farm.autonomy","farm.plan","farm.economy","farm.economy_status","farm.execute"},new[]{"player"},"未来跨季用地和全部设施布局", "未来占用图可达性"),
-        new("F06","种植排期",new[]{"player.work","work.run"},new[]{"player","companion"},"未来多轮现金流优化/加工收益/特殊商店排期；逐日再投资已接但未实测", "地块/种子消耗/成熟日期"),
+        new("F06","种植排期",new[]{"player.orchard","orchard.read","player.work","work.run"},new[]{"player","companion"},"未来多轮现金流优化/加工收益/特殊商店排期；逐日再投资已接但未实测", "地块/种子消耗/成熟日期"),
         new("F07","动物照料",new[]{"player.care","animals.read","player.animal","animal_shop.read","player.buy_animal","companion.assign"},new[]{"player","companion"},"农牧经济规划/特殊区域与完整农牧验收", "动物原生照料/产物状态"),
         new("F08","仓储物流",new[]{"work.run"},new[]{"player","companion"},"全局品质分配与扩容实机验收", "源目标库存守恒"),
         new("F09","补给恢复",new[]{"work.run","player.eat"},new[]{"player"},"低健康撤退与补给预算完善", "水量/体力/物品消耗"),
@@ -27,7 +27,7 @@ public static class CapabilityCatalog {
         new("F16","任务交付",new[]{"progress.read","quest_board.read","player.accept_quest","order_donations.read","player.order_donate","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单跨目标计数/非金币领奖与接取交付验收", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","joja.read","player.joja","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/领奖与Joja及献祭捐赠实机验收", "原生提交与解锁"),
         new("F18","社交关系",new[]{"player.social","companion.assign","menu.choose"},new[]{"player","companion"},"家庭/分支剧情完整流程", "原生友情与剧情状态"),
-        new("F19","特殊剧情区域",new[]{"menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
+        new("F19","特殊剧情区域",new[]{"player.mastery","mastery.read","player.read_book","menu.read","menu.choose"},new[]{"player"},"节日/后期区域专属适配", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.read_mail","player.watch_tv","player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
         new("F21","小游戏",Array.Empty<string>(),new[]{"player"},"逐小游戏状态控制器", "正常通关与原生奖励"),
         new("F22","成就目标图",new[]{"progress.pursue","progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
@@ -76,6 +76,8 @@ public sealed partial class ModEntry {
         foreach(int level in new[]{1,2,3})rows.Add(new("house:"+level,"房屋升级 "+level,"house",p.HouseUpgradeLevel>=level,new[]{"F13"},Array.Empty<string>(),new{current=p.HouseUpgradeLevel,required=level,construction_days=p.daysUntilHouseUpgrade.Value},"Farmer.HouseUpgradeLevel","工期保持原生；预算与材料须具备"));
         foreach(var part in new[]{("hull","willyBoatHull","(O)709",200),("anchor","willyBoatAnchor","(O)337",5),("ticket_machine","willyBoatTicketMachine","(O)787",5)})rows.Add(new("boat:"+part.Item1,"修船部件："+part.Item1,"boat",Game1.MasterPlayer.hasOrWillReceiveMail(part.Item2),new[]{"F02","F04"},Array.Empty<string>(),new{item=part.Item3,count=part.Item4,pending=Game1.MasterPlayer.hasOrWillReceiveMail(part.Item2)},"原生部件捐料邮件；整体竣工另验","需要船坞可进入及真实材料"));
         foreach(var item in ShippingCollection())rows.Add(new("ship:"+item.QualifiedItemId,item.DisplayName,"shipping",p.basicShipped.GetValueOrDefault(item.ItemId)>0,new[]{"F12"},Array.Empty<string>(),new{item=item.QualifiedItemId,count=p.basicShipped.GetValueOrDefault(item.ItemId)},"Farmer.basicShipped","放进出货箱不等于已过夜计入出货记录"));
+        foreach(int skill in Enumerable.Range(0,5))rows.Add(new("mastery:"+skill,"技能精通 "+skill,"mastery",p.stats.Get(StardewValley.Constants.StatKeys.Mastery(skill))>0,new[]{"F19"},Array.Empty<string>(),new{skill,available=StardewValley.Menus.MasteryTrackerMenu.getCurrentMasteryLevel()-(int)Game1.stats.Get("masteryLevelsSpent")},"原生精通领取记录","需实际经验、洞窟开放和领取空间"));
+        foreach(var item in Game1.objectData.Where(kv=>kv.Value.Category==-102))rows.Add(new("book:(O)"+item.Key,item.Value.DisplayName,"book",p.stats.Get(item.Key)>0,new[]{"F19"},Array.Empty<string>(),new{item="(O)"+item.Key,reads=p.stats.Get(item.Key)},"Farmer.stats 对应书籍键","先取得书籍，通过原生使用消费并学习"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
         rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));

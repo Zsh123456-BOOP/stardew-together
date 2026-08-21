@@ -28,7 +28,7 @@ public sealed partial class ModEntry {
         var start=new FarmCell(Game1.player.TilePoint.X,Game1.player.TilePoint.Y);
         foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start).OrderBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y))) {
             var p=new Point(cell.Tile.X,cell.Tile.Y);var v=p.ToVector2();
-            if(farm.objects.ContainsKey(v)||farm.terrainFeatures.ContainsKey(v)||farm.doesTileHaveProperty(p.X,p.Y,"Action","Buildings")!=null||farm.doesTileHaveProperty(p.X,p.Y,"TouchAction","Back")!=null||anchors.Contains(cell.Tile))continue;
+            if(IsPlacementProtected("Farm",p)||farm.objects.ContainsKey(v)||farm.terrainFeatures.ContainsKey(v)||farm.doesTileHaveProperty(p.X,p.Y,"Action","Buildings")!=null||farm.doesTileHaveProperty(p.X,p.Y,"TouchAction","Back")!=null||anchors.Contains(cell.Tile))continue;
             if(!Game1.player.Items[chest].canBePlacedHere(farm,v))continue;
             var stand=WorkStand(farm,p);if(!stand.HasValue||!FarmLayout.KeepsAccess(grid,start,anchors,new[]{cell.Tile},new[]{new FarmCell(stand.Value.X,stand.Value.Y)}))continue;
             job.ExpansionTile=p;WorkChild(job,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_expansion_move");return true;
@@ -43,7 +43,7 @@ public sealed partial class ModEntry {
             chest.modData[WorkChestRole]="output";job.evidence.Add(new{kind="native_shared_storage_expanded",location="Farm",tile,item=chest.QualifiedItemId});job.ExpansionTile=null;job.StorageTile=tile;job.StorageLocation="Farm";return;
         }
         int slot=WorkSlot(i=>i.QualifiedItemId=="(BC)130");if(slot<0)throw new InvalidOperationException("crafted_chest_missing");
-        if(farm.objects.ContainsKey(tile.ToVector2())||farm.terrainFeatures.ContainsKey(tile.ToVector2()))throw new InvalidOperationException("storage_placement_site_changed");
+        if(IsPlacementProtected("Farm",tile)||farm.objects.ContainsKey(tile.ToVector2())||farm.terrainFeatures.ContainsKey(tile.ToVector2()))throw new InvalidOperationException("storage_placement_site_changed");
         WorkChild(job,"player.place",new{x=tile.X,y=tile.Y,slot},"storage_expansion_place");
     }
     private static void CompactPlayerStacks() {

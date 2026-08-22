@@ -39,7 +39,7 @@ public sealed class SemanticJob {
     internal int MinimumQuality;
     internal int MineTarget,MineFloor=-1;
     internal string MineRegion="normal";
-    internal int MineTravelBudget,MineKeepGold=500;
+    internal int MineTravelBudget,MineKeepGold=500,VolcanoFailures;
     internal string MineReturnReason="";
     internal int FoodUsed,MaxFood=3;
 }
@@ -49,9 +49,9 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
@@ -60,6 +60,10 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        if(goal=="volcano_trip") {
+            job.MineTarget=AgentToolRegistry.Number(args,"target_level",10);job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
+            if(job.MineTarget is <1 or >10||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_volcano_target_or_budget");job.requested=0;
+        }
         if(goal=="mine_trip") {
             job.MineRegion=AgentToolRegistry.Text(args,"region","normal");job.MineTarget=AgentToolRegistry.Number(args,"target_level",job.MineRegion=="skull"?25:Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5));
             job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
@@ -122,7 +126,11 @@ public sealed partial class ModEntry {
             if(j.ChildKind=="labor")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
             if(!ok) {
                 string error=r.TryGetProperty("error",out var e)?e.GetString()??"child_failed":"child_failed";
-                if(j.goal=="mine_trip"&&j.ChildKind!="mine_exit") {if(j.ChildKind=="mine_stone"&&error is "no_path" or "path_stalled" or "resource_no_longer_present")j.Excluded.Add(j.Target);else if(j.ChildKind=="mine_combat"&&error=="current_area_clear_before_requested_kills"){}else j.MineReturnReason="mine_interrupted:"+error;}
+                if(j.goal=="volcano_trip"&&j.ChildKind!="volcano_retreat") {
+                    if(j.ChildKind=="volcano_combat"&&error=="current_area_clear_before_requested_kills"){}
+                    else if(++j.VolcanoFailures>=2||error is "volcano_watering_can_refill_required" or "volcano_cooling_needs_stamina_reserve")j.MineReturnReason="volcano_interrupted:"+error;
+                }
+                else if(j.goal=="mine_trip"&&j.ChildKind!="mine_exit") {if(j.ChildKind=="mine_stone"&&error is "no_path" or "path_stalled" or "resource_no_longer_present")j.Excluded.Add(j.Target);else if(j.ChildKind=="mine_combat"&&error=="current_area_clear_before_requested_kills"){}else j.MineReturnReason="mine_interrupted:"+error;}
                 else if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
                 else if(j.ChildKind=="labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}
@@ -146,6 +154,7 @@ public sealed partial class ModEntry {
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
         if(j.goal=="mine_trip"){TickMineTrip(j);return;}
+        if(j.goal=="volcano_trip"){TickVolcanoTrip(j);return;}
         if(Game1.timeOfDay>=j.Until){StopSemanticWork(j,"time_reserve_reached");return;}
         if((DateTime.UtcNow-j.Started).TotalSeconds>600||j.Attempts>=128){StopSemanticWork(j,"work_budget_reached");return;}
         if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}

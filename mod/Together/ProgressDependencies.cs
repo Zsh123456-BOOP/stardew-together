@@ -60,6 +60,9 @@ public sealed partial class ModEntry {
                     var parts=id.Split(':');var perch=PlayerExecutor.IslandPerches().First(p=>p.Location.NameOrUniqueName==parts[1]&&p.Perch.upgradeName.Value==parts[2]).Perch;
                     node.dependencies.Add(new("currency:walnuts",perch.requiredNuts.Value));node.actions.Add(Action("player.island_upgrade",new{location=parts[1],upgrade=parts[2],budget_nuts=perch.requiredNuts.Value}));
                     if(!perch.IsAvailable())node.gaps.Add("未满足原生前置邮件："+perch.requiredMail.Value);
+                }else if(id=="region:caldera") {
+                    foreach(var prerequisite in definition.dependencies)node.dependencies.Add(new(prerequisite));
+                    node.actions.Add(Action("work.run",new{goal="volcano_trip",target_level=10,travel_budget=1000}));node.gaps.Add("行动开始前需实际票价、补给与装备，门槛未满足不能直接跳转地图");
                 }else if(definition.kind=="mastery") {
                     int skill=int.Parse(id[8..]);node.actions.Add(Action("player.mastery",new{skill}));node.gaps.Add("原生五技能与精通经验达标后才能领取；经验通过实际劳动获得");
                 }else if(definition.kind=="book") {

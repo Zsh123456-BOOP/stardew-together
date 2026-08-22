@@ -63,6 +63,11 @@ public sealed partial class ModEntry {
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id=="region:caldera") {
+            if(!Game1.MasterPlayer.mailReceived.Contains("willyBoatFixed")){PursuitState(pursuit,"waiting","先实际修复并开放船坞");return true;}
+            int cost=p.currentLocation is IslandLocation?0:(Game1.getLocationFromName("BoatTunnel") as BoatTunnel)?.TicketPrice??1000;
+            QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="volcano_trip",target_level=10,travel_budget=cost,keep_gold=policy.KeepGold,until=2000})},cost);return true;
+        }
         if(id.StartsWith("island-upgrade:")) {
             var parts=id.Split(':');var perch=PlayerExecutor.IslandPerches().FirstOrDefault(t=>t.Location.NameOrUniqueName==parts[1]&&t.Perch.upgradeName.Value==parts[2]).Perch;
             if(perch==null||!perch.IsAvailable()){PursuitState(pursuit,"waiting","鹦鹉建设尚缺原生前置条件");return true;}
@@ -78,6 +83,10 @@ public sealed partial class ModEntry {
             int level=weapon.enchantments.OfType<StardewValley.Enchantments.GalaxySoulEnchantment>().Select(e=>e.GetLevel()).FirstOrDefault(),need=Math.Max(1,3-level);
             if(!PursuitMaterials(pursuit,new[]{("(O)896",need,0),("(O)848",20*need,0)},actions))return true;
             if(actions.Count>0){QueuePursuit(pursuit,actions);return true;}
+            if(Game1.currentLocation is not Caldera&&!p.hasOrWillReceiveMail("volcanoShortcutUnlocked")) {
+                int travel=p.currentLocation is IslandLocation?0:(Game1.getLocationFromName("BoatTunnel") as BoatTunnel)?.TicketPrice??1000;
+                QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="volcano_trip",target_level=10,travel_budget=travel,keep_gold=policy.KeepGold,until=2000})},travel);return true;
+            }
             int left=p.Items.IndexOf(weapon),right=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId=="(O)896",-1);
             if(right<0)return false;
             if(p.Items.Count(i=>i==null)<2){QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="store"})});return true;}

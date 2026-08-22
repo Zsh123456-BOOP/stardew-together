@@ -67,6 +67,7 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.volcano_step":StartVolcanoStep(args);break;
                 case "player.treasure":StartTreasure();break;
                 case "player.walnuts":StartWalnuts(args);break;
                 case "player.forge":StartForge(args);break;
@@ -120,7 +121,7 @@ public sealed partial class PlayerExecutor {
                     if(workSkill=="water" && Game1.player.CurrentTool is not StardewValley.Tools.WateringCan || workSkill=="till" && Game1.player.CurrentTool is not StardewValley.Tools.Hoe)throw new InvalidOperationException("wrong_tool_for_work");
                     Current.phase="work_next";break;
                 case "player.move":target=Tile(args);destination=origin;Current.phase="walking";Walk(target);break;
-                case "player.travel":destination=AgentToolRegistry.Text(args,"location");Current.phase="travelling";if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_location");break;
+                case "player.travel":destination=AgentToolRegistry.Text(args,"location");Current.phase="travelling";if(LoadedLocation(destination)==null&&NextExit(Game1.currentLocation,destination)==null)throw new InvalidOperationException("unknown_or_unobserved_route");break;
                 case "player.sleep":destination=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName;Current.phase="returning_home";break;
                 case "player.use_tool":
                     target=Tile(args);Adjacent(target);actionTargetBefore=TileState(target);SelectSlot(args,true);
@@ -234,6 +235,7 @@ public sealed partial class PlayerExecutor {
             }
             if(Current.skill is "player.craft" or "player.cook"){TickProduction();return;}
             if(Current.skill=="player.buy"){TickPurchase();return;}
+            if(Current.skill=="player.volcano_step"){TickVolcanoStep();return;}
             if(Current.skill=="player.treasure"){TickTreasure();return;}
             if(Current.skill=="player.walnuts"){TickWalnuts();return;}
             if(Current.skill=="player.forge"){TickForge();return;}
@@ -413,7 +415,7 @@ public sealed partial class PlayerExecutor {
             nextInteraction=DateTime.UtcNow.AddSeconds(2);StopWalk();
             // Doors execute the native action; boundary warps are reached by walking, never by arbitrary teleport.
             if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player))return;
-            var warp=l.warps.FirstOrDefault(w=>w.X==edge.X&&w.Y==edge.Y&&w.TargetName==edge.TargetName);
+            var warp=l.warps.FirstOrDefault(w=>w.X==edge.X&&w.Y==edge.Y&&NormalizeWarpTarget(w.TargetName)==edge.TargetName);
             if(warp!=null) {
                 // Keep native path ownership through the boundary. A one-frame movement flag
                 // can be cleared by the game's keyboard processing before the Farmer moves.
@@ -465,7 +467,7 @@ public sealed partial class PlayerExecutor {
         StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {
-        foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp;
+        foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp.TargetName=="VolcanoEntrance"?new Warp(warp.X,warp.Y,NormalizeWarpTarget(warp.TargetName),warp.TargetX,warp.TargetY,false):warp;
         foreach(var door in location.doors.Pairs) {
             var a=location.GetTilePropertySplitBySpaces("Action","Buildings",door.Key.X,door.Key.Y);
             if(a.Length>=4 && a[0] is "Warp" or "LockedDoorWarp" && int.TryParse(a[1],out int x)&&int.TryParse(a[2],out int y))
@@ -477,11 +479,20 @@ public sealed partial class PlayerExecutor {
             yield return new Warp(building.tileX.Value+building.humanDoor.Value.X,building.tileY.Value+building.humanDoor.Value.Y,inside.NameOrUniqueName,exit.X,exit.Y-1,false);
         }
     }
+    private static string NormalizeWarpTarget(string name)=>name=="VolcanoEntrance"?VolcanoDungeon.GetLevelName(0):name;
+    // getLocationFromName generates new dungeon floors. Route search must never
+    // instantiate future floors merely to inspect their outgoing edges.
+    internal static GameLocation? LoadedLocation(string name) {
+        if(VolcanoDungeon.IsGeneratedLevel(name))return VolcanoDungeon.activeLevels.FirstOrDefault(l=>l.NameOrUniqueName==name);
+        if(MineShaft.IsGeneratedLevel(name))return MineShaft.activeMines.FirstOrDefault(l=>l.NameOrUniqueName==name);
+        return Game1.getLocationFromName(name);
+    }
     private static Warp? NextExit(GameLocation from,string destination) {
         var queue=new Queue<(GameLocation Location,Warp? First)>();queue.Enqueue((from,null));var visited=new HashSet<string>{from.NameOrUniqueName};
         while(queue.Count>0&&visited.Count<150) {
             var (l,first)=queue.Dequeue();foreach(var edge in Exits(l)) {
-                var next=Game1.getLocationFromName(edge.TargetName);if(next==null||!visited.Add(next.NameOrUniqueName))continue;
+                if(edge.TargetName==destination)return first??edge;
+                var next=LoadedLocation(edge.TargetName);if(next==null||!visited.Add(next.NameOrUniqueName))continue;
                 if(next.NameOrUniqueName==destination)return first??edge;queue.Enqueue((next,first??edge));
             }
         }

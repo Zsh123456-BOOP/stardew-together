@@ -11,16 +11,24 @@ public sealed partial class ModEntry {
         string route=AgentToolRegistry.Text(args,"route",campaign.Route);
         if(budget is <0 or >10000000||keep<0||nuts is <0 or >130||keepNuts is <0 or >130||route is not ("" or "community" or "joja"))throw new InvalidOperationException("invalid_progress_budget_or_route");
         if(route=="community"&&Game1.player.hasOrWillReceiveMail("JojaMember")||route=="joja"&&Game1.player.mailReceived.Contains("ccIsComplete"))throw new InvalidOperationException("progress_route_conflicts_with_native_save");
-        campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;campaign.NutsPerDay=nuts;campaign.KeepNuts=keepNuts;
+        List<string>? targets=null;
         if(args.TryGetProperty("targets",out var raw)) {
-            var targets=JsonSerializer.Deserialize<List<string>>(raw.GetRawText());
+            targets=JsonSerializer.Deserialize<List<string>>(raw.GetRawText());
             if(targets==null||targets.Count is <1 or >128||targets.Distinct().Count()!=targets.Count||targets.Any(id=>!known.Contains(id)))throw new InvalidOperationException("one_to_128_observed_progress_targets_required");
+        }
+        bool? active=null;
+        if(args.TryGetProperty("enabled",out var enabled)) {
+            if(enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("campaign_enabled_must_be_boolean");
+            active=enabled.GetBoolean();
+        }
+        // Validate the whole request before mutating budgets or cancelling work.
+        campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;campaign.NutsPerDay=nuts;campaign.KeepNuts=keepNuts;
+        if(targets!=null) {
             foreach(var prior in campaign.Targets.Where(p=>!targets.Contains(p.Target)))PausePursuitChild(prior);
             campaign.Targets=targets.Select(id=>campaign.Targets.FirstOrDefault(p=>p.Target==id)??new(){Target=id}).ToList();
         }
-        if(args.TryGetProperty("enabled",out var enabled)) {
-            if(enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("campaign_enabled_must_be_boolean");
-            campaign.Enabled=enabled.GetBoolean();
+        if(active.HasValue) {
+            campaign.Enabled=active.Value;
             foreach(var target in campaign.Targets) {
                 if(!campaign.Enabled)PausePursuitChild(target);
                 else if(target.State is "blocked" or "waiting"){target.State="pending";target.Fingerprint="";target.Reason="";}

@@ -177,7 +177,7 @@ public sealed partial class ModEntry {
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
             var info=new Dictionary<string,object>();
-            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","in_combat","relationship"})
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","in_combat","relationship"})
                 if(a.TryGetProperty(key,out var value))info[key]=value.Clone();
             string id=a.GetProperty("id").GetString()!;
             info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();
@@ -193,6 +193,7 @@ public sealed partial class ModEntry {
     internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
+        RefreshFacts(true);
         string? contract=AgentCallContract.CompanionError(args);
         if(contract!=null)return new{status="failed",error=contract,hint="跨地图先 companion.assign(skill=travel,destination=地图名)，成功后读取 world.read 的真实候选，再用 skill=mine/forage/... + target_id 派工。destination 不是劳动目标；不要编造 target_id。"};
         var values=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(args.GetRawText())!;

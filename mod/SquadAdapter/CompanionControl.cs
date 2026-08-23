@@ -137,7 +137,8 @@ public sealed partial class CompanionControl {
             path_preview=mate.Path.Take(6).Select(Tile).ToArray(),reachable_locations=Reachable(mate.Npc.currentLocation), returning_home=records.Values.Any(r=>r.Actor==Id(mate) && r.Skill=="dismiss" && r.Status=="running"), managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
             travel_options=MineTravelOptions(mate.Npc.currentLocation).ToArray(), resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
-            cargo = Counts(Pouch(mate)),
+            cargo = Counts(Pouch(mate)), cargo_slots = Pouch(mate).Count(i=>i!=null), cargo_capacity = 12,
+            storable_cargo = Pouch(mate).Where(i=>i!=null).Sum(StoreableCargo),
             in_combat = mate.Task?.Type == TaskType.Attacking,
             relationship = new { points = friendship?.Points ?? 0, dating = friendship?.IsDating() ?? false, married = friendship?.IsMarried() ?? false } };
     }

@@ -101,6 +101,7 @@ public sealed partial class ModEntry {
         foreach(var j in semanticJobs.Values.Where(j=>j.status=="running").ToArray())try{SemanticReceipt(j.command_id,true);}catch{j.status="cancelled";}
     }
     private JsonElement WorkActor(string id)=>World().GetProperty("actors").EnumerateArray().First(a=>a.GetProperty("id").GetString()==id);
+    private static int CompanionCargoSlots(JsonElement actor)=>actor.TryGetProperty("cargo_slots",out var slots)?slots.GetInt32():actor.GetProperty("cargo").EnumerateObject().Count();
     private int WorkCount(SemanticJob j)=>j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")).Sum(p=>p.Value.GetInt32());
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
@@ -138,9 +139,8 @@ public sealed partial class ModEntry {
             else if(j.ChildKind=="care_batch"){j.completed+=r.TryGetProperty("completed",out var done)?done.GetInt32():1;j.phase="selecting";}
             else if(j.ChildKind=="recovery_eat") {j.FoodUsed++;j.phase="selecting";}
             else if(j.ChildKind=="storage_deposit") {
-                j.Storing=false;
+                j.Storing=true;
                 if(r.TryGetProperty("evidence",out var detail)&&detail.TryGetProperty("resource_changes",out var changes))j.deposited+=changes.EnumerateObject().Sum(p=>Math.Max(0,p.Value.GetInt32()));
-                if(j.goal=="store"){StopSemanticWork(j,"stored_available_cargo",true);return;}
             }
             else if(j.ChildKind=="refill_use") {
                 var can=Game1.player.Items.OfType<WateringCan>().FirstOrDefault();
@@ -161,7 +161,7 @@ public sealed partial class ModEntry {
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
         bool gathering=j.goal is "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
-        if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Count()>=8)) {j.Storing=true;TickWorkStorage(j);return;}
+        if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):CompanionCargoSlots(WorkActor(j.actor))>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         if(j.actor=="player"&&j.goal is "pet" or "feed" or "milk" or "shear" or "animal_collect") {
             if(j.goal is "milk" or "shear"&&Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"animal_care_energy_reserve");return;}
             WorkChild(j,"player.care",new{mode=j.goal=="animal_collect"?"collect":j.goal,count=1},"care_batch");return;
@@ -253,7 +253,7 @@ public sealed partial class ModEntry {
         var actor=WorkActor(j.actor);string skill=j.goal is "stone" or "resource"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
         // NPCs have no native Farmer stamina bar. Do not invent one; bound by time,
         // actual available skills, cargo capacity and the adapter's safety checks.
-        if(j.Item.Length>0&&actor.GetProperty("cargo").EnumerateObject().Count()>=8){StopSemanticWork(j,"companion_cargo_needs_unloading");return;}
+        if(j.Item.Length>0&&CompanionCargoSlots(actor)>=8){j.Storing=true;TickWorkStorage(j);return;}
         bool claimed=false;
         foreach(var c in actor.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==skill)) {
             var tile=c.GetProperty("tile");int x=tile[0].GetInt32(),y=tile[1].GetInt32();string key=$"{x},{y}";

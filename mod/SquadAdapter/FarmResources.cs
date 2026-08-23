@@ -39,6 +39,7 @@ public sealed partial class CompanionControl {
         if(reservationTick!=tick) {
             reservationTick=tick;reservedCounts.Clear();
             var items=new List<Item>();items.AddRange(Game1.player.Items.Where(i=>i!=null));
+            items.AddRange(Game1.player.team.GetOrCreateGlobalInventory($"TheStardewSquad_SquadInventory_{Game1.player.UniqueMultiplayerID}").Where(i=>i!=null));
             var visited=new HashSet<GameLocation>();
             void Visit(GameLocation l) {
                 if(!visited.Add(l))return;
@@ -46,13 +47,11 @@ public sealed partial class CompanionControl {
                 foreach(var b in l.buildings)if(b.GetIndoors() is {} inside)Visit(inside);
             }
             Visit(Game1.getFarm());foreach(var m in Members)items.AddRange(Pouch(m).Where(i=>i!=null));
-            foreach(var i in items.Distinct())reservedCounts[i]=0;
-            foreach(var r in resourceReservations.Where(r=>r.Count>0 && r.Item!="(O)-1").OrderByDescending(r=>r.Quality)) {
-                int need=r.Count;
-                foreach(var stack in reservedCounts.Keys.Where(i=>Matches(i,r)).OrderBy(i=>i.Quality).ToArray()) {
-                    int keep=Math.Min(need,Math.Max(0,stack.Stack-reservedCounts[stack]));reservedCounts[stack]+=keep;need-=keep;if(need<=0)break;
-                }
-            }
+            var stacks=items.Distinct().OrderBy(i=>i.Quality).ThenBy(i=>i.QualifiedItemId,StringComparer.Ordinal).ToArray();
+            var demands=resourceReservations.Where(r=>r.Count>0&&r.Item!="(O)-1").OrderByDescending(r=>r.Quality).ThenBy(r=>r.Item,StringComparer.Ordinal).ToArray();
+            var allocation=Together.Shared.ResourceFlow.Allocate(stacks.Select(i=>new Together.Shared.ResourceFlow.Stock(i.QualifiedItemId,i.Category,i.Quality,i.Stack)).ToArray(),
+                demands.Select(r=>new Together.Shared.ResourceFlow.Demand(r.Item,r.Quality,r.Count)).ToArray());
+            for(int i=0;i<stacks.Length;i++)reservedCounts[stacks[i]]=allocation.StockUsed[i];
         }
         return reservedCounts.TryGetValue(item,out int reserved)?Math.Max(0,item.Stack-reserved):0;
     }
@@ -97,12 +96,13 @@ public sealed partial class CompanionControl {
     }
     private int StoreableCargo(Item item) {
         if(item is not StardewValley.Object o||o.questItem.Value||o.Category==-74||o.bigCraftable.Value)return 0;
-        int reserve=resourceReservations.Where(r=>Matches(item,r)).Sum(r=>r.Count);
-        return Math.Max(0,item.Stack-Math.Max(reserve,o.Edibility>0?2:0));
+        // Depositing preserves ownership and quality. Goal reservations apply to
+        // consuming/selling, never to moving the same materials into shared stock.
+        return item.Stack;
     }
     private IEnumerable<Candidate> ResourceCandidates(ISquadMate mate) {
         if(Pouch(mate).Any(i=>i!=null && i.Stack>0)) {
-            foreach(var chest in mate.Npc.currentLocation.objects.Values.OfType<Chest>().Where(c=>Role(c)=="output")) {
+            foreach(var chest in mate.Npc.currentLocation.objects.Values.OfType<Chest>().Where(c=>Role(c)=="output"&&!c.GetMutex().IsLocked())) {
                 var stand=StandingSpot(mate,chest.TileLocation.ToPoint());
                 if(stand.HasValue && Pouch(mate).Any(i=>i!=null && StoreableCargo(i)>0 && ChestHasRoom(chest,mate,i))) {
                     yield return new(TargetId(chest)+":deposit","deposit",chest.TileLocation.ToPoint(),chest,stand.Value);
@@ -128,6 +128,7 @@ public sealed partial class CompanionControl {
         var pouch=Pouch(mate);reservationTick=-1;
         if(r.Skill is "deposit" or "gift") {
             if(r.Source is not Chest chest || Role(chest)!="output"){Finish(r,"failed","chest_permission_changed");return;}
+            if(chest.GetMutex().IsLocked()){Finish(r,"failed","storage_busy");return;}
             var item=pouch.FirstOrDefault(i=>i!=null && i.Stack>0 && (r.Skill=="gift"||StoreableCargo(i)>0) && ChestHasRoom(chest,mate,i) && (r.Skill!="gift" || (i.Category is -4 or -80 && FreeCount(i)>0)));if(item==null){Finish(r,"failed","pouch_empty");return;}
             int count=r.Skill=="gift"?1:StoreableCargo(item);string key=item.QualifiedItemId+":"+item.Quality;
             var copy=item.getOne();copy.Stack=count;

@@ -8,4 +8,5 @@
   </PropertyGroup>
   <ItemGroup><PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" /></ItemGroup>
   <ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" ExcludeAssets="runtime" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/ResourceFlow.cs" Link="Shared/ResourceFlow.cs" /></ItemGroup>
 </Project>

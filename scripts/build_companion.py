@@ -110,7 +110,7 @@ def build():
         'public static bool CanAcceptItem(Item item, Farmer? recruiter = null)\n        {\n            if (CompanionControl.CargoAccept(item, false) is bool cargo) return cargo;')
     replace_once(task, 'private static bool TryAddItemToInventory(Item item, NPC? dropIfFullAt = null, Farmer? recruiter = null)\n        {',
         'private static bool TryAddItemToInventory(Item item, NPC? dropIfFullAt = null, Farmer? recruiter = null)\n        {\n            if (CompanionControl.CargoAccept(item, true) is bool cargo) return cargo;')
-    for adapter in (ROOT / 'mod/SquadAdapter').glob('*.cs'):
+    for adapter in list((ROOT / 'mod/SquadAdapter').glob('*.cs')) + list((ROOT / 'mod/Shared').glob('*.cs')):
         shutil.copyfile(adapter,stage / adapter.name)
     # Drop the separate upstream AfterBuild deployment target in the staging copy.
     # EnableModDeploy=false alone does not control this custom target.

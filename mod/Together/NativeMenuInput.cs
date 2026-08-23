@@ -43,7 +43,7 @@ internal sealed class NativeMenuInput : InputState {
     }
     internal static void ClickMenu(IClickableMenu menu,Rectangle bounds) {
         var input=Game1.input;var keys=Game1.oldKBState;
-        try{Game1.input=new NativeMenuInput(bounds.Center.X,bounds.Center.Y,ButtonState.Pressed);Game1.oldKBState=default;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);}
+        try{Game1.input=new NativeMenuInput(bounds.Center.X,bounds.Center.Y,ButtonState.Pressed);Game1.oldKBState=default;menu.performHoverAction(bounds.Center.X,bounds.Center.Y);menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);}
         finally{Game1.input=input;Game1.oldKBState=keys;}
     }
     public static void ClickWorld(IClickableMenu menu,Point tile) {

@@ -73,6 +73,9 @@ public static class AutonomyDevelopmentChecks {
         var demands=new[]{new Requirement{Item="-75",Count=1},new Requirement{Item="(O)24",Count=1}};
         check(ReservationAllocation.Allocate(substitutes,demands).SequenceEqual(new[]{1,1}),"category reservation reroutes to preserve the specifically requested crop");
         check(ReservationAllocation.Preserves(substitutes,new[]{new Requirement{Item="(O)24",Count=10}},new[]{new GoalStock{Item="(O)188",Category=-75,Count=1}}),"already missing materials do not block spending unrelated surplus");
+        var flow=Together.Shared.ResourceFlow.Allocate(new[]{new Together.Shared.ResourceFlow.Stock("(O)24",-75,2,2),new Together.Shared.ResourceFlow.Stock("(O)188",-75,0,1)},
+            new[]{new Together.Shared.ResourceFlow.Demand("-75",0,1),new Together.Shared.ResourceFlow.Demand("(O)24",2,2)});
+        check(flow.StockUsed.SequenceEqual(new[]{2,1})&&flow.DemandFilled.SequenceEqual(new[]{1,2}),"shared player and companion allocator reserves each physical quality unit once");
         var context=ContextCompression.Pack(new{recent=new object[]{new{error="unresolved",detail=new string('x',1000)},new{okay="old",detail=new string('y',1000)},new{okay="new"},new{okay="latest"}},schedule=new{active="must_survive"}},500);
         check(context.Contains("unresolved")&&context.Contains("must_survive")&&!context.Contains(new string('y',1000)),"context pressure drops old successes while retaining unresolved errors and active plan");
     }

@@ -93,7 +93,7 @@ public sealed partial class ModEntry {
                 GoalPlanner.Rebuild(preview,goalRecipes,ledger,Game1.Date.TotalDays,item=>item);
                 if(preview.Nodes.Any(n=>n.Status is "locked" or "blocked"))continue;
                 var missing=preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).ToArray();
-                bool obtainable=missing.All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null));
+                bool obtainable=missing.All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null||FishingLocations(n.Item).Any()));
                 if(!obtainable)continue;
                 options.Add((recipe,missing.Sum(n=>n.ToPrepare)+preview.Nodes.Count));
             }

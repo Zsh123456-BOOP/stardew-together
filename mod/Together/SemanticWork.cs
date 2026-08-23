@@ -41,7 +41,8 @@ public sealed class SemanticJob {
     internal string MineRegion="normal";
     internal int MineTravelBudget,MineKeepGold=500,VolcanoFailures;
     internal string MineReturnReason="";
-    internal int FoodUsed,MaxFood=3;
+    internal int FoodUsed,MaxFood=3,FishBaseline;
+    internal string FishLocation="";
 }
 
 public sealed partial class ModEntry {
@@ -49,9 +50,9 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
@@ -60,6 +61,11 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        if(goal=="fish") {
+            job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
+            if(job.requested is <1 or >100||job.Item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(job.Item.StartsWith("(O)")?job.Item[3..]:job.Item))throw new InvalidOperationException("fish_trip_requires_valid_item_and_count");
+            job.FishBaseline=FishingRules.Caught(job.Item);
+        }
         if(goal=="volcano_trip") {
             job.MineTarget=AgentToolRegistry.Number(args,"target_level",10);job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
             if(job.MineTarget is <1 or >10||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_volcano_target_or_budget");job.requested=0;
@@ -127,7 +133,12 @@ public sealed partial class ModEntry {
             if(j.ChildKind=="labor")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
             if(!ok) {
                 string error=r.TryGetProperty("error",out var e)?e.GetString()??"child_failed":"child_failed";
-                if(j.goal=="volcano_trip"&&j.ChildKind!="volcano_retreat") {
+                if(j.goal=="fish"&&j.ChildKind is "fish_attempt" or "fish_travel") {
+                    if(error is "fishing_resource_or_time_reserve_reached" or "fishing_inventory_space_required"){}
+                    else if(error is "no_reachable_native_cast_site" or "no_known_route" or "no_path" or "path_stalled" or "target_fish_conditions_or_native_landing_changed" or "target_fish_window_closed")j.Excluded.Add("fish:"+j.location);
+                    else {StopSemanticWork(j,error);return;}
+                }
+                else if(j.goal=="volcano_trip"&&j.ChildKind!="volcano_retreat") {
                     if(j.ChildKind=="volcano_combat"&&error=="current_area_clear_before_requested_kills"){}
                     else if(++j.VolcanoFailures>=2||error is "volcano_watering_can_refill_required" or "volcano_cooling_needs_stamina_reserve")j.MineReturnReason="volcano_interrupted:"+error;
                 }
@@ -153,6 +164,7 @@ public sealed partial class ModEntry {
         if(Game1.eventUp||Game1.activeClickableMenu!=null){StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
+        if(j.goal=="fish"){TickFishingTrip(j);return;}
         if(j.goal=="mine_trip"){TickMineTrip(j);return;}
         if(j.goal=="volcano_trip"){TickVolcanoTrip(j);return;}
         if(Game1.timeOfDay>=j.Until){StopSemanticWork(j,"time_reserve_reached");return;}

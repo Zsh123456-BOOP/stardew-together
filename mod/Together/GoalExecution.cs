@@ -82,6 +82,9 @@ public sealed partial class ModEntry {
                     string skill=node.Item switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber","(O)709"=>"hardwood",_=>ResourceRules.Nodes.Values.Contains(node.Item)?"resource":""};
                     string? resourceLocation=skill is "resource" or "hardwood"?FindGoalResourceLocation(node.Item,skill):"Farm";
                     if(skill.Length>0&&resourceLocation!=null&&node.Quality==0){Add("work.run",new{goal=skill,item=node.Item,count=Math.Min(node.ToPrepare,999),location=resourceLocation,include_trees=skill=="wood"},"为"+goal.Title+"收集"+node.Name);break;}
+                    if(node.Quality==0&&FishingLocations(node.Item).FirstOrDefault() is {} fishLocation) {
+                        Add("work.run",new{goal="fish",item=node.Item,count=Math.Min(10,node.ToPrepare),location=fishLocation.NameOrUniqueName},"定向准备"+node.Name+"，按原生捕获与真实库存续接");break;
+                    }
                     gaps.Add(new{node=node.Id,item=node.Item,node.Quality,reason="acquisition_route_requires_choice_or_missing_executor",node.ToPrepare});
                 }
                 foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process")))gaps.Add(new{node=node.Id,node.Status,node.Reason});

@@ -487,7 +487,7 @@ public sealed partial class PlayerExecutor {
         if(MineShaft.IsGeneratedLevel(name))return MineShaft.activeMines.FirstOrDefault(l=>l.NameOrUniqueName==name);
         return Game1.getLocationFromName(name);
     }
-    private static Warp? NextExit(GameLocation from,string destination) {
+    internal static Warp? NextExit(GameLocation from,string destination) {
         var queue=new Queue<(GameLocation Location,Warp? First)>();queue.Enqueue((from,null));var visited=new HashSet<string>{from.NameOrUniqueName};
         while(queue.Count>0&&visited.Count<150) {
             var (l,first)=queue.Dequeue();foreach(var edge in Exits(l)) {

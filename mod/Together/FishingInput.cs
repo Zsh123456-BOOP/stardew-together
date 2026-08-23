@@ -36,7 +36,7 @@ internal sealed class FishingInput : InputState {
     }
     private static void RodPrefix(FishingRod __instance,Farmer who,out SavedInput? __state) {
         __state=null;if(owner?.OwnsFishing!=true||who!=Game1.player||who.CurrentTool!=__instance)return;
-        __state=Apply(__instance.isTimingCast&&__instance.castingPower<.8f);
+        __state=Apply(__instance.isTimingCast&&__instance.castingPower<owner.FishingCastPower);
     }
     private static void Restore(SavedInput? __state) {
         if(__state==null)return;

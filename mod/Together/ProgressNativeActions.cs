@@ -59,10 +59,21 @@ public sealed partial class ModEntry {
         var preview=new SharedGoal{Entity=item,Item=item,Count=count};var ledger=new GoalLedger(Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Quality=s.Quality,Category=s.Category}));
         foreach(var reserve in AllReservations().OrderByDescending(r=>r.Quality))ledger.Take(reserve.Item,reserve.Count,reserve.Quality);
         GoalPlanner.Rebuild(preview,goalRecipes,ledger,Game1.Date.TotalDays,id=>id);
-        return !preview.Nodes.Any(n=>n.Status is "locked" or "blocked")&&preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null));
+        return !preview.Nodes.Any(n=>n.Status is "locked" or "blocked")&&preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null||FishingLocations(n.Item).Any()));
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("fish:")||id is "achievement:24" or "achievement:25" or "achievement:26" or "achievement:27") {
+            string wanted=id.StartsWith("fish:")?id[5..]:"";
+            if(!p.Items.OfType<StardewValley.Tools.FishingRod>().Any()){PursuitState(pursuit,"waiting","先通过原生领取或商店取得鱼竿");return true;}
+            if(id.StartsWith("achievement:")) {
+                int achievement=int.Parse(id[12..]);var rule=JsonSerializer.SerializeToElement(AchievementRules.Native(achievement));
+                if(rule.GetProperty("condition_satisfied").GetBoolean()){PursuitState(pursuit,"waiting","捕获记录已达标，等待原生成就登记");return true;}
+                if(achievement!=27&&p.fishCaught.Any())wanted=rule.GetProperty("details").GetProperty("missing").EnumerateArray().Select(i=>i.GetString()!).FirstOrDefault(i=>FishingLocations(i).Any())??"unavailable";
+            }
+            if(wanted=="unavailable"||!FishingLocations(wanted).Any()){PursuitState(pursuit,"waiting","未捕获鱼类当前无可达合格水域；需其它季节/天气/等级/解锁或蟹笼");return true;}
+            QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="fish",item=wanted,count=wanted.Length==0?3:1,until=2100})});return true;
+        }
         if(id=="region:caldera") {
             if(!Game1.MasterPlayer.mailReceived.Contains("willyBoatFixed")){PursuitState(pursuit,"waiting","先实际修复并开放船坞");return true;}
             int cost=p.currentLocation is IslandLocation?0:(Game1.getLocationFromName("BoatTunnel") as BoatTunnel)?.TicketPrice??1000;

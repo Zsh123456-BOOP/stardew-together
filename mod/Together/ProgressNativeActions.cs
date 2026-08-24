@@ -63,6 +63,27 @@ public sealed partial class ModEntry {
     }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("friendship:")) {
+            string npc=id[11..];int threshold=Game1.characterData.TryGetValue(npc,out var character)&&character.CanBeRomanced?2000:2500;
+            return PursueFriendship(pursuit,threshold,npc);
+        }
+        if(id is "achievement:6" or "achievement:7" or "achievement:9" or "achievement:11" or "achievement:12" or "achievement:13") {
+            var rule=JsonSerializer.SerializeToElement(AchievementRules.Native(int.Parse(id[12..])));
+            if(rule.GetProperty("condition_satisfied").GetBoolean()){PursuitState(pursuit,"waiting","关系条件已满足，等待原生成就登记");return true;}
+            return PursueFriendship(pursuit,rule.GetProperty("details").GetProperty("minimum_points").GetInt32());
+        }
+        if(id=="scope:perfection"||id.StartsWith("perfection:")) {
+            PursuitState(pursuit,"waiting","持续推进已展开分项；只以原生比例和完成记录结束本目标");return true;
+        }
+        if(id.StartsWith("build:")) {
+            var key=id[6..];var data=DataLoader.Buildings(Game1.content).GetValueOrDefault(key);if(data==null)return false;
+            if(!GameStateQuery.CheckConditions(data.BuildCondition,Game1.getFarm(),p,random:new Random(0))){PursuitState(pursuit,"waiting","建筑原生解锁条件未满足");return true;}
+            if(!string.IsNullOrEmpty(data.BuildingToUpgrade)&&!Game1.IsBuildingConstructed(data.BuildingToUpgrade)){PursuitState(pursuit,"waiting","先完成前置建筑："+data.BuildingToUpgrade);return true;}
+            if(Game1.getFarm().buildings.Any(b=>b.daysOfConstructionLeft.Value>0||b.daysUntilUpgrade.Value>0)){PursuitState(pursuit,"waiting","等待已有建筑按原生工期完工");return true;}
+            if(data.Builder=="Wizard"&&!p.mailReceived.Contains("hasPickedUpMagicInk")&&!p.hasMagicInk){PursuitState(pursuit,"waiting","巫师建筑需要原生魔法墨水解锁");return true;}
+            if(!PursuitMaterials(pursuit,(data.BuildMaterials??new()).Select(m=>(ItemRegistry.QualifyItemId(m.ItemId)??m.ItemId,m.Amount,0)),actions))return true;
+            actions.Add(("player.service",new{location=data.Builder=="Wizard"?"WizardHouse":"ScienceHouse",service="build"}));actions.Add(("player.build",new{blueprint=key,budget=data.BuildCost,keep_gold=policy.KeepGold}));QueuePursuit(pursuit,actions,data.BuildCost);return true;
+        }
         if(id.StartsWith("fish:")||id is "achievement:24" or "achievement:25" or "achievement:26" or "achievement:27") {
             string wanted=id.StartsWith("fish:")?id[5..]:"";
             if(wanted.Length>0&&PlayerExecutor.IsTrapFish(wanted))return PursueTrapFish(pursuit,wanted);

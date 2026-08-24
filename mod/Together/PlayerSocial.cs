@@ -28,6 +28,7 @@ public sealed partial class PlayerExecutor {
         if(socialMode is "gift" or "relationship" || socialMode=="deliver"&&socialSlot>=0) {
             SelectSlot(args,true);
             var item=Game1.player.ActiveObject??throw new InvalidOperationException("social_item_must_be_object");socialItem=item.QualifiedItemId;
+            string expected=AgentToolRegistry.Text(args,"item");if(expected.Length>0&&socialItem!=expected)throw new InvalidOperationException("planned_social_item_slot_changed");
             socialStack=Game1.player.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack);
             if(socialMode=="gift"&&(item.questItem.Value||item.QualifiedItemId is "(O)458" or "(O)460" or "(O)808" or "(O)809"||item.GetContextTags().Any(t=>t.StartsWith("propose_roommate_"))))
                 throw new InvalidOperationException("special_relationship_item_requires_relationship_mode");

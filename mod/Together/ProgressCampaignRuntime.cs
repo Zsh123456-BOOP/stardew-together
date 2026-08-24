@@ -5,9 +5,11 @@ namespace Together;
 public sealed partial class ModEntry {
     private DateTime progressCampaignAt;
     internal object ConfigureProgressCampaign(JsonElement args) {
-        RefreshFacts(true);var campaign=Data.Autoplay.Campaign;var known=ReadNativeGoalRows().Select(r=>r.id).ToHashSet();
+        RefreshFacts(true);var campaign=Data.Autoplay.Campaign;var definitions=ReadNativeGoalRows().GroupBy(r=>r.id).ToDictionary(g=>g.Key,g=>g.First());var known=definitions.Keys.ToHashSet();
         int budget=AgentToolRegistry.Number(args,"budget_per_day",campaign.BudgetPerDay),keep=AgentToolRegistry.Number(args,"keep_gold",campaign.KeepGold);
         int nuts=AgentToolRegistry.Number(args,"nuts_per_day",campaign.NutsPerDay),keepNuts=AgentToolRegistry.Number(args,"keep_nuts",campaign.KeepNuts);
+        int gifts=AgentToolRegistry.Number(args,"gift_value_per_day",campaign.GiftValuePerDay),giftLimit=AgentToolRegistry.Number(args,"gift_value_limit",campaign.GiftValueLimit);
+        if(gifts is <0 or >1000000||giftLimit is <0 or >1000000)throw new InvalidOperationException("invalid_gift_value_budget");
         string route=AgentToolRegistry.Text(args,"route",campaign.Route);
         if(budget is <0 or >10000000||keep<0||nuts is <0 or >130||keepNuts is <0 or >130||route is not ("" or "community" or "joja"))throw new InvalidOperationException("invalid_progress_budget_or_route");
         if(route=="community"&&Game1.player.hasOrWillReceiveMail("JojaMember")||route=="joja"&&Game1.player.mailReceived.Contains("ccIsComplete"))throw new InvalidOperationException("progress_route_conflicts_with_native_save");
@@ -15,6 +17,13 @@ public sealed partial class ModEntry {
         if(args.TryGetProperty("targets",out var raw)) {
             targets=JsonSerializer.Deserialize<List<string>>(raw.GetRawText());
             if(targets==null||targets.Count is <1 or >128||targets.Distinct().Count()!=targets.Count||targets.Any(id=>!known.Contains(id)))throw new InvalidOperationException("one_to_128_observed_progress_targets_required");
+            // Expand structural development goals once; their completion remains
+            // tied to native evidence, not to the child action queue becoming empty.
+            var expanded=targets.ToList();
+            for(int i=0;i<expanded.Count;i++)if(definitions.TryGetValue(expanded[i],out var definition)&&(definition.id=="scope:perfection"||definition.id.StartsWith("perfection:")||definition.id.StartsWith("build:")))
+                foreach(string dependency in definition.dependencies)if(known.Contains(dependency)&&!expanded.Contains(dependency))expanded.Add(dependency);
+            if(expanded.Count>128)throw new InvalidOperationException("expanded_progress_target_limit_split_campaign");
+            targets=expanded;
         }
         bool? active=null;
         if(args.TryGetProperty("enabled",out var enabled)) {
@@ -22,7 +31,7 @@ public sealed partial class ModEntry {
             active=enabled.GetBoolean();
         }
         // Validate the whole request before mutating budgets or cancelling work.
-        campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;campaign.NutsPerDay=nuts;campaign.KeepNuts=keepNuts;
+        campaign.GiftValuePerDay=gifts;campaign.GiftValueLimit=giftLimit;campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;campaign.NutsPerDay=nuts;campaign.KeepNuts=keepNuts;
         if(targets!=null) {
             foreach(var prior in campaign.Targets.Where(p=>!targets.Contains(p.Target)))PausePursuitChild(prior);
             campaign.Targets=targets.Select(id=>campaign.Targets.FirstOrDefault(p=>p.Target==id)??new(){Target=id}).ToList();
@@ -52,7 +61,7 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning||!Data.Autoplay.Campaign.Enabled||DateTime.UtcNow<progressCampaignAt)return;progressCampaignAt=DateTime.UtcNow.AddSeconds(3);
         if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||Game1.timeOfDay>=2100||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
         RefreshFacts(true);var native=ReadNativeGoalRows().GroupBy(r=>r.id).ToDictionary(g=>g.Key,g=>g.First());
-        var policy=Data.Autoplay.Campaign;if(policy.BudgetDay!=Game1.Date.TotalDays){policy.BudgetDay=Game1.Date.TotalDays;policy.ReservedGold=0;policy.ReservedNuts=0;}
+        var policy=Data.Autoplay.Campaign;if(policy.BudgetDay!=Game1.Date.TotalDays){policy.BudgetDay=Game1.Date.TotalDays;policy.ReservedGold=0;policy.ReservedNuts=0;policy.ReservedGiftValue=0;}
         foreach(var pursuit in Data.Autoplay.Campaign.Targets) {
             if(!ReconcilePursuitTasks(pursuit))continue;
             if(!native.TryGetValue(pursuit.Target,out var target)) {

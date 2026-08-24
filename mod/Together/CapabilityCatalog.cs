@@ -30,7 +30,7 @@ public static class CapabilityCatalog {
         new("F19","特殊剧情区域",new[]{"island.walnuts","player.walnuts","island.upgrades","player.island_upgrade","forge.read","player.forge","player.mastery","mastery.read","player.read_book","menu.read","menu.choose"},new[]{"player"},"节日/姜岛核桃谜题/首次火山探索专属适配及后期实机验收", "逐事件原生证据"),
         new("F20","菜单过夜",new[]{"player.read_mail","player.watch_tv","player.sleep","strategy.profession","player.collect_reward","menu.read","menu.choose"},new[]{"player"},"特殊夜间选择与职业策略实机验收", "原生保存+实际次日"),
         new("F21","小游戏",new[]{"player.arcade","arcade.read"},new[]{"player"},"街机控制器已接，通关成功率/无伤及节日小游戏尚未验收", "正常通关与原生奖励"),
-        new("F22","成就目标图",new[]{"progress.pursue","progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
+        new("F22","成就目标图",new[]{"perfection.read","progress.pursue","progress.catalog","progress.dependencies","progress.read","progress.roadmap"},new[]{"player"},"成就条件执行图/平台验证", "原生成就集合；平台独立核验"),
         new("F23","双角色调度",new[]{"plan.submit","plan.read","plan.cancel"},new[]{"player","companion"},"完整资源预约与恢复", "角色队列及结果证据"),
         new("F24","全天经营",new[]{"day.read","day.plan"},new[]{"player","companion"},"完整工作候选及恢复预算", "实际日程/收益/有效劳动"),
         new("F25","百科检索",new[]{"knowledge.search","knowledge.get","goal.requirements"},new[]{"player","companion"},"特殊规则与完整条件覆盖", "游戏内容与现场条件"),
@@ -87,9 +87,16 @@ public sealed partial class ModEntry {
         foreach(var arcade in new[]{("prairie","completedPrairieKing"),("deathless","completedPrairieKingWithoutDying"),("kart","completedJunimoKart")})rows.Add(new("arcade:"+arcade.Item1,"街机原生目标 "+arcade.Item1,"arcade",p.stats.Get(arcade.Item2)>0,new[]{"F21"},Array.Empty<string>(),new{stat=arcade.Item2,value=p.stats.Get(arcade.Item2)},"Farmer.stats 原生小游戏完成计数","控制器为启发式；完成必须具有实际原生通关证据"));
         rows.Add(new("region:caldera","到达火山锻造台区域","region",Game1.MasterPlayer.hasOrWillReceiveMail("reachedCaldera"),new[]{"F02","F15","F19"},new[]{"boat:hull","boat:anchor","boat:ticket_machine"},new{reached=Game1.MasterPlayer.hasOrWillReceiveMail("reachedCaldera")},"原生reachedCaldera邮件；实际当前位置另验","需船坞解锁、装备补给与真实连续火山行程"));
         foreach(var perch in PlayerExecutor.IslandPerches().Where(p=>p.Perch.upgradeName.Value!="GoldenParrot"))rows.Add(new("island-upgrade:"+perch.Location.NameOrUniqueName+":"+perch.Perch.upgradeName.Value,perch.Perch.upgradeName.Value,"island-upgrade",perch.Perch.currentState.Value==StardewValley.BellsAndWhistles.ParrotUpgradePerch.UpgradeState.Complete,new[]{"F19"},Array.Empty<string>(),new{location=perch.Location.NameOrUniqueName,upgrade=perch.Perch.upgradeName.Value,walnuts=perch.Perch.requiredNuts.Value,requires_mail=perch.Perch.requiredMail.Value,available=perch.Perch.IsAvailable()},"原生鹦鹉施工完成状态","需实际核桃、前置解锁、可达路径与专用核桃预算"));
+        foreach(var character in Game1.characterData.Where(kv=>kv.Value.PerfectionScore&&!GameStateQuery.IsImmutablyFalse(kv.Value.CanSocialize))) {
+            int threshold=character.Value.CanBeRomanced?2000:2500,points=p.friendshipData.GetValueOrDefault(character.Key)?.Points??0;
+            rows.Add(new("friendship:"+character.Key,character.Key,"friendship",points>=threshold,new[]{"F18"},Array.Empty<string>(),new{points,required=threshold},"原生友谊点数与完美度人物阈值","普通聊天与预算内礼物已接；恋爱/婚姻分支独立选择"));
+        }
+        foreach(var building in DataLoader.Buildings(Game1.content).Where(kv=>kv.Value.Builder is "Robin" or "Wizard"&&kv.Value.BuildCost>=0))rows.Add(new("build:"+building.Key,building.Key,"building",Game1.IsBuildingConstructed(building.Key),new[]{"F13"},string.IsNullOrEmpty(building.Value.BuildingToUpgrade)?Array.Empty<string>():new[]{"build:"+building.Value.BuildingToUpgrade},new{builder=building.Value.Builder,cost=building.Value.BuildCost,materials=building.Value.BuildMaterials,condition=building.Value.BuildCondition},"原生建筑已完工条件","最终以现场可建图纸、预算与原生工期核验"));
+        foreach(var part in PerfectionProgress.Parts())rows.Add(new("perfection:"+part.Id,part.Evidence,"perfection",part.Fraction>=1,new[]{"F22"},part.Goals,new{fraction=part.Fraction,weight=part.Weight},part.Evidence,"分项依赖必须分别真实完成，不能直接设置总分"));
+        rows.Add(new("scope:walnuts","发现全部金核桃","scope",Game1.netWorldState.Value.GoldenWalnutsFound>=130,new[]{"F19"},Array.Empty<string>(),new{found=Game1.netWorldState.Value.GoldenWalnutsFound,required=130},"原生GoldenWalnutsFound","普通灌木/埋点已适配，谜题/任务/事件核桃还需专属流程"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
         rows.AddRange(AchievementRules.PlatformConditions());
-        rows.Add(new("scope:perfection","完美度与后期发展","scope",null,new[]{"F19","F22"},Array.Empty<string>(),new{},"原生完美度条件","完美度条目专属解析待补"));
+        rows.Add(new("scope:perfection","完美度与后期发展","scope",Utility.percentGameComplete()>=1,new[]{"F19","F22"},PerfectionProgress.Parts().Select(p=>"perfection:"+p.Id).ToArray(),PerfectionProgress.Read(),"原生完美度条件","逐项推进真实条件，完整后期流程仍须覆盖"));
         return rows;
     }
 

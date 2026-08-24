@@ -9,6 +9,9 @@ public sealed class ProgressCampaign {
     public int NutsPerDay {get;set;}
     public int KeepNuts {get;set;}
     public int ReservedNuts {get;set;}
+    public int GiftValuePerDay {get;set;}
+    public int GiftValueLimit {get;set;}=200;
+    public int ReservedGiftValue {get;set;}
     public string Route {get;set;}="";
 }
 public sealed class ProgressPursuit {

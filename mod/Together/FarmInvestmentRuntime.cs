@@ -9,6 +9,7 @@ public sealed partial class ModEntry {
         int budget=AgentToolRegistry.Number(args,"budget_per_day",p.BudgetPerDay),keep=AgentToolRegistry.Number(args,"keep_gold",p.KeepGold),plots=AgentToolRegistry.Number(args,"plots",p.Plots),water=AgentToolRegistry.Number(args,"max_daily_manual_water",p.ManualWaterLimit);
         string priority=AgentToolRegistry.Text(args,"priority",p.Priority),shop=AgentToolRegistry.Text(args,"shop",p.Shop),location=AgentToolRegistry.Text(args,"location",p.Location);
         if(budget is <0 or >10000000||keep is <0 or >10000000||plots is <1 or >96||water is <0 or >96||priority is not ("income" or "collection" or "low_labor")||Game1.getLocationFromName(location)==null||shop.Length is <1 or >120)throw new InvalidOperationException("invalid_farm_investment_policy");
+        if(args.TryGetProperty("enabled",out var rawEnabled)&&rawEnabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("investment_enabled_must_be_boolean");
         p.BudgetPerDay=budget;p.KeepGold=keep;p.Plots=plots;p.ManualWaterLimit=water;p.Priority=priority;p.Shop=shop;p.Location=location;
         if(args.TryGetProperty("enabled",out var enabled)) {
             if(enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("investment_enabled_must_be_boolean");

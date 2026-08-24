@@ -70,9 +70,8 @@ public sealed class NativeMenuTools {
             levelChoice.okButtonClicked();return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
         }
         if(observed is DialogueBox dialogueBox)dialogueBox.finishTyping();
-        observed!.performHoverAction(choice.Bounds.Center.X,choice.Bounds.Center.Y);
         bool right=args.TryGetProperty("right",out var flag)&&flag.ValueKind==JsonValueKind.True;
-        if(right)observed!.receiveRightClick(choice.Bounds.Center.X,choice.Bounds.Center.Y);else observed!.receiveLeftClick(choice.Bounds.Center.X,choice.Bounds.Center.Y);
+        NativeMenuInput.ClickMenu(observed!,choice.Bounds,right);
         return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
     }
     public object Open(string page) {

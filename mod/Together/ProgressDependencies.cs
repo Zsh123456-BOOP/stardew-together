@@ -26,7 +26,25 @@ public sealed partial class ModEntry {
             if(native.TryGetValue(id,out var definition)) {
                 node.title=definition.title;node.kind=definition.kind;node.state=definition.completed==true?"complete":"unmet";node.evidence=definition.requirements;
                 if(definition.completed==true)return;
-                if(id.StartsWith("fish:")) {
+                if(id=="scope:perfection"||id.StartsWith("perfection:")) {
+                    foreach(string dep in definition.dependencies)node.dependencies.Add(new(dep));
+                    node.actions.Add(Action("perfection.read",new{}));
+                }
+                else if(id.StartsWith("build:")) {
+                    var data=DataLoader.Buildings(Game1.content)[id[6..]];
+                    foreach(var material in data.BuildMaterials??new())node.dependencies.Add(new(ItemRegistry.QualifyItemId(material.ItemId)??material.ItemId,material.Amount));
+                    node.dependencies.Add(new("gold",data.BuildCost));
+                    foreach(string dep in definition.dependencies)node.dependencies.Add(new(dep));
+                    node.actions.Add(Action("player.service",new{location=data.Builder=="Wizard"?"WizardHouse":"ScienceHouse",service="build"}));
+                    node.actions.Add(Action("player.build",new{blueprint=id[6..],budget=data.BuildCost}));
+                    node.gaps.Add("需原生建筑条件和实际柜台可用图纸；巫师需要魔法墨水流程解锁");
+                }
+                else if(id.StartsWith("friendship:")) {
+                    node.actions.Add(Action("player.social",new{npc=id[11..],mode="talk"}));
+                    node.actions.Add(Action("progress.pursue",new{targets=new[]{id},enabled=true}));
+                    node.gaps.Add("礼物价值预算明确配置后按真实喜好和预留选择；生日/次数/人物可达性每次重查");
+                }
+                else if(id.StartsWith("fish:")) {
                     if(PlayerExecutor.IsTrapFish(id[5..])) {
                         node.dependencies.Add(new("(O)710"));node.dependencies.Add(new("(O)685"));
                         node.actions.Add(Action("crab_pots.read",new{}));node.actions.Add(Action("progress.pursue",new{targets=new[]{id},enabled=true}));

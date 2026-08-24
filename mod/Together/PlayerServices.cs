@@ -40,6 +40,12 @@ public sealed partial class PlayerExecutor {
             if(menu is DialogueBox dialogue) {
                 if(++servicePages>20)throw new InvalidOperationException("service_dialogue_limit");dialogue.finishTyping();
                 if(!dialogue.isQuestion){dialogue.receiveLeftClick(dialogue.xPositionOnScreen+16,dialogue.yPositionOnScreen+16);return;}
+                if(service=="build"&&Game1.currentLocation.lastQuestionKey=="pagedResponse") {
+                    int farm=Array.FindIndex(dialogue.responses,r=>r.responseKey=="Farm");
+                    if(farm<0)farm=Array.FindIndex(dialogue.responses,r=>r.responseKey=="nextPage");
+                    if(farm<0||dialogue.responseCC==null||farm>=dialogue.responseCC.Count)throw new InvalidOperationException("farm_build_location_choice_missing");
+                    NativeMenuInput.ClickMenu(dialogue,dialogue.responseCC[farm].bounds);return;
+                }
                 string key=service switch{"shop"=>serviceShop=="AnimalShop"?"Supplies":"Shop","museum_donate"=>"Donate","museum_reward"=>"Collect","build"=>"Construct","upgrade_house" or "upgrade_tools"=>"Upgrade","animals"=>"Purchase","geodes"=>"Process",_=>""};
                 int index=Array.FindIndex(dialogue.responses,r=>r.responseKey==key);
                 if(serviceSelected||index<0||dialogue.responseCC==null||dialogue.responseCC.Count<=index)throw new InvalidOperationException("service_branch_unavailable_read_menu");
@@ -61,7 +67,8 @@ public sealed partial class PlayerExecutor {
                     "daily_quests"=>action[0]=="Billboard"&&action.Length>1&&action[1]=="3",
                     "special_orders"=>action[0]=="SpecialOrders","qi_orders"=>action[0]=="QiChallengeBoard",
                     "museum_donate" or "museum_reward"=>action[0]=="Gunther",
-                    "build" or "upgrade_house"=>action[0]=="Carpenter",
+                    "build"=>action[0] is "Carpenter" or "WizardBook",
+                    "upgrade_house"=>action[0]=="Carpenter",
                     "animals"=>action[0]=="AnimalShop",_=>action[0]=="Blacksmith"
                 };
                 if(match)candidates.Add(new(x,y));

@@ -36,6 +36,13 @@ public sealed class AutoplayState {
         if(Journal.Count>32)Journal.RemoveRange(0,Journal.Count-32);
     }
 }
+public sealed class FamilyPolicy {
+    public string Partner {get;set;}="";
+    public bool? AcceptChildren {get;set;}
+    public int TargetChildren {get;set;}=2;
+    public List<string> ChildNames {get;set;}=new();
+    public bool AutoNameAnimals {get;set;}=true;
+}
 public sealed class RoutinePolicy {
     public bool Enabled {get;set;}
     public int Version {get;set;}

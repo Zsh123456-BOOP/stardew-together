@@ -6,12 +6,6 @@ using StardewValley.Locations;
 using StardewValley.Menus;
 
 namespace Together;
-public sealed class FamilyPolicy {
-    public bool? AcceptChildren {get;set;}
-    public int TargetChildren {get;set;}=2;
-    public List<string> ChildNames {get;set;}=new();
-    public bool AutoNameAnimals {get;set;}=true;
-}
 public sealed partial class ModEntry {
     private IClickableMenu? familySubmittedMenu;
     internal object ReadFamily() {
@@ -21,7 +15,12 @@ public sealed partial class ModEntry {
             note="出生只在原生条件和随机事件满足后发生；同意策略不会生成事件或缩短孕期。婚恋对象由独立关系策略选择。"};
     }
     internal object SetFamilyPolicy(JsonElement args) {
-        var old=Data.Autoplay.Family;var next=new FamilyPolicy{AcceptChildren=old.AcceptChildren,TargetChildren=old.TargetChildren,ChildNames=old.ChildNames.ToList(),AutoNameAnimals=old.AutoNameAnimals};
+        var old=Data.Autoplay.Family;var next=new FamilyPolicy{Partner=old.Partner,AcceptChildren=old.AcceptChildren,TargetChildren=old.TargetChildren,ChildNames=old.ChildNames.ToList(),AutoNameAnimals=old.AutoNameAnimals};
+        if(args.TryGetProperty("partner",out var partner)) {
+            if(partner.ValueKind!=JsonValueKind.String)throw new InvalidOperationException("partner_requires_native_character_name");next.Partner=partner.GetString()!;
+            if(next.Partner.Length>0&&(!Game1.characterData.TryGetValue(next.Partner,out var character)||!character.CanBeRomanced))throw new InvalidOperationException("partner_must_be_native_romance_candidate");
+            if(next.Partner.Length>0&&(Game1.player.isMarriedOrRoommates()||Game1.player.isEngaged())&&Game1.player.spouse!=next.Partner)throw new InvalidOperationException("partner_conflicts_with_existing_marriage_or_engagement");
+        }
         if(args.TryGetProperty("accept_children",out var accept)){if(accept.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("accept_children_requires_boolean");next.AcceptChildren=accept.GetBoolean();}
         if(args.TryGetProperty("target_children",out var target)){if(!target.TryGetInt32(out int n)||n is <0 or >2)throw new InvalidOperationException("invalid_target_children");next.TargetChildren=n;}
         if(args.TryGetProperty("auto_name_animals",out var auto)){if(auto.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("auto_name_animals_requires_boolean");next.AutoNameAnimals=auto.GetBoolean();}

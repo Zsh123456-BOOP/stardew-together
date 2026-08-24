@@ -95,6 +95,8 @@ public sealed partial class ModEntry {
         foreach(var part in PerfectionProgress.Parts())rows.Add(new("perfection:"+part.Id,part.Evidence,"perfection",part.Fraction>=1,new[]{"F22"},part.Goals,new{fraction=part.Fraction,weight=part.Weight},part.Evidence,"分项依赖必须分别真实完成，不能直接设置总分"));
         rows.Add(new("scope:walnuts","发现全部金核桃","scope",Game1.netWorldState.Value.GoldenWalnutsFound>=130,new[]{"F19"},Array.Empty<string>(),new{found=Game1.netWorldState.Value.GoldenWalnutsFound,required=130},"原生GoldenWalnutsFound","普通灌木/埋点已适配，谜题/任务/事件核桃还需专属流程"));
         rows.Add(new("platform:achievements","平台成就独立核验","scope",null,new[]{"F22"},Array.Empty<string>(),new{platform_connected="not_verified"},"平台成就接口","存档原生成就不作为平台成功证据"));
+        rows.Add(new("family:marriage","原生婚姻","family",p.isMarriedOrRoommates(),new[]{"F18","F13"},new[]{"house:1"},new{spouse=p.spouse,married=p.isMarriedOrRoommates()},"原生配偶与婚姻状态","先配置婚恋方向，算法准备关系与原生求婚前置；婚礼不跳过"));
+        rows.Add(new("family:children","原生两个孩子","family",p.isMarriedOrRoommates()&&p.getChildrenCount()>=2,new[]{"F18","F20"},new[]{"family:marriage","house:2"},new{children=p.getChildrenCount()},"原生孩子成员数量","生育策略、育婴床、婚后好感与正常过夜事件"));
         rows.AddRange(AchievementRules.PlatformConditions());
         rows.Add(new("scope:perfection","完美度与后期发展","scope",Utility.percentGameComplete()>=1,new[]{"F19","F22"},PerfectionProgress.Parts().Select(p=>"perfection:"+p.Id).ToArray(),PerfectionProgress.Read(),"原生完美度条件","逐项推进真实条件，完整后期流程仍须覆盖"));
         return rows;

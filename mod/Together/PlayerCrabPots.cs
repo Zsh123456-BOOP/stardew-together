@@ -6,7 +6,7 @@ using StardewValley.Objects;
 namespace Together;
 public sealed partial class PlayerExecutor {
     private string crabMode="",crabFish="",crabBait="";
-    private int crabCount;
+    private int crabCount,crabUnreachable;
     private Point? crabTile;
     private readonly HashSet<Point> crabVisited=new();
     internal static bool IsTrapFish(string item)=>DataLoader.Fish(Game1.content).TryGetValue(item.StartsWith("(O)")?item[3..]:item,out var raw)&&KnowledgeRules.Field(raw.Split('/'),1)=="trap";
@@ -21,7 +21,7 @@ public sealed partial class PlayerExecutor {
         crabMode=AgentToolRegistry.Text(args,"mode","tend");crabFish=AgentToolRegistry.Text(args,"item");crabBait=AgentToolRegistry.Text(args,"bait","(O)685");crabCount=AgentToolRegistry.Number(args,"count",crabMode=="place"?1:0);
         if(crabMode is not ("place" or "tend")||crabCount is <0 or >40||crabMode=="place"&&crabCount==0||crabFish.Length>0&&!IsTrapFish(crabFish))throw new InvalidOperationException("invalid_crab_pot_job");
         destination=AgentToolRegistry.Text(args,"location",origin);if(LoadedLocation(destination)==null)throw new InvalidOperationException("crab_pot_location_unavailable");
-        crabTile=null;crabVisited.Clear();Current!.phase="crab_pot_travel";
+        crabTile=null;crabVisited.Clear();crabUnreachable=0;Current!.phase="crab_pot_travel";
     }
     private void TickCrabPots() {
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("crab_pot_menu_interrupted");
@@ -37,9 +37,9 @@ public sealed partial class PlayerExecutor {
                 candidates=sites;
             } else candidates=l.objects.Pairs.Where(t=>t.Value is CrabPot pot&&pot.owner.Value==p.UniqueMultiplayerID&&CrabWaterMatches(l,t.Key,crabFish)&&(pot.readyForHarvest.Value||pot.NeedsBait(p))).Select(t=>t.Key.ToPoint());
             foreach(var tile in candidates.Where(t=>!crabVisited.Contains(t)).OrderBy(t=>Vector2.DistanceSquared(t.ToVector2(),p.Tile))) {
-                crabVisited.Add(tile);try{Walk(Approach(tile,true));crabTile=tile;Current!.phase="crab_pot_walk";break;}catch(InvalidOperationException){}
+                crabVisited.Add(tile);try{Walk(Approach(tile,true));crabTile=tile;Current!.phase="crab_pot_walk";break;}catch(InvalidOperationException){crabUnreachable++;}
             }
-            if(crabTile==null){Finish(crabCount==0?"succeeded":"failed",crabCount==0?null:"no_reachable_eligible_crab_pot_target");return;}
+            if(crabTile==null){Finish(crabCount==0&&crabUnreachable==0?"succeeded":"failed",crabCount==0&&crabUnreachable==0?null:"no_reachable_eligible_crab_pot_target");return;}
         }
         if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();var at=crabTile.Value;Adjacent(at);Face(at);
         if(crabMode=="place") {

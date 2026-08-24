@@ -51,7 +51,7 @@ internal static class AchievementRules {
     }
     public static IEnumerable<NativeGoalDefinition> PlatformConditions() {
         var p=Game1.player;
-        NativeGoalDefinition Rule(string id,bool met,string[] capabilities,object evidence)=>new("platform-condition:"+id,id,"platform-condition",null,capabilities,Array.Empty<string>(),new{native_condition_satisfied=met,evidence},"原生存档条件；平台实际解锁需另验","执行覆盖由 capabilities 对应缺口决定；不能将条件满足当平台已解锁");
+        NativeGoalDefinition Rule(string id,bool met,string[] capabilities,object evidence)=>new("platform-condition:"+id,id,"platform-condition",met,capabilities,Array.Empty<string>(),new{native_condition_satisfied=met,evidence},"原生存档条件；平台实际解锁需另验","执行覆盖由 capabilities 对应缺口决定；不能将条件满足当平台已解锁");
         yield return Rule("Achievement_LocalLegend",p.eventsSeen.Contains("191393"),new[]{"F17","F19"},new{event_id="191393"});
         yield return Rule("Achievement_Joja",p.eventsSeen.Contains("502261"),new[]{"F12","F17","F19"},new{event_id="502261"});
         yield return Rule("Achievement_PrairieKing",p.stats.Get("completedPrairieKing")>0,new[]{"F21"},new{stat=p.stats.Get("completedPrairieKing")});

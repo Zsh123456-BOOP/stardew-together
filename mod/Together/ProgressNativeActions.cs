@@ -61,8 +61,18 @@ public sealed partial class ModEntry {
         GoalPlanner.Rebuild(preview,goalRecipes,ledger,Game1.Date.TotalDays,id=>id);
         return !preview.Nodes.Any(n=>n.Status is "locked" or "blocked")&&preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null||FishingLocations(n.Item).Any()));
     }
+    private bool PursueHouse(ProgressPursuit pursuit,int target) {
+        var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+            if(p.HouseUpgradeLevel>=target||p.daysUntilHouseUpgrade.Value>=0){PursuitState(pursuit,"waiting","等待原生房屋施工或成就登记");return true;}
+            int level=p.HouseUpgradeLevel+1,cost=level==1?10000:level==2?65000:100000;
+            if(cost>policy.BudgetPerDay-policy.ReservedGold||p.Money-cost<policy.KeepGold){PursuitState(pursuit,"waiting","房屋升级需要预算及实际现金 "+cost);return true;}
+            var needs=level<3?new[]{(level==1?"(O)388":"(O)709",level==1?450:100,0)}:Array.Empty<(string,int,int)>();
+            if(!PursuitMaterials(pursuit,needs,actions))return true;
+            actions.Add(("player.upgrade_house",new{budget=cost,keep_gold=policy.KeepGold}));QueuePursuit(pursuit,actions,cost);return true;
+        }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id is "family:marriage" or "family:children" or "platform-condition:Achievement_FullHouse")return PursueFamily(pursuit,id!="family:marriage");
         if(id.StartsWith("friendship:")) {
             string npc=id[11..];int threshold=Game1.characterData.TryGetValue(npc,out var character)&&character.CanBeRomanced?2000:2500;
             return PursueFriendship(pursuit,threshold,npc);
@@ -146,16 +156,8 @@ public sealed partial class ModEntry {
             if(stored!=null){QueuePursuit(pursuit,new[]{("work.run",(object)new{goal="withdraw",item=stored,count=1})});return true;}
             PursuitState(pursuit,"waiting","尚未拥有目标书籍，需采购或探索取得后继续原生阅读");return true;
         }
-        bool House(int target) {
-            if(p.HouseUpgradeLevel>=target||p.daysUntilHouseUpgrade.Value>=0){PursuitState(pursuit,"waiting","等待原生房屋施工或成就登记");return true;}
-            int level=p.HouseUpgradeLevel+1,cost=level==1?10000:level==2?65000:100000;
-            if(cost>policy.BudgetPerDay-policy.ReservedGold||p.Money-cost<policy.KeepGold){PursuitState(pursuit,"waiting","房屋升级需要预算及实际现金 "+cost);return true;}
-            var needs=level<3?new[]{(level==1?"(O)388":"(O)709",level==1?450:100,0)}:Array.Empty<(string,int,int)>();
-            if(!PursuitMaterials(pursuit,needs,actions))return true;
-            actions.Add(("player.upgrade_house",new{budget=cost,keep_gold=policy.KeepGold}));QueuePursuit(pursuit,actions,cost);return true;
-        }
-        if(id.StartsWith("house:")&&int.TryParse(id[6..],out int house))return House(house);
-        if(id is "achievement:18" or "achievement:19")return House(id=="achievement:18"?1:2);
+        if(id.StartsWith("house:")&&int.TryParse(id[6..],out int house))return PursueHouse(pursuit,house);
+        if(id is "achievement:18" or "achievement:19")return PursueHouse(pursuit,id=="achievement:18"?1:2);
         if(id.StartsWith("boat:")) {
             var part=id[5..];var requirement=part switch{"hull"=>("(O)709",200,0),"anchor"=>("(O)337",5,0),"ticket_machine"=>("(O)787",5,0),_=>("",0,0)};
             if(requirement.Item1.Length==0)return false;

@@ -17,6 +17,7 @@ public sealed partial class PlayerExecutor {
         talked_before=socialTalked,talked_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.TalkedToToday??false,
         item=socialItem,consumed=socialStack-Game1.player.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack),
         quest=socialQuest,quest_completed=Game1.player.questLog.Any(q=>q.id.Value==socialQuest&&q.completed.Value)
+        ,relationship_status=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Status.ToString(),spouse=Game1.player.spouse
     };
     private void StartSocial(JsonElement args) {
         socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
@@ -55,7 +56,7 @@ public sealed partial class PlayerExecutor {
                 "talk"=>f?.TalkedToToday==true,
                 "deliver"=>p.questLog.Any(q=>q.id.Value==socialQuest&&q.completed.Value),
                 "gift"=>(f?.GiftsToday??0)>socialGifts,
-                _=>p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)<socialStack
+                _=>p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)<socialStack&&RelationshipResult(f)
             };
             Current.effects.Add(SocialEvidence());Finish(complete?"succeeded":"failed",complete?null:"native_social_goal_not_verified");return;
         }
@@ -89,4 +90,10 @@ public sealed partial class PlayerExecutor {
         // The boolean can be false for a valid temporary dialogue: verify state after dismissal.
         npc.checkAction(p,Game1.currentLocation);Current.phase="social_dialogue";nextInteraction=DateTime.UtcNow.AddMilliseconds(400);
     }
+    private bool RelationshipResult(Friendship? friendship)=>socialItem switch {
+        "(O)458"=>friendship?.IsDating()==true,
+        "(O)460"=>Game1.player.spouse==socialName&&(friendship?.IsEngaged()==true||friendship?.IsMarried()==true),
+        "(O)277"=>friendship?.IsDating()==false,
+        _=>true // Other explicit relationship items retain consumption evidence; no marriage claim.
+    };
 }

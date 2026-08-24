@@ -7,6 +7,7 @@ public sealed class AutoplayState {
     public RoutinePolicy Routine {get;set;}=new();
     public ProgressCampaign Campaign {get;set;}=new();
     public Dictionary<string,int> ProfessionChoices {get;set;}=new();
+    public FamilyPolicy Family {get;set;}=new();
     public FailureKnowledge Failures {get;set;}=new();
     public MemoryCheckpoint Memory {get;set;}=new();
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]

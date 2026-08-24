@@ -18,7 +18,7 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("profession_choice",AgentJson.Encode(new{skill,level,profession}));
     }
     private bool ApplyProfessionPolicy(LevelUpMenu menu) {
-        if(!menu.isActive||!menu.isProfessionChooser||!menu.CanReceiveInput()||!menu.readyToClose())return false;
+        if(!AutoplayRunning||!menu.isActive||!menu.isProfessionChooser||!menu.CanReceiveInput()||!menu.readyToClose())return false;
         var state=NativeMenuInput.ProfessionState(menu);
         if(!Data.Autoplay.ProfessionChoices.TryGetValue(state.Skill+":"+state.Level,out int expected))return false;
         int choice=state.Choices.IndexOf(expected);if(choice is not (0 or 1))return false;

@@ -6,6 +6,7 @@ public sealed partial class ModEntry {
     private DateTime automaticMenuAt;
     private bool TickAutomaticMenus() {
         if(playerExecutor.Busy)return false;
+        if(ApplyFamilyNightPolicy())return true;
         if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} dialogue) {
             if(DateTime.UtcNow<automaticMenuAt)return true;automaticMenuAt=DateTime.UtcNow.AddMilliseconds(400);
             Data.Autoplay.Record("native_notice",AgentJson.Encode(new{text=dialogue.getCurrentString(),event_active=Game1.eventUp}));

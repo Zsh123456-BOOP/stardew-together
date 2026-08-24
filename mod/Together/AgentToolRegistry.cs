@@ -13,6 +13,9 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["family.read"]="{}: 读取原生婚姻、孩子、预产期及持久家庭策略；未配置生育策略时不替模型决定。",
+        ["strategy.family"]="{accept_children:bool,target_children:0..2,child_names:[string],auto_name_animals:bool}: 保存生育及命名策略；同意生育须预先提供目标数量的不同名字。只处理原生触发事件，不增加孩子或跳过等待。",
+        ["menu.text"]="{token:string,text:string,submit?:bool}: 向刚读过的原生命名菜单输入1..24字名字，可原生确认；不支持任意菜单状态改写。",
         ["strategy.profession"]="{skill:0..4,level:5|10,profession:0..29}: 持久保存职业方向（技能编号为游戏原生顺序），检查前后分支一致性；夜间遇到真实对应选项自动原生选择，不修改已有职业。未配置或冲突仍需模型选择",
         ["agent.status"]="{}: 玩家/伙伴队列与连续劳动阶段、原生等待、长期目标阻碍、记忆时间线/归档、模型请求与预算；区分等待和无任务",
         ["usage.read"]="{}: 今日模型预算、API报告Token、失败请求保留额度、剩余和请求大小上限；额度外部持久记录，读档不回退，不等同于人民币账单",
@@ -150,6 +153,7 @@ public sealed class AgentToolRegistry {
             "map.scan"=>mod.ScanMap(args),
             "farm.autonomy"=>mod.ConfigureFarmInvestment(args),"farm.economy"=>mod.PlanFarmEconomy(args),"farm.economy_status"=>mod.ReadFarmEconomy(args),"farm.execute"=>mod.ExecuteFarmEconomy(args),"farm.plan"=>mod.PlanFarm(args),
             "storage.configure"=>mod.ConfigureStorage(args),"storage.policy"=>mod.ConfigureStoragePolicy(args),
+            "family.read"=>mod.ReadFamily(),"strategy.family"=>mod.SetFamilyPolicy(args),
             "strategy.profession"=>mod.SetProfessionPolicy(args),
             "agent.status"=>mod.ReadAutonomyDiagnostics(),"usage.read"=>ModelRequestBudget.Status(),
             "orchard.read"=>PlayerExecutor.ReadOrchard(),"island.walnuts"=>PlayerExecutor.ReadWalnuts(),"volcano.read"=>PlayerExecutor.ReadVolcano(),"island.upgrades"=>PlayerExecutor.ReadIslandUpgrades(),"forge.read"=>PlayerExecutor.ReadForge(),"arcade.read"=>PlayerExecutor.ReadArcade(),
@@ -163,7 +167,7 @@ public sealed class AgentToolRegistry {
             "progress.read"=>Progress(),"progress.roadmap"=>mod.AgentProgression(),"progress.missing"=>Game1.achievements.Where(a=>!Game1.player.achievements.Contains(a.Key)).Select(a=>new{id=a.Key,name=a.Value.Split('^')[0],native_definition=a.Value,source="Data/Achievements"}).ToArray(),
             "work.run"=>mod.StartSemanticWork(args),
             "player.crab_pots" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.place_facility" or "player.ship_items" or "player.order_donate" or "player.equip" or "player.attach" or "player.accept_quest" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house" or "player.mine_access" or "player.bundle" or "player.build" or "player.donate_museum" or "player.collect_reward" or "player.service" or "player.machine" or "player.claim_reward" or "player.care" or "player.social" or "player.combat" or "player.mine_descend" or "player.fish" or "player.buy" or "player.craft" or "player.cook" or "player.eat" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.sleep" or "player.ship"=>player.Start(tool,args),
-            "menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
+            "menu.text"=>menus.EnterText(args),"menu.read"=>menus.Read(),"menu.open"=>menus.Open(Text(args,"page")),"menu.choose"=>menus.Choose(args),
             "menu.scroll"=>menus.Scroll(Text(args,"direction")),"menu.close"=>menus.Close(),
             "companion.assign"=>mod.AgentCompanion(args),
             "action.status"=>mod.AgentReceipt(Text(args,"id"),false),"action.cancel"=>mod.AgentReceipt(Text(args,"id"),true),

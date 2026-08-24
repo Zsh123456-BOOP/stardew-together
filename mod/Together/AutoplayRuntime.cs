@@ -22,7 +22,7 @@ public sealed partial class ModEntry {
     private int agentReplyFailures;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){ApplyProfession=ApplyProfessionPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){ApplyProfession=ApplyProfessionPolicy,ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         ArcadeInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
@@ -107,7 +107,7 @@ public sealed partial class ModEntry {
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
         TickAgentSchedule();TickDailyAutomation();TickFarmInvestment();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();
         try{if(TickAutomaticMenus())return;}catch(Exception e){PauseAutoplay("automatic_menu_requires_review:"+e.Message);return;}
-        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
+        if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.crab_pots" or "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
         if(agentPending is {IsCompleted:true}) {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;

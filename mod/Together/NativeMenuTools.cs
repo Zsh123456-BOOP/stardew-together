@@ -20,6 +20,7 @@ public sealed class NativeMenuTools {
     public object Read() {
         choices.Clear();observed=Menu();if(observed==null){token="";return new{type="none"};}
         var m=Content(observed);var labels=new Dictionary<Rectangle,string>();
+        if(m is NamingMenu naming){labels[naming.doneNamingButton.bounds]="submit_name";labels[naming.randomButton.bounds]="random_name";labels[naming.textBoxCC.bounds]="name_input";}
         if(m is CraftingPage craft && craft.currentCraftingPage<craft.pagesOfCraftingRecipes.Count)
             foreach(var pair in craft.pagesOfCraftingRecipes[craft.currentCraftingPage])labels[pair.Key.bounds]="craft:"+pair.Value.name+" "+pair.Value.DisplayName+" ingredients="+pair.Value.doesFarmerHaveIngredientsInInventory();
         if(m is ShopMenu shop)
@@ -54,7 +55,7 @@ public sealed class NativeMenuTools {
             else if(levelState.isProfessionChooser)choices.RemoveAll(c=>c.Bounds!=levelState.leftProfession?.bounds && c.Bounds!=levelState.rightProfession?.bounds);
             else choices.RemoveAll(c=>c.Bounds!=levelState.okButton?.bounds);
         }
-        string text=m is DialogueBox d?d.getCurrentString():m is LevelUpMenu lu?typeof(LevelUpMenu).GetField("title",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(lu)?.ToString()??"技能升级":"";
+        string text=m is NamingMenu nm?nm.title+"\n"+nm.textBox.Text:m is DialogueBox d?d.getCurrentString():m is LevelUpMenu lu?typeof(LevelUpMenu).GetField("title",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(lu)?.ToString()??"技能升级":"";
         if(m is DialogueBox {isQuestion:false})choices.Add(new("continue","继续对话",new Rectangle(m.xPositionOnScreen+16,m.yPositionOnScreen+16,32,32)));
         string held=m is CraftingPage cp?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(cp.heldItem)):m is MenuWithInventory mi?JsonSerializer.Serialize(AgentToolRegistry.ItemInfo(mi.heldItem)):"";
         token=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.GetType().Name+JsonSerializer.Serialize(choices)+text+held)))[..16];
@@ -73,6 +74,18 @@ public sealed class NativeMenuTools {
         bool right=args.TryGetProperty("right",out var flag)&&flag.ValueKind==JsonValueKind.True;
         NativeMenuInput.ClickMenu(observed!,choice.Bounds,right);
         return new{status="input_sent",menu=Read(),inventory=AgentToolRegistry.Inventory()};
+    }
+    internal static string ValidateName(string name,int minimum=1) {
+        name=name.Trim();if(name.Length<minimum||name.Length>24||name.Any(char.IsControl)||name.Contains('[')||name.Contains(']'))throw new InvalidOperationException("name_requires_1_to_24_plain_characters");
+        string filtered=Utility.FilterDirtyWords(name).Trim();if(filtered.Length<minimum)throw new InvalidOperationException("native_name_filter_rejected");return filtered;
+    }
+    public object EnterText(JsonElement args) {
+        var previous=observed;string expected=AgentToolRegistry.Text(args,"token");Read();
+        if(previous!=observed||expected!=token||token.Length==0)throw new InvalidOperationException("stale_menu_read_again");
+        if(observed is not NamingMenu naming)throw new InvalidOperationException("text_input_requires_native_naming_menu");
+        string name=ValidateName(AgentToolRegistry.Text(args,"text"),naming.minLength);naming.textBox.Text=name;
+        if(args.TryGetProperty("submit",out var flag)&&flag.ValueKind==JsonValueKind.True)NativeMenuInput.ClickMenu(naming,naming.doneNamingButton.bounds);
+        return new{status="input_sent",menu=Read(),note="仅输入原生命名菜单；名称和出生结果须从实际角色/动物状态核验"};
     }
     public object Open(string page) {
         if(Game1.activeClickableMenu!=null || !Game1.player.CanMove || Game1.eventUp)throw new InvalidOperationException("cannot_open_menu_now");

@@ -23,6 +23,7 @@ public sealed partial class PlayerExecutor {
     private readonly Dictionary<string,PlayerAction> receipts=new();
     public PlayerAction? Current {get;private set;}
     public Func<LevelUpMenu,bool>? ApplyProfession {get;set;}
+    public Func<bool>? ApplyNightPolicy {get;set;}
     public Action<int>? NativeSleepRequested {get;set;}
     public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
@@ -433,6 +434,7 @@ public sealed partial class PlayerExecutor {
     private void TickNight() {
         if(Current!.phase=="waking" && Game1.player.CanMove && !Game1.fadeToBlack && Game1.activeClickableMenu==null){Finish("succeeded");return;}
         if((DateTime.UtcNow-started).TotalSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
+        if(ApplyNightPolicy?.Invoke()==true)return;
         if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:true} chooser&&ApplyProfession?.Invoke(chooser)==true){Current!.effects.Add(new{kind="native_profession_policy",professions=Game1.player.professions.ToArray()});return;}
         // LevelUpMenu.receiveLeftClick is empty in 1.6; ordinary confirmations use
         // its native handler. Actual profession choices must never be auto-confirmed.

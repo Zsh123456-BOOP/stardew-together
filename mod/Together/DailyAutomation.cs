@@ -9,10 +9,10 @@ public sealed partial class ModEntry {
         if(args.TryGetProperty("assignments",out var raw)) {
             if(raw.ValueKind!=JsonValueKind.Object)throw new InvalidOperationException("routine_assignments_required");
             var assignments=JsonSerializer.Deserialize<Dictionary<string,string>>(raw.GetRawText())!;
-            if(assignments.Count>10)throw new InvalidOperationException("routine_size_limit");
+            if(assignments.Count>11)throw new InvalidOperationException("routine_size_limit");
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
             foreach(var pair in assignments) {
-                if(pair.Key is not ("orchard" or "mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "orchard" or "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
+                if(pair.Key is not ("crab_pots" or "orchard" or "mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "crab_pots" or "orchard" or "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
             }
             policy.Assignments=assignments;policy.Version++;policy.SubmittedDay=-1;
         }
@@ -28,9 +28,13 @@ public sealed partial class ModEntry {
         try {
             RefreshFacts(true);var tasks=new List<AgentTaskSpec>();var skips=new List<object>();
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
-            foreach(string goal in new[]{"cooking_tv","mail","harvest","water","feed","pet","animal_collect","milk","shear","orchard"}) {
+            foreach(string goal in new[]{"cooking_tv","mail","harvest","water","feed","pet","animal_collect","milk","shear","orchard","crab_pots"}) {
                 if(!policy.Assignments.TryGetValue(goal,out string? actor))continue;
                 if(!actors.Contains(actor)){skips.Add(new{goal,reason="assigned_companion_not_available"});continue;}
+                if(goal=="crab_pots") {
+                    foreach(var location in PlayerExecutor.CrabPots().Where(t=>t.Pot.readyForHarvest.Value||t.Pot.NeedsBait(Game1.player)).Select(t=>t.Location.NameOrUniqueName).Distinct().Take(6))tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-crab-{tasks.Count}",actor="player",tool="player.crab_pots",args=JsonSerializer.SerializeToElement(new{mode="tend",location,count=0}),purpose="收蟹笼并补充真实鱼饵",day=Game1.Date.TotalDays,deadline=1800});
+                    continue;
+                }
                 if(goal=="orchard") {
                     foreach(var location in Game1.locations.Concat(Game1.getFarm().buildings.Select(b=>b.GetIndoors()).Where(l=>l!=null)).Distinct().Where(l=>l.terrainFeatures.Values.Any(t=>t is StardewValley.TerrainFeatures.FruitTree tree&&tree.fruit.Count>0)).Take(4))tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-orchard-{tasks.Count}",actor="player",tool="player.orchard",args=JsonSerializer.SerializeToElement(new{mode="harvest",location=location.NameOrUniqueName,count=0}),purpose="收取已结果果树",day=Game1.Date.TotalDays,deadline=1800});
                     continue;

@@ -22,7 +22,7 @@ public static class CapabilityCatalog {
         new("F11","生产加工",new[]{"player.machine","companion.assign","player.interact"},new[]{"player","companion"},"加工原料自动补给、跨日批次与特殊机器条件", "机器在制品/原料/产物"),
         new("F12","买卖出货",new[]{"companion.assign","player.ship","player.ship_items","shop.read","player.buy","menu.choose"},new[]{"player","companion"},"移动商人/特殊商品/出售覆盖", "钱/货品/次日收入"),
         new("F13","建造升级",new[]{"player.service","construction.read","player.build","player.upgrade_house","player.place_facility","player.place","menu.choose"},new[]{"player"},"特殊建筑完整流程与房屋/建造验收", "原生建筑与升级状态"),
-        new("F14","钓鱼",new[]{"fishing.options","player.fish","work.run","companion.assign"},new[]{"player","companion"},"动态/特殊鱼池与蟹笼；定向行程和控杆实机验收", "Farmer fishCaught；NPC货物不等价"),
+        new("F14","钓鱼",new[]{"crab_pots.read","player.crab_pots","fishing.options","player.fish","work.run","companion.assign"},new[]{"player","companion"},"动态/特殊鱼池；定向行程和控杆实机验收", "Farmer fishCaught；NPC货物不等价"),
         new("F15","探索战斗",new[]{"volcano.read","player.volcano_step","player.treasure","player.travel","player.combat","player.mine_descend","player.mine_access","work.run","companion.assign"},new[]{"player","companion"},"特殊敌种战术/坑洞决策；骷髅矿和火山控制器已接，闭环实机未验收", "原生层数/击杀归属"),
         new("F16","任务交付",new[]{"progress.read","quest_board.read","player.accept_quest","order_donations.read","player.order_donate","player.social","player.claim_reward","menu.choose"},new[]{"player"},"特殊订单跨目标计数/非金币领奖与接取交付验收", "quest/order 原生完成条件"),
         new("F17","献祭捐赠",new[]{"progress.catalog","player.service","player.donate_museum","joja.read","player.joja","player.geodes","player.bundle","menu.choose"},new[]{"player"},"遗失收集包/领奖与Joja及献祭捐赠实机验收", "原生提交与解锁"),

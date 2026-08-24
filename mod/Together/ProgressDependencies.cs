@@ -27,8 +27,11 @@ public sealed partial class ModEntry {
                 node.title=definition.title;node.kind=definition.kind;node.state=definition.completed==true?"complete":"unmet";node.evidence=definition.requirements;
                 if(definition.completed==true)return;
                 if(id.StartsWith("fish:")) {
-                    node.actions.Add(Action("fishing.options",new{item=id[5..]}));node.actions.Add(Action("work.run",new{goal="fish",item=id[5..],count=1}));
-                    node.gaps.Add("原生捕获概率仍随机，条件不足按季节/天气/解锁等待；蟹笼和特殊鱼池另行适配");
+                    if(PlayerExecutor.IsTrapFish(id[5..])) {
+                        node.dependencies.Add(new("(O)710"));node.dependencies.Add(new("(O)685"));
+                        node.actions.Add(Action("crab_pots.read",new{}));node.actions.Add(Action("progress.pursue",new{targets=new[]{id},enabled=true}));
+                    }else {node.actions.Add(Action("fishing.options",new{item=id[5..]}));node.actions.Add(Action("work.run",new{goal="fish",item=id[5..],count=1}));}
+                    node.gaps.Add("原生捕获概率仍随机，蟹笼等待正常过夜；特殊动态鱼池另行适配");
                 }
                 else if(id.StartsWith("arcade:")) {
                     node.actions.Add(Action("player.arcade",new{game=id=="arcade:kart"?"kart":"prairie",mode=id=="arcade:kart"?"progress":id=="arcade:deathless"?"deathless":"continue",seconds=1800,attempts=3}));
@@ -41,7 +44,7 @@ public sealed partial class ModEntry {
                             foreach(var item in missing.EnumerateArray())if(item.ValueKind==JsonValueKind.String) {
                                 string dep=item.GetString()!;if(achievement is 24 or 25 or 26)dep="fish:"+dep;
                                 if(dep.StartsWith("craft:")||dep.StartsWith("cook:"))node.dependencies.Add(new(dep,relation:"choose_remaining_distinct"));
-                                else if(achievement is 24 or 25 or 26)node.dependencies.Add(new("catch:"+dep,relation:"choose_remaining_distinct"));
+                                else if(achievement is 24 or 25 or 26)node.dependencies.Add(new(dep,relation:"choose_remaining_distinct"));
                             }
                         }
                         if(achievement is 18 or 19)node.dependencies.Add(new("house:"+(achievement==18?1:2)));

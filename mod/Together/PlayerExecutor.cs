@@ -101,6 +101,7 @@ public sealed partial class PlayerExecutor {
                 case "player.social":StartSocial(args);break;
                 case "player.combat":StartCombat(args);break;
                 case "player.mine_descend":StartMineDescent();break;
+                case "player.crab_pots":StartCrabPots(args);break;
                 case "player.fish":StartFishing(args);break;
                 case "player.buy":StartPurchase(args);break;
                 case "player.craft":case "player.cook":StartProduction(skill,args);break;
@@ -239,6 +240,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.treasure"){TickTreasure();return;}
             if(Current.skill=="player.walnuts"){TickWalnuts();return;}
             if(Current.skill=="player.forge"){TickForge();return;}
+            if(Current.skill=="player.crab_pots"){TickCrabPots();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
             if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}
             if(Current.skill=="player.read_book"){TickReadBook();return;}

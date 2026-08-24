@@ -4,21 +4,26 @@ using StardewValley.Locations;
 
 namespace TheStardewSquad;
 public sealed partial class CompanionControl {
-    private static readonly Dictionary<string,(int Minute,int Buildings,string[] Names)> reachableCache=new();
+    private static GameLocation? LoadedLocation(string name) {
+        if(MineShaft.IsGeneratedLevel(name))return MineShaft.activeMines.FirstOrDefault(l=>l.NameOrUniqueName==name);
+        if(VolcanoDungeon.IsGeneratedLevel(name))return VolcanoDungeon.activeLevels.FirstOrDefault(l=>l.NameOrUniqueName==name);
+        return Game1.getLocationFromName(name);
+    }
+    private static readonly Dictionary<string,(int Minute,int Buildings,string PlayerLocation,int Mines,string[] Names)> reachableCache=new();
     private static string[] Reachable(GameLocation start) {
         int minute=Game1.Date.TotalDays*3000+Game1.timeOfDay;
         int buildings=Game1.getFarm().buildings.Count;
-        if(reachableCache.TryGetValue(start.NameOrUniqueName,out var known) && known.Minute==minute && known.Buildings==buildings)return known.Names;
+        if(reachableCache.TryGetValue(start.NameOrUniqueName,out var known) && known.Minute==minute && known.Buildings==buildings && known.PlayerLocation==Game1.player.currentLocation.NameOrUniqueName && known.Mines==MineShaft.activeMines.Count)return known.Names;
         var visited=new HashSet<string>{start.NameOrUniqueName};var queue=new Queue<GameLocation>();queue.Enqueue(start);
         while(queue.Count>0 && visited.Count<100) {
             var location=queue.Dequeue();
             foreach(var warp in Exits(location,Game1.player.currentLocation.NameOrUniqueName)) {
                 if(visited.Contains(warp.TargetName))continue;
-                var target=Game1.getLocationFromName(warp.TargetName);if(target==null)continue;
+                var target=LoadedLocation(warp.TargetName);if(target==null)continue;
                 if(visited.Add(target.NameOrUniqueName))queue.Enqueue(target);
             }
         }
-        var names=visited.ToArray();reachableCache[start.NameOrUniqueName]=(minute,buildings,names);return names;
+        var names=visited.ToArray();reachableCache[start.NameOrUniqueName]=(minute,buildings,Game1.player.currentLocation.NameOrUniqueName,MineShaft.activeMines.Count,names);return names;
     }
     private static IEnumerable<Warp> Exits(GameLocation location,string destination,string? home=null) {
         foreach(var warp in location.warps) {
@@ -55,11 +60,11 @@ public sealed partial class CompanionControl {
                 int tile=layer.Tiles[x,y]?.TileIndex??-1;
                 if(tile==115)yield return new Warp(x,y,"Mine",18,5,false);
                 if(tile==173 && targetLevel==mine.mineLevel+1 && targetLevel<=120) {
-                    var next=MineShaft.GetMine(MineShaft.GetLevelName(targetLevel));
+                    var next=LoadedLocation(MineShaft.GetLevelName(targetLevel)) as MineShaft;if(next==null)continue;
                     yield return new Warp(x,y,next.NameOrUniqueName,(int)next.tileBeneathLadder.X,(int)next.tileBeneathLadder.Y,false);
                 }
                 if(tile==112 && targetLevel>0 && targetLevel<=120 && targetLevel%5==0 && targetLevel<=Game1.player.deepestMineLevel) {
-                    var next=MineShaft.GetMine(MineShaft.GetLevelName(targetLevel));
+                    var next=LoadedLocation(MineShaft.GetLevelName(targetLevel)) as MineShaft;if(next==null)continue;
                     yield return new Warp(x,y,next.NameOrUniqueName,(int)next.tileBeneathElevator.X,(int)next.tileBeneathElevator.Y,false);
                 }
             }
@@ -69,7 +74,7 @@ public sealed partial class CompanionControl {
             for(int y=0;y<layer.LayerHeight;y++)for(int x=0;x<layer.LayerWidth;x++) {
                 string action=location.doesTileHaveProperty(x,y,"Action","Buildings")??"";
                 if((action=="Mine" && targetLevel==1) || (action=="MineElevator" && targetLevel%5==0 && targetLevel<=Game1.player.deepestMineLevel)) {
-                    var next=MineShaft.GetMine(MineShaft.GetLevelName(targetLevel));var spot=targetLevel==1?next.tileBeneathLadder:next.tileBeneathElevator;
+                    var next=LoadedLocation(MineShaft.GetLevelName(targetLevel)) as MineShaft;if(next==null)continue;var spot=targetLevel==1?next.tileBeneathLadder:next.tileBeneathElevator;
                     yield return new Warp(x,y,next.NameOrUniqueName,(int)spot.X,(int)spot.Y,false);
                 }
             }

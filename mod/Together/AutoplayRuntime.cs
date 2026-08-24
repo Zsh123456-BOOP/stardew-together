@@ -177,7 +177,7 @@ public sealed partial class ModEntry {
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
             var info=new Dictionary<string,object>();
-            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","in_combat","relationship"})
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","cargo_storage","in_combat","relationship"})
                 if(a.TryGetProperty(key,out var value))info[key]=value.Clone();
             string id=a.GetProperty("id").GetString()!;
             info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();

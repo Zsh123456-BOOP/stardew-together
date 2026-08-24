@@ -28,6 +28,13 @@ public sealed partial class CompanionControl {
     private static string PouchId(ISquadMate mate)=>$"Together_Pouch_{mate.RecruiterUniqueId}_{mate.Npc.Name}";
     private static Inventory Pouch(ISquadMate mate)=>Game1.player.team.GetOrCreateGlobalInventory(PouchId(mate));
     private static string Role(Chest chest)=>chest.modData.TryGetValue(ChestRoleKey,out var role)?role:"none";
+    private object[] CargoStorage(ISquadMate mate) {
+        var cargo=Pouch(mate).Where(i=>i!=null&&StoreableCargo(i)>0).ToArray();var farm=Game1.getFarm();
+        return new[]{(GameLocation)farm}.Concat(farm.buildings.Select(b=>b.GetIndoors()).Where(l=>l!=null)).SelectMany(l=>l.objects.Pairs.Where(pair=>pair.Value is Chest c&&Role(c)=="output"&&!c.GetMutex().IsLocked()).Select(pair=>{
+            var c=(Chest)pair.Value;var items=c.GetItemsForPlayer();bool room=items.Count(i=>i!=null)<c.GetActualCapacity()||cargo.Any(i=>items.Any(s=>s!=null&&s.canStackWith(i)&&s.Stack<s.maximumStackSize()));
+            return (object)new{location=l.NameOrUniqueName,x=(int)pair.Key.X,y=(int)pair.Key.Y,accepts_cargo=room};
+        })).ToArray();
+    }
     private static Dictionary<string,int> Counts(IEnumerable<Item> items)=>items.Where(i=>i!=null && i.Stack>0)
         .GroupBy(i=>i.QualifiedItemId+":"+i.Quality).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
     private static bool Matches(Item item,ResourceReservation r)=>item.Quality>=r.Quality &&

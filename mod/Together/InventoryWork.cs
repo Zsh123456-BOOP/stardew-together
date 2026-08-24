@@ -108,10 +108,14 @@ public sealed partial class ModEntry {
             }
             var reachable=actor.GetProperty("reachable_locations").EnumerateArray().Where(v=>v.ValueKind==JsonValueKind.String).Select(v=>v.GetString()).ToHashSet();
             foreach(var storage in SharedStorage().Where(s=>s.Location!=origin.Location&&reachable.Contains(s.Location.NameOrUniqueName))) {
-                if(storage.Chest.GetMutex().IsLocked()||storage.Chest.GetItemsForPlayer().Count(i=>i!=null)>=storage.Chest.GetActualCapacity())continue;
+                if(storage.Chest.GetMutex().IsLocked())continue;
+                bool accepts=actor.TryGetProperty("cargo_storage",out var destinations)?destinations.EnumerateArray().Any(d=>d.GetProperty("location").GetString()==storage.Location.NameOrUniqueName&&d.GetProperty("x").GetInt32()==(int)storage.Tile.X&&d.GetProperty("y").GetInt32()==(int)storage.Tile.Y&&d.GetProperty("accepts_cargo").GetBoolean()):storage.Chest.GetItemsForPlayer().Count(i=>i!=null)<storage.Chest.GetActualCapacity();
+                if(!accepts)continue;
                 WorkChild(j,"companion.assign",new{actor_id=j.actor,skill="travel",destination=storage.Location.NameOrUniqueName},"storage_travel");return;
             }
-            StopSemanticWork(j,"companion_needs_reachable_shared_capacity_player_can_expand_storage");return;
+            if(actor.TryGetProperty("can_reach_farm",out var farmReach)&&!farmReach.GetBoolean()){StopSemanticWork(j,"companion_shared_storage_farm_unreachable");return;}
+            if(RequestCompanionStorageSupport(j))return;
+            StopSemanticWork(j,"companion_needs_reachable_shared_capacity_or_expansion_budget");return;
         }
         if(j.ExpansionTile.HasValue){TickStorageExpansion(j);return;}
         if(j.StorageTile is {} tile) {

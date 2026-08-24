@@ -32,7 +32,8 @@ public sealed class SemanticJob {
     internal DateTime Started=DateTime.UtcNow,Next=DateTime.MinValue;
     internal HashSet<string> Excluded=new();
     internal Point? RefillTile,StorageTile,ExpansionTile;
-    internal string StorageLocation="";
+    internal string StorageLocation="",StorageSupportId="",StorageSupportFor="";
+    internal int StorageSupportAttempts;
     internal bool Storing;
     internal bool IncludeTrees;
     internal string PlanId="";
@@ -50,16 +51,16 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
         int reserve=AgentToolRegistry.Number(args,"reserve_stamina",20),until=AgentToolRegistry.Number(args,"until",2200);
         if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>2300||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
-        if(Game1.getLocationFromName(location)==null)throw new InvalidOperationException("unknown_location");
+        if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
         if(goal=="fish") {
             job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
@@ -170,6 +171,7 @@ public sealed partial class ModEntry {
         if(Game1.timeOfDay>=j.Until){StopSemanticWork(j,"time_reserve_reached");return;}
         if((DateTime.UtcNow-j.Started).TotalSeconds>600||j.Attempts>=128){StopSemanticWork(j,"work_budget_reached");return;}
         if(Game1.player.health<30){if(j.actor=="player"&&TryWorkFood(j))return;StopSemanticWork(j,"player_in_danger");return;}
+        if(j.goal=="storage_expand"){TickStorageSupport(j);return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
         bool gathering=j.goal is "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";

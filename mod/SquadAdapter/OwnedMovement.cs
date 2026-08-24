@@ -16,7 +16,7 @@ public sealed partial class CompanionControl {
         while(queue.Count>0 && visited.Count<100) {
             var node=queue.Dequeue();
             foreach(var edge in Exits(node.Location,destination,home)) {
-                var next=Game1.getLocationFromName(edge.TargetName);
+                var next=LoadedLocation(edge.TargetName);
                 if(next==null || !visited.Add(next.NameOrUniqueName))continue;
                 var first=node.First??edge;
                 if(next.NameOrUniqueName==destination)return first;
@@ -33,7 +33,7 @@ public sealed partial class CompanionControl {
         var tile=new Point(edge.X,edge.Y);
         // A map warp is activated at its boundary, never at the player's arbitrary tile.
         if(Vector2.Distance(mate.Npc.Tile,tile.ToVector2())<=1.15f) {
-            var target=Game1.getLocationFromName(edge.TargetName);
+            var target=LoadedLocation(edge.TargetName);
             if(target==null)return false;
             Game1.warpCharacter(mate.Npc,target,new Vector2(edge.TargetX,edge.TargetY));
             mate.Path.Clear();mate.CurrentMoveDirection=-1;mate.IsCatchingUp=false;mate.Halt();

@@ -108,7 +108,7 @@ public sealed partial class CompanionControl {
     private IEnumerable<object> ResourceSites(ISquadMate mate) {
         foreach(string name in Reachable(mate.Npc.currentLocation).Take(12)) {
             if(name==mate.Npc.currentLocation.NameOrUniqueName)continue;
-            var location=Game1.getLocationFromName(name);if(location==null)continue;
+            var location=LoadedLocation(name);if(location==null)continue;
             int emitted=0;
             foreach(var pair in location.objects.Pairs.Take(256)) {
                 var item=pair.Value;string skill=item.BaseName=="Stone"?"mine":item.bigCraftable.Value&&item.readyForHarvest.Value?"collect":item.IsSpawnedObject?"forage":"";
@@ -138,7 +138,7 @@ public sealed partial class CompanionControl {
             travel_options=MineTravelOptions(mate.Npc.currentLocation).ToArray(), resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
             cargo = Counts(Pouch(mate)), cargo_slots = Pouch(mate).Count(i=>i!=null), cargo_capacity = 12,
-            storable_cargo = Pouch(mate).Where(i=>i!=null).Sum(StoreableCargo),
+            storable_cargo = Pouch(mate).Where(i=>i!=null).Sum(StoreableCargo), cargo_storage=CargoStorage(mate),
             in_combat = mate.Task?.Type == TaskType.Attacking,
             relationship = new { points = friendship?.Points ?? 0, dating = friendship?.IsDating() ?? false, married = friendship?.IsMarried() ?? false } };
     }
@@ -193,7 +193,7 @@ public sealed partial class CompanionControl {
             Started = DateTime.UtcNow, BeforeTile = Tile(mate.Npc.TilePoint) };
         if(skill=="travel") {
             string destination=root.GetProperty("destination").GetString()!;
-            if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_destination");
+            if(LoadedLocation(destination)==null)throw new InvalidOperationException("unknown_destination");
             if(mate.Npc.currentLocation.NameOrUniqueName!=destination && NextExit(mate.Npc.currentLocation,destination)==null)throw new InvalidOperationException("no_route");
             record.Destination=destination;record.Duration=240;managed.Add(actor);stay.Add(actor);
             mod.FollowerManager.ClearMateTaskAndReset(mate);

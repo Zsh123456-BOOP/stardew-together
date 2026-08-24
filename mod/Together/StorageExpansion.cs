@@ -1,9 +1,50 @@
 using Microsoft.Xna.Framework;
+using System.Text.Json;
 using StardewValley;
 using StardewValley.Objects;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private void TickStorageSupport(SemanticJob job) {
+        if(job.ExpansionTile.HasValue) {
+            TickStorageExpansion(job);
+            if(!job.ExpansionTile.HasValue){job.completed=1;StopSemanticWork(job,"shared_storage_expanded",true);}
+            return;
+        }
+        if(!TryStartStorageExpansion(job))StopSemanticWork(job,"storage_expansion_requires_materials_capacity_and_budget");
+    }
+    private bool RequestCompanionStorageSupport(SemanticJob job) {
+        if(job.StorageSupportId.Length>0) {
+            if(!semanticJobs.TryGetValue(job.StorageSupportId,out var prior)){StopSemanticWork(job,"storage_support_receipt_missing");return true;}
+            if(prior.status=="running"){job.phase="waiting_player_storage_support";return true;}
+            job.evidence.Add(new{kind="player_storage_support",command_id=prior.command_id,status=prior.status,reason=prior.stop_reason});job.StorageSupportId="";
+            if(prior.status!="succeeded"){StopSemanticWork(job,"player_storage_support_failed:"+prior.stop_reason);return true;}
+        }
+        var policy=Data.Storage;if(!policy.AutoExpand||SharedStorage().Count()>=policy.MaxSharedChests||job.StorageSupportAttempts>=4)return false;
+        // Reuse one active support job across companions. It owns only the Farmer;
+        // the companion retains its original work and resumes after unloading.
+        var active=semanticJobs.Values.FirstOrDefault(j=>j.actor=="player"&&j.status=="running"&&j.StorageSupportFor.Length>0);
+        if(active!=null){job.StorageSupportId=active.command_id;job.phase="waiting_player_storage_support";return true;}
+        if(playerExecutor.Busy||WorkActorBusy("player")){job.phase="waiting_player_available_for_storage";return true;}
+        if(Game1.activeClickableMenu!=null||Game1.eventUp||Game1.timeOfDay>=2100)return false;
+        var recipe=Game1.player.craftingRecipes.ContainsKey("Chest")?new CraftingRecipe("Chest",false):null;
+        if(recipe==null||recipe.recipeList.Count!=1||!recipe.recipeList.TryGetValue("388",out int cost))return false;
+        int reserved=policy.BudgetDay==Game1.Date.TotalDays?policy.WoodReserved:0;
+        bool hasChest=Game1.player.Items.Any(i=>i?.QualifiedItemId=="(BC)130");if(!hasChest&&policy.WoodBudgetPerDay-reserved<cost)return false;
+        int missing=Math.Max(0,cost-Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack));
+        object args;
+        if(hasChest||missing==0)args=new{goal="storage_expand",until=2200};
+        else {
+            int stored=SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer()).Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack);
+            if(stored>0)args=new{goal="withdraw",item="(O)388",count=Math.Min(missing,stored),until=2200};
+            else {
+                if(Game1.player.Items.Count(i=>i==null)<2){StopSemanticWork(job,"storage_support_needs_player_pickup_space_or_existing_wood");return true;}
+                args=new{goal="wood",location="Farm",count=missing,include_trees=true,until=2200};
+            }
+        }
+        var helper=(SemanticJob)StartSemanticWork(JsonSerializer.SerializeToElement(args));helper.StorageSupportFor=job.command_id;job.StorageSupportId=helper.command_id;job.StorageSupportAttempts++;job.phase="waiting_player_storage_support";
+        Data.Autoplay.Record("storage_support_requested",AgentJson.Encode(new{companion=job.actor,work=job.command_id,helper=helper.command_id,goal=helper.goal}));return true;
+    }
     private bool TryStartStorageExpansion(SemanticJob job) {
         var policy=Data.Storage;
         if(!policy.AutoExpand||SharedStorage().Count()>=Math.Clamp(policy.MaxSharedChests,0,32))return false;

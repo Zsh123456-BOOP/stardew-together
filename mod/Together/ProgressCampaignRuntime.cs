@@ -10,6 +10,9 @@ public sealed partial class ModEntry {
         int nuts=AgentToolRegistry.Number(args,"nuts_per_day",campaign.NutsPerDay),keepNuts=AgentToolRegistry.Number(args,"keep_nuts",campaign.KeepNuts);
         int gifts=AgentToolRegistry.Number(args,"gift_value_per_day",campaign.GiftValuePerDay),giftLimit=AgentToolRegistry.Number(args,"gift_value_limit",campaign.GiftValueLimit);
         if(gifts is <0 or >1000000||giftLimit is <0 or >1000000)throw new InvalidOperationException("invalid_gift_value_budget");
+        int incomeKeep=AgentToolRegistry.Number(args,"income_keep_per_item",campaign.IncomeKeepPerItem);if(incomeKeep is <0 or >999)throw new InvalidOperationException("invalid_income_keep_per_item");
+        bool incomeShipping=campaign.IncomeShipping;
+        if(args.TryGetProperty("income_shipping",out var income)){if(income.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("income_shipping_requires_boolean");incomeShipping=income.GetBoolean();}
         string route=AgentToolRegistry.Text(args,"route",campaign.Route);
         if(budget is <0 or >10000000||keep<0||nuts is <0 or >130||keepNuts is <0 or >130||route is not ("" or "community" or "joja"))throw new InvalidOperationException("invalid_progress_budget_or_route");
         if(route=="community"&&Game1.player.hasOrWillReceiveMail("JojaMember")||route=="joja"&&Game1.player.mailReceived.Contains("ccIsComplete"))throw new InvalidOperationException("progress_route_conflicts_with_native_save");
@@ -31,6 +34,7 @@ public sealed partial class ModEntry {
             active=enabled.GetBoolean();
         }
         // Validate the whole request before mutating budgets or cancelling work.
+        campaign.IncomeShipping=incomeShipping;campaign.IncomeKeepPerItem=incomeKeep;
         campaign.GiftValuePerDay=gifts;campaign.GiftValueLimit=giftLimit;campaign.BudgetPerDay=budget;campaign.KeepGold=keep;campaign.Route=route;campaign.NutsPerDay=nuts;campaign.KeepNuts=keepNuts;
         if(targets!=null) {
             foreach(var prior in campaign.Targets.Where(p=>!targets.Contains(p.Target)))PausePursuitChild(prior);

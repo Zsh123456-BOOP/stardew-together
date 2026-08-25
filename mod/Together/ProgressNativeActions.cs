@@ -20,7 +20,7 @@ public sealed partial class ModEntry {
         if(cost>policy.BudgetPerDay-policy.ReservedGold||cost>0&&Game1.player.Money-cost<policy.KeepGold){PursuitState(pursuit,"waiting","progress_daily_budget_or_reserve_insufficient");return false;}
         if(pursuit.AttemptsDay!=Game1.Date.TotalDays){pursuit.AttemptsDay=Game1.Date.TotalDays;pursuit.Attempts=0;}
         if(pursuit.Attempts>=12){PursuitState(pursuit,"waiting","progress_daily_batch_limit_replan_or_continue_tomorrow");return false;}
-        var tasks=operations.Select(o=>new AgentTaskSpec{id="pursuit-"+Guid.NewGuid().ToString("N"),tool=o.Tool,args=JsonSerializer.SerializeToElement(o.Args),purpose="推进原生目标 "+pursuit.Target,day=Game1.Date.TotalDays,deadline=2200}).ToList();
+        var tasks=operations.Select(o=>{var args=JsonSerializer.SerializeToElement(o.Args);return new AgentTaskSpec{actor=o.Tool is "work.run" or "companion.assign"?AgentToolRegistry.Text(args,"actor_id","player"):"player",id="pursuit-"+Guid.NewGuid().ToString("N"),tool=o.Tool,args=args,purpose="推进原生目标 "+pursuit.Target,day=Game1.Date.TotalDays,deadline=2200};}).ToList();
         if(tasks.Count==0)return false;
         if(Data.Autoplay.Schedule.Tasks.Count+tasks.Count>180)Data.Autoplay.Schedule.Archive();
         Data.Autoplay.Schedule.Submit("pursuit-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays);
@@ -72,6 +72,7 @@ public sealed partial class ModEntry {
         }
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
+        if(id.StartsWith("achievement:")&&int.TryParse(id[12..],out int incomeAchievement)&&incomeAchievement is >=0 and <=4)return PursueIncome(pursuit,incomeAchievement);
         if(id is "family:marriage" or "family:children" or "platform-condition:Achievement_FullHouse")return PursueFamily(pursuit,id!="family:marriage");
         if(id.StartsWith("friendship:")) {
             string npc=id[11..];int threshold=Game1.characterData.TryGetValue(npc,out var character)&&character.CanBeRomanced?2000:2500;

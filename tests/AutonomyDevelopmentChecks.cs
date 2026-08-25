@@ -9,6 +9,11 @@ public static class AutonomyDevelopmentChecks {
         var qualityOwnedGoal=new SharedGoal{Item="crop",Entity="crop",Count=2,MinimumQuality=2};
         GoalPlanner.Rebuild(qualityOwnedGoal,new Dictionary<string,GoalRecipe>(),new(new[]{new GoalStock{Item="crop",Count=20,Quality=0},new GoalStock{Item="crop",Count=1,Quality=2}}),1,id=>id);
         check(qualityOwnedGoal.Status=="active"&&qualityOwnedGoal.Nodes[0].Quality==2&&qualityOwnedGoal.Nodes[0].Owned==1,"high-quality owned goal cannot be satisfied by ordinary crop stock");
+        check(ToolLocationContract.Bind("player.buy","Farm","player.service","","SeedShop")=="","native shop purchase does not retain the departure farm as a map precondition");
+        check(ToolLocationContract.Bind("player.move","Farm","player.travel","","Town")=="Town","local tile operation following known travel binds the destination");
+        check(ToolLocationContract.Bind("player.beach","Farm",null,"","")=="","semantic beach interaction owns its travel and native preconditions");
+        bool rejectedUnknown=false;try{ToolLocationContract.Bind("player.move","Farm","player.social","","");}catch(InvalidOperationException){rejectedUnknown=true;}
+        check(rejectedUnknown,"coordinates following dynamically moving NPC require an explicit map");
         var failures=new FailureKnowledge();
         failures.Record("k","player","work.run","empty","state1","task1",1,600);
         check(failures.Block("k","state1",1,610)!=null,"repeat failure blocked only under unchanged conditions");

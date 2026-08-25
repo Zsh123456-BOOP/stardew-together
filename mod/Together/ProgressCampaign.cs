@@ -13,6 +13,8 @@ public sealed class ProgressCampaign {
     public int GiftValueLimit {get;set;}=200;
     public int ReservedGiftValue {get;set;}
     public string Route {get;set;}="";
+    public bool IncomeShipping {get;set;}=true;
+    public int IncomeKeepPerItem {get;set;}=2;
 }
 public sealed class ProgressPursuit {
     public string Target {get;set;}="";

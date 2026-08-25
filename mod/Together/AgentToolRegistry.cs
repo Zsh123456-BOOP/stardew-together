@@ -21,7 +21,7 @@ public sealed class AgentToolRegistry {
         ["strategy.profession"]="{skill:0..4,level:5|10,profession:0..29}: 持久保存职业方向（技能编号为游戏原生顺序），检查前后分支一致性；夜间遇到真实对应选项自动原生选择，不修改已有职业。未配置或冲突仍需模型选择",
         ["agent.status"]="{}: 玩家/伙伴队列与连续劳动阶段、原生等待、长期目标阻碍、记忆时间线/归档、模型请求与预算；区分等待和无任务",
         ["usage.read"]="{}: 今日模型预算、API报告Token、失败请求保留额度、剩余和请求大小上限；额度外部持久记录，读档不回退，不等同于人民币账单",
-        ["progress.pursue"]="{targets?:1..128个原生目标ID,enabled?:bool,budget_per_day?:int,keep_gold?:int,gift_value_per_day?:int,gift_value_limit?:int,nuts_per_day?:0..130,keep_nuts?:0..130,route?:community|joja}: 持久推进已绑定制作/烹饪、建筑、完美度分项、关系、钓鱼/蟹笼、献祭/Joja、修船、馆藏、交付、出货、地牢、锻造与街机目标；gift_value为礼物可售价值预算而非扣款，默认0仅聊天；算法备料和排队，按真实进度核验，每日金额预算先预留。暂停取消未执行依赖，未知后期目标仍明确阻碍",
+        ["progress.pursue"]="{targets?:1..128个原生目标ID,enabled?:bool,budget_per_day?:int,keep_gold?:int,gift_value_per_day?:int,gift_value_limit?:int,income_shipping?:bool,income_keep_per_item?:0..999,nuts_per_day?:0..130,keep_nuts?:0..130,route?:community|joja}: 持久推进已绑定制作/烹饪、建筑、完美度分项、关系、钓鱼/蟹笼、献祭/Joja、修船、馆藏、交付、出货、地牢、锻造与街机目标；gift_value为礼物可售价值预算而非扣款，默认0仅聊天；算法备料和排队，按真实进度核验，每日金额预算先预留。暂停取消未执行依赖，未知后期目标仍明确阻碍",
         ["progress.dependencies"]="{id:成就/配方/任务/物品ID,depth?:1..8,limit?:10..600}: 展开原生证据依赖图、数量/品质/替代分支与具体工具入口，明确未适配和截断；只读不授予进度",
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
         ["memory.search"]="{query?:string,actor?:string,limit?:1..20,offset?:int}: 检索本存档已归档事件/回执，不含读档后的未来记录；返回证据ID和截断提示",

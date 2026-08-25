@@ -46,20 +46,20 @@ public sealed partial class ModEntry {
             }
             if(missing<=0)continue;
             actions.Clear();
-            if(category||need.Quality>0){PursuitState(pursuit,"waiting","需要合格库存或明确获得路线："+need.Item+" 品质≥"+need.Quality+" 缺"+missing);return false;}
-            if(!CanPreparePursuitItem(need.Item,need.Count)){PursuitState(pursuit,"waiting","需要先取得当前采集/生产链之外的材料："+need.Item+" 缺"+missing);return false;}
-            var goal=(SharedGoal)AgentGoalCreate(JsonSerializer.SerializeToElement(new{request_id="pursuit-"+FailureKnowledge.Hash(pursuit.Target)[..12]+"-"+(++pursuit.Revision),entity=need.Item,count=need.Count,completion="owned"}));
+            if(category){PursuitState(pursuit,"waiting","需要合格库存或明确获得路线："+need.Item+" 品质≥"+need.Quality+" 缺"+missing);return false;}
+            if(!CanPreparePursuitItem(need.Item,need.Count,need.Quality)){PursuitState(pursuit,"waiting","需要先取得当前采集/生产链之外的材料："+need.Item+" 缺"+missing);return false;}
+            var goal=(SharedGoal)AgentGoalCreate(JsonSerializer.SerializeToElement(new{request_id="pursuit-"+FailureKnowledge.Hash(pursuit.Target)[..12]+"-"+(++pursuit.Revision),entity=need.Item,count=need.Count,quality=need.Quality,completion="owned"}));
             pursuit.ChildGoal=goal.Id;
             if(goal.Status=="active")AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id}));
             PursuitState(pursuit,"running","先完成原生目标的材料依赖："+need.Item);return false;
         }
         return true;
     }
-    private bool CanPreparePursuitItem(string item,int count) {
-        var preview=new SharedGoal{Entity=item,Item=item,Count=count};var ledger=new GoalLedger(Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Quality=s.Quality,Category=s.Category}));
+    private bool CanPreparePursuitItem(string item,int count,int quality=0) {
+        var preview=new SharedGoal{Entity=item,Item=item,Count=count,MinimumQuality=quality};var ledger=new GoalLedger(Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Quality=s.Quality,Category=s.Category}));
         foreach(var reserve in AllReservations().OrderByDescending(r=>r.Quality))ledger.Take(reserve.Item,reserve.Count,reserve.Quality);
         GoalPlanner.Rebuild(preview,goalRecipes,ledger,Game1.Date.TotalDays,id=>id);
-        return !preview.Nodes.Any(n=>n.Status is "locked" or "blocked")&&preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null||FishingLocations(n.Item).Any()));
+        return !preview.Nodes.Any(n=>n.Status is "locked" or "blocked")&&preview.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).All(n=>n.Quality==0&&(n.Item is "(O)388" or "(O)390" or "(O)771"||n.Item=="(O)709"&&FindGoalResourceLocation(n.Item,"hardwood")!=null||ResourceRules.Nodes.Values.Contains(n.Item)&&FindGoalResourceLocation(n.Item,"resource")!=null||FishingLocations(n.Item).Any())||HasLivingMaterialRoute(n.Item));
     }
     private bool PursueHouse(ProgressPursuit pursuit,int target) {
         var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
@@ -210,12 +210,14 @@ public sealed partial class ModEntry {
             else {
                 bool poly=id=="achievement:31";var crops=Game1.cropData.Values.Where(c=>poly?c.CountForPolyculture:c.CountForMonoculture).DistinctBy(c=>c.HarvestItemId);
                 needs.AddRange(crops.Select(c=>("(O)"+c.HarvestItemId,Math.Max(0,(poly?15:300)-p.basicShipped.GetValueOrDefault(c.HarvestItemId)),0)).Where(n=>n.Item2>0));
-                if(!poly)needs=needs.OrderBy(n=>Math.Max(0,n.Count-Facts.Stock.Where(s=>s.Item==n.Item).Sum(s=>s.Count))).Take(1).ToList();
+                if(!poly)needs=needs.OrderBy(n=>Math.Max(0,n.Count-Facts.Stock.Where(s=>s.Item==n.Item).Sum(s=>s.Count))).ToList();
             }
             var bin=Game1.getFarm().getShippingBin(p);needs=needs.Select(n=>(n.Item,Count:Math.Max(0,n.Count-bin.Where(i=>i?.QualifiedItemId==n.Item).Sum(i=>i.Stack)),n.Quality)).Where(n=>n.Count>0).OrderByDescending(n=>Facts.Stock.Where(s=>s.Item==n.Item).Sum(s=>s.Count)).ToList();
             if(needs.Count==0){PursuitState(pursuit,"waiting","已出货物等待过夜原生结算");return true;}
-            var need=needs[0];int available=Facts.Stock.Where(s=>s.Item==need.Item).Sum(s=>s.Count);
-            if(available==0){PursuitState(pursuit,"waiting","缺出货收集物资，需种植/加工/探索："+need.Item);return true;}
+            var feasible=needs.Where(n=>DisposableStock(n.Item,n.Quality)>0||CanPreparePursuitItem(n.Item,Math.Min(n.Count,24),n.Quality)).ToArray();
+            if(feasible.Length==0){PursuitState(pursuit,"waiting","缺可出货余量或本季可执行材料来源；保留献祭/任务需要的数量后继续其它工作");return true;}
+            var need=feasible[0];int available=DisposableStock(need.Item,need.Quality);
+            if(available==0){PursuitMaterials(pursuit,new[]{(need.Item,Math.Min(999,Math.Min(need.Count,24)+DisposableStock(need.Item,need.Quality,false)),need.Quality)},actions);if(actions.Count>0)QueuePursuit(pursuit,actions);return true;}
             need.Count=Math.Min(999,Math.Min(need.Count,available));
             if(!PursuitMaterials(pursuit,new[]{need},actions))return true;
             actions.Add(("player.ship_items",new{items=new[]{new{item=need.Item,count=need.Count}}}));QueuePursuit(pursuit,actions);return true;

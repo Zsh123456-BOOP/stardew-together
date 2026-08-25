@@ -110,7 +110,7 @@ public sealed class AgentToolRegistry {
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
         ["goal.run"]="{id:共同目标ID,mode?:run|pause}: 持续按依赖采集/取料/制作/烹饪/加工；无需模型重复下发子步骤。失败暂停自动目标并返回阻碍，pause保留目标且取消其待执行任务，正在执行需action.cancel",
-        ["goal.create"]="{request_id:string,entity:物品ID或craft:配方名或cook:菜名,count?:int,completion?:owned|crafted|cooked}: 幂等创建持久共同目标，原生配方自动展开依赖并预留材料，不打开UI",
+        ["goal.create"]="{request_id:string,entity:物品ID或craft:配方名或cook:菜名,count?:int,quality?:0|1|2|4,completion?:owned|crafted|cooked}: 幂等创建持久共同目标，原生配方自动展开依赖并预留材料，不打开UI",
         ["goal.prepare"]="{id:共同目标ID}: 根据真实库存生成下一批可执行任务（共享箱取料、普通资源收集、原生制作）；返回tasks可直接交plan.submit；每批后重新核算，未接通路线返回gaps",
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.roadmap"]="{}: 原生成就、实际技能与下一阶段建议；建议不是已经完成的成就，按季节与前置条件并行安排",

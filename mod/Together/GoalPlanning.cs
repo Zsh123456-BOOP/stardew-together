@@ -7,6 +7,7 @@ public sealed class SharedGoal {
     public string Item {get;set;}="";
     public string Title {get;set;}="";
     public int Count {get;set;}=1;
+    public int MinimumQuality {get;set;}
     public int CreatedDay {get;set;}
     public int BaselineCrafts {get;set;}
     public string Completion {get;set;}="owned";
@@ -122,7 +123,7 @@ public static class GoalPlanner {
             return path;
         }
         recipes.TryGetValue(goal.Entity,out var rootRecipe);
-        Expand(goal.Item,goal.Count,"root",new(),0,rootRecipe);
+        Expand(goal.Item,goal.Count,"root",new(),0,rootRecipe,goal.MinimumQuality);
         var root=goal.Nodes[0];
         // Farmer.craftingRecipes stores produced units, not recipe executions.
         bool craftedEnough=goal.Completion is "crafted" or "cooked" && rootRecipe!=null && Math.Max(0,crafted-goal.BaselineCrafts)>=goal.Count;

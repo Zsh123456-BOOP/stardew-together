@@ -18,6 +18,7 @@ public sealed partial class ModEntry {
         day=Game1.Date.TotalDays,goal.Fingerprint,money=Game1.player.Money,
         stock=Facts.Stock.Select(s=>new{s.Item,s.Count,s.Quality}),
         machines=GoalMachines().Select(m=>new{location=m.Location.NameOrUniqueName,tile=m.Object.TileLocation,item=m.Object.QualifiedItemId,ready=m.Object.readyForHarvest.Value,held=m.Object.heldObject.Value?.QualifiedItemId}),
+        crops=Game1.getFarm().terrainFeatures.Pairs.Where(t=>t.Value is StardewValley.TerrainFeatures.HoeDirt {crop:not null}).Select(t=>{var d=(StardewValley.TerrainFeatures.HoeDirt)t.Value;return new{tile=t.Key,item=d.crop.indexOfHarvest.Value,ready=d.readyForHarvest(),dead=d.crop.dead.Value,water=d.state.Value};}),
         tools=Game1.player.Items.OfType<Tool>().Select(t=>new{t.QualifiedItemId,t.UpgradeLevel})
     }));
     private void TickGoalAutomation() {

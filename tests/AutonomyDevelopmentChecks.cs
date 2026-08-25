@@ -6,6 +6,9 @@ public static class AutonomyDevelopmentChecks {
     public static void Run(Action<bool,string> check) {
         check(ResourceRules.Clump(148)?.Output=="(O)390"&&ResourceRules.Clump(622)?.Output=="(O)386","quarry boulder is stone and meteorite is iridium");
         check(ResourceRules.Nodes["751"]=="(O)378"&&ResourceRules.Clump(600)?.Output=="(O)709","resource selection resolves real node outputs");
+        var qualityOwnedGoal=new SharedGoal{Item="crop",Entity="crop",Count=2,MinimumQuality=2};
+        GoalPlanner.Rebuild(qualityOwnedGoal,new Dictionary<string,GoalRecipe>(),new(new[]{new GoalStock{Item="crop",Count=20,Quality=0},new GoalStock{Item="crop",Count=1,Quality=2}}),1,id=>id);
+        check(qualityOwnedGoal.Status=="active"&&qualityOwnedGoal.Nodes[0].Quality==2&&qualityOwnedGoal.Nodes[0].Owned==1,"high-quality owned goal cannot be satisfied by ordinary crop stock");
         var failures=new FailureKnowledge();
         failures.Record("k","player","work.run","empty","state1","task1",1,600);
         check(failures.Block("k","state1",1,610)!=null,"repeat failure blocked only under unchanged conditions");

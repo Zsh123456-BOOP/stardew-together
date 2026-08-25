@@ -8,12 +8,13 @@ public sealed partial class ModEntry {
         string request=AgentToolRegistry.Text(args,"request_id"),entity=AgentToolRegistry.Text(args,"entity");
         string completion=AgentToolRegistry.Text(args,"completion","owned");
         if(completion is not ("owned" or "crafted" or "cooked"))throw new InvalidOperationException("invalid_completion_predicate");
-        int count=AgentToolRegistry.Number(args,"count",1);
+        int count=AgentToolRegistry.Number(args,"count",1),quality=AgentToolRegistry.Number(args,"quality",0);
+        if(quality is not (0 or 1 or 2 or 4)||quality>0&&completion!="owned")throw new InvalidOperationException("quality_requires_owned_goal_and_native_quality_tier");
         if(request.Length is <1 or >64||!request.All(c=>char.IsLetterOrDigit(c)||c is '-' or '_')||count is <1 or >999)throw new InvalidOperationException("invalid_goal_request");
         string id="agent-"+request;
         var old=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);
         if(old!=null) {
-            if(old.Entity!=entity||old.Count!=count||old.Completion!=completion)throw new InvalidOperationException("goal_request_id_reused");
+            if(old.Entity!=entity||old.Count!=count||old.Completion!=completion||old.MinimumQuality!=quality)throw new InvalidOperationException("goal_request_id_reused");
             return old;
         }
         if(Data.SharedGoals.Count(g=>g.Status is "active" or "paused")>=16)throw new InvalidOperationException("active_goal_limit");
@@ -21,7 +22,7 @@ public sealed partial class ModEntry {
         if(completion=="cooked"&&recipe?.Kind!="cook")throw new InvalidOperationException("cooked_goal_requires_native_cooking_recipe");
         if(completion=="crafted"&&recipe?.Kind!="craft")throw new InvalidOperationException("crafted_goal_requires_native_crafting_recipe");
         var definition=ItemRegistry.GetDataOrErrorItem(item);if(definition.IsErrorItem)throw new InvalidOperationException("known_item_or_recipe_required");
-        var goal=new SharedGoal{Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,CreatedDay=Facts.Day,Completion=completion,
+        var goal=new SharedGoal{Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,MinimumQuality=quality,CreatedDay=Facts.Day,Completion=completion,
             BaselineCrafts=recipe?.Kind=="craft"?Game1.player.craftingRecipes.GetValueOrDefault(recipe.Id[6..]):0};
         goal.BaselineCrafts=NativeGoalCount(goal);Data.SharedGoals.Add(goal);UpdateProjects();return goal;
     }
@@ -85,6 +86,7 @@ public sealed partial class ModEntry {
                     if(node.Quality==0&&FishingLocations(node.Item).FirstOrDefault() is {} fishLocation) {
                         Add("work.run",new{goal="fish",item=node.Item,count=Math.Min(10,node.ToPrepare),location=fishLocation.NameOrUniqueName},"定向准备"+node.Name+"，按原生捕获与真实库存续接");break;
                     }
+                    if(PrepareLivingMaterial(goal,node,Add,out string livingWait)) {if(livingWait.Length>0)gaps.Add(new{node=node.Id,item=node.Item,reason=livingWait});break;}
                     gaps.Add(new{node=node.Id,item=node.Item,node.Quality,reason="acquisition_route_requires_choice_or_missing_executor",node.ToPrepare});
                 }
                 foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process")))gaps.Add(new{node=node.Id,node.Status,node.Reason});

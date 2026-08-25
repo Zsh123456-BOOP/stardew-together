@@ -78,6 +78,10 @@ public sealed partial class ModEntry {
         }
         if(goal=="resource"&&!ResourceRules.Nodes.Values.Contains(job.Item))throw new InvalidOperationException("resource_item_has_no_known_native_node_route");
         job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
+        if(goal is "forage" or "harvest") {
+            job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
+            if(job.MinimumQuality is not (0 or 1 or 2 or 4)||job.Item.Length>0&&ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem)throw new InvalidOperationException("invalid_target_gather_item_or_quality");
+        }
         if(goal=="withdraw") {
             job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
             if(job.MinimumQuality is not (0 or 1 or 2 or 4))throw new InvalidOperationException("invalid_minimum_quality");
@@ -109,7 +113,7 @@ public sealed partial class ModEntry {
     }
     private JsonElement WorkActor(string id)=>World().GetProperty("actors").EnumerateArray().First(a=>a.GetProperty("id").GetString()==id);
     private static int CompanionCargoSlots(JsonElement actor)=>actor.TryGetProperty("cargo_slots",out var slots)?slots.GetInt32():actor.GetProperty("cargo").EnumerateObject().Count();
-    private int WorkCount(SemanticJob j)=>j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")).Sum(p=>p.Value.GetInt32());
+    private int WorkCount(SemanticJob j)=>j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
@@ -200,11 +204,11 @@ public sealed partial class ModEntry {
         if(j.goal is "resource" or "hardwood" or "stone" or "wood" or "fiber" or "clear_dead" or "water" && tool<0){StopSemanticWork(j,"required_tool_missing");return;}
         foreach(var pair in l.objects.Pairs) {
             var o=pair.Value;
-            bool match=j.goal switch{"resource"=>ResourceRules.Nodes.GetValueOrDefault(o.ItemId)==j.Item,"stone"=>o.BaseName=="Stone","wood"=>o.IsTwig(),"fiber"=>o.IsWeeds(),"forage"=>o.isForage()&&!o.bigCraftable.Value,_=>false};
+            bool match=j.goal switch{"resource"=>ResourceRules.Nodes.GetValueOrDefault(o.ItemId)==j.Item,"stone"=>o.BaseName=="Stone","wood"=>o.IsTwig(),"fiber"=>o.IsWeeds(),"forage"=>o.isForage()&&!o.bigCraftable.Value&&(j.Item.Length==0||o.QualifiedItemId==j.Item),_=>false};
             if(match)candidates.Add((pair.Key.ToPoint(),j.goal=="forage"?"forage":"clear",tool,j.goal is "fiber" or "forage"?0:Math.Max(4,o.MinutesUntilReady*2+2),j.Item.Length>0?j.Item:o.QualifiedItemId));
         }
         foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt d&&d.crop!=null) {
-            bool match=j.goal switch{"water"=>!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest(),"harvest"=>!d.crop.dead.Value&&d.readyForHarvest(),"clear_dead"=>d.crop.dead.Value,_=>false};
+            bool match=j.goal switch{"water"=>!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest(),"harvest"=>!d.crop.dead.Value&&d.readyForHarvest()&&(j.Item.Length==0||ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)==j.Item),"clear_dead"=>d.crop.dead.Value,_=>false};
             if(match)candidates.Add((pair.Key.ToPoint(),j.goal,tool,j.goal=="water"?4:0,j.goal=="harvest"?"(O)"+d.crop.indexOfHarvest.Value:""));
         }
         if(j.goal=="wood"&&j.IncludeTrees)foreach(var pair in l.terrainFeatures.Pairs)
@@ -235,9 +239,8 @@ public sealed partial class ModEntry {
         if(j.FoodUsed>=j.MaxFood || Game1.player.isEating)return false;
         // Preserve all declared project reservations and every currently missing
         // bundle/quest item; a generic food policy must not eat unique progress.
-        var protectedItems=Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Concat(Facts.Goals.Where(g=>!g.Complete&&g.Kind!="craft").SelectMany(g=>g.Needs)).Select(n=>n.Item).ToHashSet();
         var choices=Game1.player.Items.Select((item,slot)=>new{item=item as StardewValley.Object,slot})
-            .Where(x=>x.item is {Edibility:>0} food&&!food.questItem.Value&&!food.bigCraftable.Value&&food.QualifiedItemId!="(O)434"&&food.Stack>Data.Reservations.GetValueOrDefault(food.QualifiedItemId)&&!protectedItems.Contains(food.QualifiedItemId))
+            .Where(x=>x.item is {Edibility:>0} food&&!food.questItem.Value&&!food.bigCraftable.Value&&food.QualifiedItemId!="(O)434"&&CanConsumeOne(food))
             .OrderBy(x=>x.item!.Price/(double)Math.Max(1,x.item.Edibility)).ThenBy(x=>x.slot).ToArray();
         if(choices.Length==0)return false;
         WorkChild(j,"player.eat",new{slot=choices[0].slot},"recovery_eat");return true;
@@ -273,6 +276,8 @@ public sealed partial class ModEntry {
             var tile=c.GetProperty("tile");int x=tile[0].GetInt32(),y=tile[1].GetInt32();string key=$"{x},{y}";
             if(j.Excluded.Contains(key))continue;
             l.objects.TryGetValue(new Vector2(x,y),out var o);
+            if(j.goal=="forage"&&j.Item.Length>0&&o?.QualifiedItemId!=j.Item)continue;
+            if(j.goal=="harvest"&&j.Item.Length>0&&(l.terrainFeatures.GetValueOrDefault(new Vector2(x,y)) is not HoeDirt crop||crop.crop==null||ItemRegistry.QualifyItemId(crop.crop.indexOfHarvest.Value)!=j.Item))continue;
             if(j.goal=="resource"&&(o==null||ResourceRules.Nodes.GetValueOrDefault(o.ItemId)!=j.Item))continue;
             if(j.goal=="wood"&&o?.IsTwig()!=true||j.goal=="fiber"&&o?.IsWeeds()!=true)continue;
             if(playerExecutor.ClaimsTile(l.NameOrUniqueName,x,y)||AgentTileBusy(l.NameOrUniqueName,x,y)){claimed=true;continue;}
@@ -281,8 +286,8 @@ public sealed partial class ModEntry {
         // Empty candidates may mean a capability/path/cargo restriction, not a cleared map.
         bool any=j.goal switch {
             "water"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.state.Value==0&&!d.readyForHarvest()),
-            "harvest"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.readyForHarvest()),
-            "forage"=>l.objects.Values.Any(o=>o.isForage()),
+            "harvest"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.readyForHarvest()&&(j.Item.Length==0||ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)==j.Item)),
+            "forage"=>l.objects.Values.Any(o=>o.isForage()&&(j.Item.Length==0||o.QualifiedItemId==j.Item)),
             "pet"=>Game1.getFarm().getAllFarmAnimals().Any(a=>a.currentLocation==l&&!a.wasPet.Value),
             "collect"=>l.objects.Values.Any(o=>o.heldObject.Value!=null&&o.readyForHarvest.Value),_=>true};
         bool met=j.requested==0&&!any;

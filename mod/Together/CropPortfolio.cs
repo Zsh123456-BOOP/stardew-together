@@ -6,12 +6,23 @@ public sealed record EconomySeed(string Seed,int Owned,SeedQuote? Quote,int Sale
 public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds);
 public sealed record EconomyPlant(string Seed,FarmCell Tile,int Growth,bool Manual,int PurchaseCost);
 public sealed record EconomyPurchase(string Seed,string Shop,string Location,int Count,int UnitPrice);
-public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason);
+public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null);
 
 // A bounded, greedy portfolio over detached native facts. It prioritizes feasible
 // work and reserves rather than claiming a globally optimal farming strategy.
 public static class CropPortfolio {
     public static EconomyResult Plan(EconomySnapshot s,CancellationToken cancellation=default) {
+        var clock=System.Diagnostics.Stopwatch.StartNew();var results=new List<EconomyResult>();
+        foreach(int variant in new[]{0,1,2}) {cancellation.ThrowIfCancellationRequested();if(results.Count>0&&clock.ElapsedMilliseconds>5000)break;results.Add(PlanVariant(s,variant,cancellation));}
+        int Reserved(EconomyResult r)=>s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));
+        int Collection(EconomyResult r)=>s.Priority=="collection"?s.Seeds.Count(seed=>seed.NeedForCollection>0&&r.Plants.Any(p=>p.Seed==seed.Seed)):0;
+        // Partial forecasts are useful diagnostics, but not comparable to a full
+        // season. Keep their candidate's conservative first-planting value.
+        bool comparable=results.All(r=>r.Reinvestment is {StopReason:"season_scenario_complete"});
+        double Value(EconomyResult r)=>comparable&&r.Reinvestment is {} forecast?forecast.Gold:s.Money-r.Spent+r.Plants.Sum(p=>{var seed=s.Seeds.First(x=>x.Seed==p.Seed);return new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)*seed.SalePrice;})-s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)))*seed.SalePrice);
+        return results.OrderByDescending(Reserved).ThenByDescending(Collection).ThenByDescending(r=>s.Priority=="low_labor"?(Value(r)-s.Money)/Math.Max(1,r.Manual):Value(r)).ThenBy(r=>r.Spent).First();
+    }
+    private static EconomyResult PlanVariant(EconomySnapshot s,int variant,CancellationToken cancellation) {
         var watch=System.Diagnostics.Stopwatch.StartNew();var grid=s.Grid.ToList();var anchors=s.Anchors.ToList();
         var plants=new List<EconomyPlant>();var used=new Dictionary<string,int>();var purchased=new Dictionary<string,int>();
         int spent=0,manual=0;string stop="requested_land_limit";
@@ -29,7 +40,8 @@ public static class CropPortfolio {
                 var crop=new Crop(seed.Seed,growth,seed.Regrow,price,seed.SalePrice);int yields=crop.NumHarvests(s.Date,seed.LastDay);
                 int reserved=Math.Min(yields,Math.Max(0,seed.ReserveYield-plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));
                 double profit=(yields-reserved)*seed.SalePrice-price;
-                double score=s.Priority=="collection"&&n<seed.NeedForCollection?100000+profit:s.Priority=="low_labor"?profit/Math.Max(1,water?seed.LastDay-s.Date:1):profit;
+                double investment=variant==1?profit/Math.Max(1,growth+1):variant==2?profit/Math.Max(1,price):profit;
+                double score=s.Priority=="collection"&&n<seed.NeedForCollection?100000+investment:s.Priority=="low_labor"?investment/Math.Max(1,water?seed.LastDay-s.Date:1):investment;
                 if(reserved>0)score+=10000;
                 if(score<=0&&seed.NeedForCollection<=n)continue;
                 if(best==null||score>best.Value.Score)best=(seed,at,growth,water,price,score);
@@ -56,6 +68,6 @@ public static class CropPortfolio {
                 if(keep--<=0)break;for(int day=harvest+1;day<=end+1;day++)calendar.GameStates[day].Wallet-=seed.SalePrice;
             }
         }
-        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop);
+        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop,SeasonCashForecast.Plan(s,plants,spent,cancellation));
     }
 }

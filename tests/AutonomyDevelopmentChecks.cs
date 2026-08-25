@@ -39,6 +39,12 @@ public static class AutonomyDevelopmentChecks {
         var economy=new EconomySnapshot(1,1,100,30,80,5,2,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed});
         var portfolio=CropPortfolio.Plan(economy);
         check(portfolio.Spent<=20&&portfolio.Manual<=2&&portfolio.Plants.Count<=2,"economic planting respects wallet reserve, purchase budget and daily care capacity");
+        var projection=portfolio.Reinvestment!;
+        check(projection.Days.All(d=>d.Gold>=80&&d.ManualWater<=2&&d.PurchaseCost<=30),"multi-cycle cash forecast respects every day's gold reserve, care limit and purchase allowance");
+        check(projection.Replantings.All(o=>o.Day%7!=3&&o.Day<=28),"future SeedShop purchases avoid Wednesdays and unobserved next-season offers");
+        var blockedCash=new EconomySnapshot(1,1,10,10,0,1,1,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed with{ReserveYield=0}});
+        var reinvest=SeasonCashForecast.Plan(blockedCash,new(){new("seed",new(0,0),4,true,10)},10);
+        check(reinvest.Replantings.All(o=>o.Day>=6),"cannot spend a first harvest's shipping proceeds on harvest day");
         var calendar=new GameStateCalendar(28,5,100);CalendarCashFlow.Apply(calendar,1,new Crop("seed",4,-1,10,30),1,28);
         check(calendar.GameStates[5].Wallet==90&&calendar.GameStates[6].Wallet==120,"crop proceeds become spendable only the day after harvest");
         var water=FarmLayout.WaterDistances(cells,new[]{new FarmCell(5,0)});

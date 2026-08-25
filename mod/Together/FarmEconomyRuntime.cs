@@ -63,7 +63,7 @@ public sealed partial class ModEntry {
     }
     internal object ReadFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)return new{status="planning"};
-        return new{status="planned",result=job.Task.GetAwaiter().GetResult(),quote_day=job.Snapshot.Day,assumptions="有界启发式而非全局最优；仅今天观察的金币种子报价及已持有种子。保留目标/献祭产物不算销售收入；按每株每次一份基础品质估计、次日入账，未来行情/天气/额外产量/加工不作保证。实际执行重新校验位置与供货。"};
+        return new{status="planned",result=job.Task.GetAwaiter().GetResult(),quote_day=job.Snapshot.Day,assumptions="比较利润/周转/资金效率三类可行布局，并以有限宽度多轮补种现金流筛选；不是全局最优。Reinvestment是条件预测，未来报价必须重新读取；执行仅提交今日方案。仅今天观察的金币种子报价及已持有种子。保留目标/献祭产物不算销售收入；按每株每次一份基础品质估计、次日入账，未来行情/天气/额外产量/加工不作保证。实际执行重新校验位置与供货。"};
     }
     private EconomyJob FindEconomyJob(JsonElement args) {
         if(!economyJobs.TryGetValue(AgentToolRegistry.Text(args,"plan_id"),out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("economy_plan_expired_recalculate");return job;

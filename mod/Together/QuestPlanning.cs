@@ -25,6 +25,7 @@ public sealed partial class ModEntry {
     }
     private bool PursueQuest(ProgressPursuit pursuit,Quest quest) {
         var p=Game1.player;string id=NativeQuestIdentity.Id(quest);
+        if(PursueStoryQuest(pursuit,quest))return true;
         string? recipient=quest switch {ItemDeliveryQuest q=>q.target.Value,ResourceCollectionQuest q=>q.target.Value,FishingQuest q=>q.target.Value,SlayMonsterQuest q=>q.target.Value,_=>null};
         if(quest is ItemDeliveryQuest) {
             var actions=new List<(string Tool,object Args)>();var needs=Facts.Goals.First(g=>g.Id=="quest:"+id).Needs;

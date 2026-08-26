@@ -27,4 +27,5 @@ public sealed class ProgressPursuit {
     public int AttemptsDay {get;set;}=-1;
     public int Attempts {get;set;}
     public bool CompletionObserved {get;set;}
+    public string RecoveryCondition {get;set;}="";
 }

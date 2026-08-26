@@ -85,6 +85,7 @@ public sealed partial class PlayerExecutor {
                 case "player.order_donate":StartOrderDonation(args);break;
                 case "player.equip":StartEquipment(args);break;
                 case "player.attach":StartAttachment(args);break;
+                case "player.find_lost_item":StartLostItem(args);break;
                 case "player.accept_quest":StartQuestAcceptance(args);break;
                 case "player.animal":StartAnimalManagement(args);break;
                 case "player.geodes":StartGeodes(args);break;
@@ -110,6 +111,7 @@ public sealed partial class PlayerExecutor {
                 case "player.eat":
                     SelectSlot(args,true);
                     if(Game1.player.ActiveObject is not {} food || food.Edibility<=0 || food.questItem.Value || food.QualifiedItemId=="(O)434")throw new InvalidOperationException("item_not_ordinary_food");
+                    if(NativeFoodRules.Block(food) is {} foodBlock)throw new InvalidOperationException(foodBlock);
                     ValidateConsumption?.Invoke(new Dictionary<Item,int>{{food,1}},"","");
                     eatingSlot=Game1.player.CurrentToolIndex;eatingItem=food.QualifiedItemId;eatingBefore=food.Stack;
                     Game1.player.mostRecentlyGrabbedItem=food;Game1.player.eatHeldObject();
@@ -266,6 +268,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.machine"){TickMachines();return;}
             if(Current.skill=="player.claim_reward"){TickQuestReward();return;}
             if(Current.skill=="player.care"){TickAnimalCare();return;}
+            if(Current.skill=="player.find_lost_item"){TickLostItem();return;}
             if(Current.skill=="player.social"){TickSocial();return;}
             if(Current.skill=="player.combat"){TickCombat();return;}
             if(Current.skill=="player.mine_descend"){TickMineDescent();return;}

@@ -2,12 +2,12 @@ using StardewValley;
 
 namespace Together;
 public sealed partial class ModEntry {
-    private List<Requirement> ConsumptionRequirements(SharedGoal? owner=null,bool protectProgress=false) {
-        var projects=Data.Projects.Where(p=>p.Status=="active").ToArray();
+    private List<Requirement> ConsumptionRequirements(SharedGoal? owner=null,bool protectProgress=false,string progressOwner="") {
+        var projects=Data.Projects.Where(p=>p.Status=="active"&&p.Kind!=progressOwner).ToArray();
         var needs=projects.SelectMany(p=>p.Needs).Concat(Data.SharedGoals.Where(g=>g.Status=="active"&&g!=owner).SelectMany(g=>g.Reserved)).ToList();
         if(protectProgress) {
-            needs.AddRange(Facts.Bundles.Where(b=>!b.Complete&&!projects.Any(p=>p.Kind=="bundle:"+b.Id)).SelectMany(b=>b.Missing));
-            needs.AddRange(Facts.Goals.Where(g=>!g.Complete&&g.Kind!="craft"&&!projects.Any(p=>p.Kind==g.Id)).SelectMany(g=>g.Needs));
+            needs.AddRange(Facts.Bundles.Where(b=>!b.Complete&&"bundle:"+b.Id!=progressOwner&&!projects.Any(p=>p.Kind=="bundle:"+b.Id)).SelectMany(b=>b.Missing));
+            needs.AddRange(Facts.Goals.Where(g=>!g.Complete&&g.Id!=progressOwner&&g.Kind!="craft"&&!projects.Any(p=>p.Kind==g.Id)).SelectMany(g=>g.Needs));
         }
         return needs;
     }
@@ -22,7 +22,7 @@ public sealed partial class ModEntry {
         RefreshFacts(true);
         var owner=Data.SharedGoals.FirstOrDefault(g=>g.Id==goalId&&g.Status=="active");
         if(goalId.Length>0&&(owner==null||!owner.Nodes.Any(n=>n.Item==output)))throw new InvalidOperationException("consumption_goal_does_not_own_output");
-        var requirements=ConsumptionRequirements(owner,output.Length==0);
+        var requirements=ConsumptionRequirements(owner,true,output);
         var available=Facts.Stock.Select(s=>new GoalStock{Item=s.Item,Count=s.Count,Quality=s.Quality,Category=s.Category});
         var spending=consumed.Select(p=>new GoalStock{Item=p.Key.QualifiedItemId,Count=p.Value,Quality=p.Key.Quality,Category=p.Key.Category});
         if(!ReservationAllocation.Preserves(available,requirements,spending))throw new InvalidOperationException("material_reserved_for_other_goal_or_quality_allocation");

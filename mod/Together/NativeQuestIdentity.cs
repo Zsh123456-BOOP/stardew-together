@@ -29,6 +29,8 @@ internal static class NativeQuestIdentity {
         ResourceCollectionQuest q=>(q.numberCollected.Value,q.number.Value),
         FishingQuest q=>(q.numberFished.Value,q.numberToFish.Value),
         SlayMonsterQuest q=>(q.numberKilled.Value,q.numberToKill.Value),
+        SocializeQuest q=>(Math.Max(0,q.total.Value-q.whoToGreet.Count),q.total.Value),
+        ItemHarvestQuest q=>(0,Math.Max(0,q.Number.Value)),
         _=>(quest.completed.Value?1:0,1)
     };
 }

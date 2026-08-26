@@ -68,7 +68,9 @@ public sealed partial class ModEntry {
         LearnActionResult(task,state,error);
         if(state!="succeeded"&&task.spec.goal_id.Length>0) {
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==task.spec.goal_id);
-            if(goal!=null){goal.AutoExecute=false;goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;}
+            if(goal!=null){goal.AutoExecute=RecoveryPolicy.CanWait(error);goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;
+                if(goal.AutoExecute){RefreshFacts(true);goal.AutoBlockedConditions=GoalCondition(goal);goal.AutoReviewDay=Game1.Date.TotalDays;goal.AutoReviewMinute=DailyBudget.Minutes(Game1.timeOfDay);}
+            }
         }
         Data.Autoplay.Schedule.Finish(task,state,error,AgentJson.Encode(result));
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
@@ -78,7 +80,10 @@ public sealed partial class ModEntry {
             agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");
             Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;
             if(!Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==task.spec.actor&&t.state=="queued"&&t.spec.day==Game1.Date.TotalDays))WakeAgent("actor_ready:"+task.spec.actor);
-        } else {WakeAgent("task_failed:"+task.spec.id);RecordAgentFailure(error??"action_failed",task.spec.actor);}
+        } else {
+            if(RecoveryPolicy.CanWait(error)){if(!Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==task.spec.actor&&!t.Terminal))WakeAgent("work_yielded:"+task.spec.id);}
+            else {WakeAgent("task_failed:"+task.spec.id);RecordAgentFailure(error??"action_failed",task.spec.actor);}
+        }
     }
     private void TickAgentSchedule() {
         var schedule=Data.Autoplay.Schedule;

@@ -6,13 +6,23 @@ using StardewValley.Quests;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private string PursuitRecoveryCondition()=>FailureKnowledge.Hash(AgentJson.Encode(new {
+        day=Game1.Date.TotalDays,window=DailyBudget.Minutes(Game1.timeOfDay)/120,health=Game1.player.health/10,stamina=(int)Game1.player.Stamina/10,Game1.player.Money,
+        location=Game1.currentLocation.NameOrUniqueName,
+        stock=Facts.Stock.Select(s=>new{s.Item,s.Count,s.Quality}),
+        nodes=Game1.currentLocation.objects.Pairs.Select(o=>new{o.Key,item=o.Value.ItemId,health=o.Value.MinutesUntilReady})
+    }));
     private bool ReconcilePursuitTasks(ProgressPursuit pursuit) {
         if(pursuit.Tasks.Count==0)return true;
         var tasks=pursuit.Tasks.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).ToArray();
         if(tasks.Any(t=>t==null)){pursuit.Tasks.Clear();PursuitState(pursuit,"blocked","progress_task_receipt_missing_reobserve");return false;}
         if(tasks.Any(t=>!t!.Terminal)){if(tasks.Any(t=>t!.state=="needs_review"))PursuitState(pursuit,"blocked","progress_task_interrupted_reobserve");return false;}
         pursuit.Tasks.Clear();
-        if(tasks.Any(t=>t!.state!="succeeded")){PursuitState(pursuit,"blocked",tasks.First(t=>t!.state!="succeeded")!.error??"progress_action_failed");return false;}
+        if(tasks.Any(t=>t!.state!="succeeded")) {
+            var failed=tasks.First(t=>t!.state!="succeeded")!;string error=failed.error??"progress_action_failed";
+            if(failed.state=="failed"&&RecoveryPolicy.CanWait(error)){pursuit.RecoveryCondition=PursuitRecoveryCondition();PursuitState(pursuit,"waiting",error);}else PursuitState(pursuit,"blocked",error);
+            return false;
+        }
         return true;
     }
     private bool QueuePursuit(ProgressPursuit pursuit,IEnumerable<(string Tool,object Args)> operations,int cost=0) {
@@ -191,6 +201,7 @@ public sealed partial class ModEntry {
             if(!p.Items.Any(i=>i!=null&&museum.isItemSuitableForDonation(i))){PursuitState(pursuit,"waiting","背包暂无未捐馆藏，需继续采矿/开矿球/探索获得");return true;}
             QueuePursuit(pursuit,new[]{("player.service",(object)new{location="ArchaeologyHouse",service="museum_donate"}),("player.donate_museum",(object)new{count=0})});return true;
         }
+        if(id.StartsWith("order:")) {var order=OrderRules.Find(id[6..]);return order!=null&&PursueOrder(pursuit,order);}
         if(id.StartsWith("quest:")) {
             var quest=NativeQuestIdentity.Find(id[6..]);return quest!=null&&PursueQuest(pursuit,quest);
         }

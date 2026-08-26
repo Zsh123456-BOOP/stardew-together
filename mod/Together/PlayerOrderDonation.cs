@@ -29,7 +29,8 @@ public sealed partial class PlayerExecutor {
             if(slot<0) {
                 if(!menu.readyToClose())return;menu.exitThisMenu();
                 Current!.effects.Add(new{kind="native_order_donation_confirmed",order=order.questKey.Value,state=order.questState.Value.ToString(),objectives=order.objectives.Select(o=>new{type=o.GetType().Name,current=o.GetCount(),required=o.GetMaxCount()})});
-                Finish(Current.completed>0?"succeeded":"failed",Current.completed>0?null:"no_eligible_unreserved_order_items");return;
+                bool confirmed=order.objectives.OfType<DonateObjective>().Where(o=>o.dropBox.Value==orderDropBox).All(o=>o.IsComplete());
+                bool success=Current.completed>0||confirmed;Finish(success?"succeeded":"failed",success?null:"no_eligible_unreserved_order_items");return;
             }
             var item=Game1.player.Items[slot];string id=item.QualifiedItemId;int quality=item.Quality,amount=menu.GetDonatableAmount(item);
             try{ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,amount}},"","order:"+order.questKey.Value);}catch(InvalidOperationException){orderDonationSkipped.Add(slot);return;}

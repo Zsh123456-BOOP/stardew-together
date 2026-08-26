@@ -10,6 +10,8 @@ public sealed partial class ModEntry {
     // not evidence that a human played a fishing minigame or that NPC loot earned credit.
     private string NativeQuestContracts() {
         var results=new List<object>();var p=Game1.player;
+        var timber=ItemRegistry.Create("(O)388");string knownTag=timber.GetContextTags().First();
+        results.Add(new{kind="order_tags",all_required=!OrderRules.Tags(new[]{knownTag+",together_nonexistent_tag"},timber),alternatives=OrderRules.Tags(new[]{"together_nonexistent_tag/"+knownTag},timber),empty_collection_rejected=!OrderRules.Tags(Array.Empty<string>(),timber),empty_delivery_allowed=OrderRules.Tags(Array.Empty<string>(),timber,true)});
         var generatedA=new ResourceCollectionQuest();var generatedB=new ResourceCollectionQuest();
         string handleA=NativeQuestIdentity.Id(generatedA),handleB=NativeQuestIdentity.Id(generatedB);
         var reloaded=new ResourceCollectionQuest();reloaded.modDataForSerialization=generatedA.modDataForSerialization;

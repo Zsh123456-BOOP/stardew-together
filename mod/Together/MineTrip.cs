@@ -8,6 +8,7 @@ namespace Together;
 public sealed partial class ModEntry {
     private void TickMineTrip(SemanticJob job) {
         var p=Game1.player;
+        if(job.OrderObjective!=null&&job.OrderObjective.GetCount()>=job.OrderObjective.GetMaxCount())job.MineReturnReason="native_order_objective_reached";
         if(job.NativeQuest!=null&&(job.NativeQuest.completed.Value||NativeQuestIdentity.Count(job.NativeQuest).Current>=NativeQuestIdentity.Count(job.NativeQuest).Required))job.MineReturnReason="native_quest_objective_reached";
         if((job.Attempts>=512||(DateTime.UtcNow-job.Started).TotalMinutes>25)&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_execution_budget_return";
         if(Game1.timeOfDay>=job.Until&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_time_reserve_return";
@@ -19,6 +20,9 @@ public sealed partial class ModEntry {
             if((mine.mineLevel>120)!=(job.MineRegion=="skull")){job.MineReturnReason="mine_region_changed";WorkChild(job,"player.mine_access",new{mode="leave"},"mine_exit");return;}
             int depth=mine.mineLevel-(job.MineRegion=="skull"?120:0);job.completed=Math.Max(job.completed,depth);
             if(job.MineReturnReason.Length==0&&PlayerExecutor.TreasureChests(mine).Any()){WorkChild(job,"player.treasure",new{},"mine_treasure");return;}
+            if(job.MineReturnReason.Length==0&&job.OrderObjective is StardewValley.SpecialOrders.Objectives.SlayObjective slay&&mine.characters.OfType<Monster>().Any(m=>m.Health>0&&OrderRules.Matches(slay,m))) {
+                WorkChild(job,"player.combat",new{count=1,order_id=job.order_id,objective=job.objective,min_health=40},"mine_combat");return;
+            }
             if(job.MineReturnReason.Length==0&&job.NativeQuest is StardewValley.Quests.SlayMonsterQuest quest&&mine.characters.OfType<Monster>().Any(m=>m.Health>0&&quest.OnMonsterSlain(mine,m,false,false,true))) {
                 WorkChild(job,"player.combat",new{count=1,quest_id=job.quest_id,min_health=40},"mine_combat");return;
             }
@@ -46,7 +50,7 @@ public sealed partial class ModEntry {
             if(mine.characters.OfType<Monster>().Any(m=>m.Health>0)){WorkChild(job,"player.combat",new{count=1,min_health=40},"mine_combat");return;}
             job.MineReturnReason="mine_no_reachable_progress_route";return;
         }
-        if(job.MineReturnReason.Length>0){StopSemanticWork(job,job.MineReturnReason,job.MineReturnReason is "mine_target_depth_reached" or "native_quest_objective_reached");return;}
+        if(job.MineReturnReason.Length>0){StopSemanticWork(job,job.MineReturnReason,job.MineReturnReason is "mine_target_depth_reached" or "native_quest_objective_reached" or "native_order_objective_reached");return;}
         if(job.MineRegion=="skull") {
             if(!p.hasSkullKey&&!Utility.IsPassiveFestivalDay("DesertFestival")){StopSemanticWork(job,"native_skull_key_required_collect_floor_120_chest");return;}
             if(Game1.currentLocation.NameOrUniqueName is not ("Desert" or "SkullCave")) {

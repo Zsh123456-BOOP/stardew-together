@@ -27,6 +27,9 @@ public static class AutonomyDevelopmentChecks {
         check(goal.Status=="active","native output count must not be multiplied by recipe batch size twice");
         GoalPlanner.Rebuild(goal,recipes,new(Array.Empty<GoalStock>()),1,id=>id,15);
         check(goal.Status=="fulfilled","native production delta satisfies explicit crafted goal");
+        check(RecoveryPolicy.CanWait("energy_reserve_reached")&&RecoveryPolicy.CanWait("mine_time_reserve_return"),"expected supply/time limits preserve the plan for changed conditions");
+        check(!RecoveryPolicy.CanWait("native_shipment_conservation_failed")&&!RecoveryPolicy.CanWait("cancelled")&&!RecoveryPolicy.CanWait("NullReferenceException"),"unknown errors, broken conservation and cancellation cannot silently retry");
+        check(AgentSchedule.Queueable("player.find_lost_item"),"native lost-item skill is reachable from persistent plans");
         var ownedGoal=new SharedGoal{Entity="craft:batch",Item="output",Count=5,Completion="owned"};
         GoalPlanner.Rebuild(ownedGoal,recipes,new(Array.Empty<GoalStock>()),1,id=>id,99);
         check(ownedGoal.Status=="active","historic craft counter cannot satisfy an owned inventory goal");

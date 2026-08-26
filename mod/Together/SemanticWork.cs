@@ -40,6 +40,10 @@ public sealed class SemanticJob {
     internal int MinimumQuality;
     internal int MineTarget,MineFloor=-1,MineStartLevel=-1;
     internal StardewValley.Quests.Quest? NativeQuest;
+    internal StardewValley.SpecialOrders.Objectives.OrderObjective? OrderObjective;
+    public string? order_id {get;set;}
+    public int? objective {get;set;}
+    public object? native_order_progress=>OrderObjective==null?null:new{current=OrderObjective.GetCount(),required=OrderObjective.GetMaxCount(),complete=OrderObjective.IsComplete()};
     public string? quest_id {get;set;}
     public object? native_quest_progress=>NativeQuest==null?null:new{current=NativeQuestIdentity.Count(NativeQuest).Current,required=NativeQuestIdentity.Count(NativeQuest).Required,completed=NativeQuest.completed.Value};
     internal string MineRegion="normal";
@@ -75,6 +79,20 @@ public sealed partial class ModEntry {
                 _=>false
             };
             if(actor!="player"||!matches||job.NativeQuest.completed.Value)throw new InvalidOperationException("quest_work_goal_or_actor_mismatch");
+        }
+        string orderId=AgentToolRegistry.Text(args,"order_id");
+        if(orderId.Length>0) {
+            var order=OrderRules.Find(orderId)??throw new InvalidOperationException("active_special_order_required");int index=AgentToolRegistry.Number(args,"objective",-1);
+            if(actor!="player"||questId.Length>0||index<0||index>=order.objectives.Count)throw new InvalidOperationException("invalid_work_order_objective");
+            job.OrderObjective=order.objectives[index];job.order_id=orderId;job.objective=index;
+            string item=AgentToolRegistry.Text(args,"item",job.Item);
+            bool matches=job.OrderObjective switch {
+                StardewValley.SpecialOrders.Objectives.SlayObjective or StardewValley.SpecialOrders.Objectives.ReachMineFloorObjective=>goal=="mine_trip",
+                StardewValley.SpecialOrders.Objectives.FishObjective o=>goal=="fish"&&item.Length>0&&OrderRules.Accepts(o,ItemRegistry.Create(item)),
+                StardewValley.SpecialOrders.Objectives.CollectObjective o=>goal is "fish" or "wood" or "stone" or "resource" or "hardwood" or "fiber" or "harvest" or "forage"&&item.Length>0&&OrderRules.Accepts(o,ItemRegistry.Create(item)),
+                _=>false
+            };
+            if(!matches||job.OrderObjective.failOnCompletion.Value)throw new InvalidOperationException("order_goal_mismatch_or_prohibited_objective");
         }
         if(goal=="fish") {
             job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
@@ -128,7 +146,7 @@ public sealed partial class ModEntry {
     }
     private JsonElement WorkActor(string id)=>World().GetProperty("actors").EnumerateArray().First(a=>a.GetProperty("id").GetString()==id);
     private static int CompanionCargoSlots(JsonElement actor)=>actor.TryGetProperty("cargo_slots",out var slots)?slots.GetInt32():actor.GetProperty("cargo").EnumerateObject().Count();
-    private int WorkCount(SemanticJob j)=>j.NativeQuest!=null?NativeQuestIdentity.Count(j.NativeQuest).Current:j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
+    private int WorkCount(SemanticJob j)=>j.OrderObjective!=null?j.OrderObjective.GetCount():j.NativeQuest!=null?NativeQuestIdentity.Count(j.NativeQuest).Current:j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
@@ -183,6 +201,7 @@ public sealed partial class ModEntry {
         if(Game1.Date.TotalDays!=j.Day){StopSemanticWork(j,"day_changed_replan");return;}
         if(Game1.eventUp||Game1.activeClickableMenu!=null){StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
+        if(j.OrderObjective!=null&&j.goal!="mine_trip"&&j.OrderObjective.GetCount()>=j.OrderObjective.GetMaxCount()){StopSemanticWork(j,"native_order_objective_reached",true);return;}
         if(j.NativeQuest!=null&&j.goal!="mine_trip"&&(j.NativeQuest.completed.Value||NativeQuestIdentity.Count(j.NativeQuest).Current>=NativeQuestIdentity.Count(j.NativeQuest).Required)){StopSemanticWork(j,"native_quest_objective_reached",true);return;}
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
         if(j.goal=="fish"){TickFishingTrip(j);return;}
@@ -256,7 +275,7 @@ public sealed partial class ModEntry {
         // Preserve all declared project reservations and every currently missing
         // bundle/quest item; a generic food policy must not eat unique progress.
         var choices=Game1.player.Items.Select((item,slot)=>new{item=item as StardewValley.Object,slot})
-            .Where(x=>x.item is {Edibility:>0} food&&!food.questItem.Value&&!food.bigCraftable.Value&&food.QualifiedItemId!="(O)434"&&CanConsumeOne(food))
+            .Where(x=>x.item is {Edibility:>0} food&&!food.questItem.Value&&!food.bigCraftable.Value&&food.QualifiedItemId!="(O)434"&&NativeFoodRules.Block(food)==null&&CanConsumeOne(food))
             .OrderBy(x=>x.item!.Price/(double)Math.Max(1,x.item.Edibility)).ThenBy(x=>x.slot).ToArray();
         if(choices.Length==0)return false;
         WorkChild(j,"player.eat",new{slot=choices[0].slot},"recovery_eat");return true;

@@ -44,7 +44,7 @@ public sealed partial class ModEntry {
             campaign.Enabled=active.Value;
             foreach(var target in campaign.Targets) {
                 if(!campaign.Enabled)PausePursuitChild(target);
-                else if(target.State is "blocked" or "waiting"){target.State="pending";target.Fingerprint="";target.Reason="";}
+                else if(target.State is "blocked" or "waiting"){target.State="pending";target.Fingerprint="";target.Reason="";target.RecoveryCondition="";}
             }
         }
         progressCampaignAt=DateTime.MinValue;
@@ -77,6 +77,10 @@ public sealed partial class ModEntry {
             if(target.completed==true){PausePursuitChild(pursuit);PursuitState(pursuit,"complete",target.evidence);continue;}
             if(pursuit.State=="complete")PursuitState(pursuit,"pending","native_progress_changed_reobserve");
             if(pursuit.State=="blocked")continue;
+            if(pursuit.RecoveryCondition.Length>0) {
+                if(pursuit.RecoveryCondition==PursuitRecoveryCondition())continue;
+                pursuit.RecoveryCondition="";PursuitState(pursuit,"pending","时间、补给或真实现场变化，重新计算剩余工作");
+            }
             var current=Data.SharedGoals.FirstOrDefault(g=>g.Id==pursuit.ChildGoal);
             if(current is {Status:"active"}) {
                 if(!current.AutoExecute&&current.AutoBlockedReason.Length>0){PursuitState(pursuit,"blocked",current.AutoBlockedReason);continue;}

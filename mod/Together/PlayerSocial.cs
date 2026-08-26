@@ -17,18 +17,20 @@ public sealed partial class PlayerExecutor {
         gifts_before=socialGifts,gifts_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.GiftsToday??0,
         talked_before=socialTalked,talked_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.TalkedToToday??false,
         item=socialItem,consumed=socialStack-Game1.player.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack),
-        quest=socialQuest,quest_completed=socialQuestObject?.completed.Value==true
+        quest=socialQuest,quest_completed=socialQuestObject?.completed.Value==true,order=socialOrder?.questKey.Value,order_before=socialOrderBefore,order_after=socialOrderObjective?.GetCount()
         ,relationship_status=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Status.ToString(),spouse=Game1.player.spouse
     };
     private void StartSocial(JsonElement args) {
         socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
-        if(socialMode is not ("talk" or "gift" or "deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
+        if(socialMode is not ("talk" or "greet" or "gift" or "deliver" or "order_deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
+        BindSocialOrder(args);
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
         if(socialNpc.IsMonster||socialNpc.currentLocation==null)throw new InvalidOperationException("npc_not_available");
-        socialQuestObject=socialMode=="deliver"?NativeQuestIdentity.Find(socialQuest):null;
-        if(socialMode=="deliver"&&(socialQuestObject==null||socialQuestObject.completed.Value))throw new InvalidOperationException("active_quest_id_required");
+        socialQuestObject=socialMode is "deliver" or "greet"?NativeQuestIdentity.Find(socialQuest):null;
+        if(socialMode is "deliver" or "greet"&&(socialQuestObject==null||socialQuestObject.completed.Value))throw new InvalidOperationException("active_quest_id_required");
+        if(socialMode=="greet"&&socialQuestObject is not SocializeQuest)throw new InvalidOperationException("greet_requires_introductions_quest");
         socialSlot=AgentToolRegistry.Number(args,"slot",-1);socialItem="";socialStack=0;socialPages=0;
-        if(socialMode is "gift" or "relationship" || socialMode=="deliver"&&socialSlot>=0) {
+        if(socialMode is "gift" or "relationship" or "order_deliver" || socialMode=="deliver"&&socialSlot>=0) {
             SelectSlot(args,true);
             var item=Game1.player.ActiveObject??throw new InvalidOperationException("social_item_must_be_object");socialItem=item.QualifiedItemId;
             string expected=AgentToolRegistry.Text(args,"item");if(expected.Length>0&&socialItem!=expected)throw new InvalidOperationException("planned_social_item_slot_changed");
@@ -56,7 +58,9 @@ public sealed partial class PlayerExecutor {
             if(!p.CanMove||p.freezePause>0)return;
             var f=p.friendshipData.GetValueOrDefault(socialName);bool complete=socialMode switch {
                 "talk"=>f?.TalkedToToday==true,
+                "greet"=>socialQuestObject is SocializeQuest introduction&&!introduction.whoToGreet.Contains(socialName),
                 "deliver"=>socialQuestObject?.completed.Value==true,
+                "order_deliver"=>socialOrderObjective!=null&&socialOrderObjective.GetCount()>socialOrderBefore&&socialStack-p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)==socialOrderObjective.GetCount()-socialOrderBefore,
                 "gift"=>(f?.GiftsToday??0)>socialGifts,
                 _=>p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)<socialStack&&RelationshipResult(f)
             };
@@ -77,16 +81,23 @@ public sealed partial class PlayerExecutor {
         if(socialItem.Length>0) {
             var item=p.ActiveObject;
             if(item?.QualifiedItemId!=socialItem)throw new InvalidOperationException("social_item_changed");
+            if(socialMode=="order_deliver")ValidateOrderDelivery(npc,item);
+            else {
             var matching=p.questLog.Where(q=>!q.completed.Value&&q.OnItemOfferedToNpc(npc,item,true)).ToArray();
             if(socialMode=="deliver"&&!matching.Any(q=>NativeQuestIdentity.Id(q)==socialQuest))throw new InvalidOperationException("quest_does_not_accept_this_item_or_npc");
             if(socialMode!="deliver"&&(matching.Length>0||p.team.specialOrders.Any(o=>o.onItemDelivered?.GetInvocationList().Cast<Func<Farmer,NPC,Item,bool,int>>().Any(f=>f(p,npc,item,true)>0)==true)))
                 throw new InvalidOperationException("gift_would_deliver_quest_item_use_delivery");
             int used=socialMode=="deliver"?item.Stack:1;
             ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,used}},"",socialMode=="deliver"?"quest:"+socialQuest:"");
+            }
         } else if(socialMode=="deliver") {
             var q=p.questLog.First(q=>NativeQuestIdentity.Id(q)==socialQuest);
-            string? recipient=q switch {ResourceCollectionQuest r=>r.target.Value,FishingQuest f=>f.target.Value,SlayMonsterQuest s=>s.target.Value,_=>null};
+            string? recipient=q switch {ResourceCollectionQuest r=>r.target.Value,FishingQuest f=>f.target.Value,SlayMonsterQuest s=>s.target.Value,LostItemQuest l=>l.npcName.Value,_=>null};
             if(recipient!=socialName)throw new InvalidOperationException("quest_needs_item_or_different_recipient");
+            if(q is LostItemQuest lost) {
+                var returning=p.Items.FirstOrDefault(i=>i?.QualifiedItemId==lost.ItemId.Value)??throw new InvalidOperationException("found_quest_item_must_be_carried");
+                ValidateConsumption?.Invoke(new Dictionary<Item,int>{{returning,1}},"","quest:"+socialQuest);
+            }
         }
         // One genuine nearby interaction routes through native quest, gift and dialogue logic.
         // The boolean can be false for a valid temporary dialogue: verify state after dismissal.

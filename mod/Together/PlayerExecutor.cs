@@ -32,6 +32,8 @@ public sealed partial class PlayerExecutor {
     private Point target,lastTile;
     private string origin="",destination="";
     private DateTime started,lastProgress,nextInteraction;
+    private double activeSeconds;
+    private DateTime lastActiveTick;
     private int startDay,retries;
     private bool saved,sleepConfirmed,startedUsing;
     private PathFindController? ownedController;
@@ -48,7 +50,7 @@ public sealed partial class PlayerExecutor {
     public void ClearStopped(){if(!Busy){Current=null;receipts.Clear();}}
     public object Poll(string id) {
         if(!receipts.TryGetValue(id,out var r))throw new InvalidOperationException("unknown_player_action");
-        if(r==Current&&Busy)r.navigation=new{target,actual=Game1.player.TilePoint,path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds};
+        if(r==Current&&Busy)r.navigation=new{target=new[]{target.X,target.Y},actual=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds,active_seconds=activeSeconds};
         return r;
     }
     public object Cancel(string? id=null) {
@@ -70,6 +72,7 @@ public sealed partial class PlayerExecutor {
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
         started=lastProgress=nextInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
+        activeSeconds=0;lastActiveTick=started;
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
@@ -236,9 +239,12 @@ public sealed partial class PlayerExecutor {
     }
     public void Tick() {
         if(!Busy || !Context.IsWorldReady)return;
+        var now=DateTime.UtcNow;double gap=(now-lastActiveTick).TotalSeconds;lastActiveTick=now;
+        if(gap>2)lastProgress=now; // Suspended app frames are not failed path attempts.
+        if(Game1.game1.IsActive||!Game1.options.pauseWhenOutOfFocus)activeSeconds+=Math.Clamp(Game1.currentGameTime.ElapsedGameTime.TotalSeconds,0,.1);
         try {
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
-            if((DateTime.UtcNow-started).TotalSeconds>(Current.skill=="player.arcade"?arcadeSeconds+180:Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
+            if(activeSeconds>(Current.skill=="player.arcade"?arcadeSeconds+180:Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
             if(Current.skill=="player.eat") {
                 if(Game1.player.isEating || !Game1.player.CanMove)return;
                 var remaining=Game1.player.Items[eatingSlot];int count=remaining?.QualifiedItemId==eatingItem?remaining.Stack:0;
@@ -461,7 +467,7 @@ public sealed partial class PlayerExecutor {
     }
     private void TickNight() {
         if(Current!.phase=="waking" && Game1.player.CanMove && !Game1.fadeToBlack && Game1.activeClickableMenu==null){Finish("succeeded");return;}
-        if((DateTime.UtcNow-started).TotalSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
+        if(activeSeconds>240){Finish("failed","overnight_timeout_check_save");return;}
         if(ApplyNightPolicy?.Invoke()==true)return;
         if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:true} chooser&&ApplyProfession?.Invoke(chooser)==true){Current!.effects.Add(new{kind="native_profession_policy",professions=Game1.player.professions.ToArray()});return;}
         // LevelUpMenu.receiveLeftClick is empty in 1.6; ordinary confirmations use

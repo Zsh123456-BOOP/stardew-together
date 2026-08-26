@@ -37,6 +37,7 @@ public sealed partial class ModEntry {
         return Data.Autoplay.Journal.Where(x=>x.Kind is "tool_result" or "invalid_model_reply" or "stale_decision").TakeLast(6).Skip(index+1).Any(x=>Name(x)==name);
     }
     private void RecordAgentUsage(ModelReply reply) {
+        WriteBusinessLog("model_usage",AgentJson.Encode(new{model=reply.Model,input_tokens=reply.InputTokens,output_tokens=reply.OutputTokens,cache_hit_tokens=reply.CacheHitTokens,total_tokens=reply.Tokens,latency_ms=agentLastLatency}));
         string dir=Path.Combine(Helper.DirectoryPath,"usage");Directory.CreateDirectory(dir);
         File.AppendAllText(Path.Combine(dir,"autoplay-model-usage.jsonl"),AgentJson.Encode(new{
             utc=DateTime.UtcNow,requested_model=Settings.Model,served_model=reply.Model,input_tokens=reply.InputTokens,

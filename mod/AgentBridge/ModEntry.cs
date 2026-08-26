@@ -199,9 +199,10 @@ public sealed class ModEntry : Mod {
 
     private string PrepareLab() {
         if (!config.EnableLab || api == null) throw new InvalidOperationException("lab_disabled");
-        var result = api.PrepareLab();
         ResetSession();
-        return result;
+        // Reset first. Resetting after preparation discarded managed ownership
+        // and let default Squad mimic actions compete with the test controller.
+        return api.PrepareLab();
     }
     private void RequireSession(string body) {
         using var doc = JsonDocument.Parse(body);

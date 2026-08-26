@@ -13,7 +13,7 @@ public sealed partial class ModEntry {
                 bag=p.Items.Select(i=>i==null?null:new{id=i.QualifiedItemId,count=i.Stack,quality=i.Quality,water=i is StardewValley.Tools.WateringCan w?w.WaterLeft:-1}),
                 objects=l.objects.Pairs.Select(o=>new{x=o.Key.X,y=o.Key.Y,item=o.Value.QualifiedItemId,ready=o.Value.readyForHarvest.Value,held=o.Value.heldObject.Value?.QualifiedItemId}),
                 characters=l.characters.Select(n=>new{n.Name,tile=n.TilePoint}),
-                quests=p.questLog.Select(q=>new{id=q.id.Value,done=q.completed.Value}),
+                quests=p.questLog.Select(q=>new{id=NativeQuestIdentity.Id(q),done=q.completed.Value}),
                 reservations=Data.Reservations.OrderBy(x=>x.Key)
             }));
         }catch{return "unavailable";}

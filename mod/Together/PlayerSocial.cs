@@ -10,13 +10,14 @@ public sealed partial class PlayerExecutor {
     private int socialSlot,socialStack,socialPoints,socialGifts,socialPages;
     private bool socialTalked;
     private NPC? socialNpc;
+    private Quest? socialQuestObject;
     private object SocialEvidence()=>new {
         npc=socialName,mode=socialMode,
         friendship_before=socialPoints,friendship_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Points??0,
         gifts_before=socialGifts,gifts_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.GiftsToday??0,
         talked_before=socialTalked,talked_after=Game1.player.friendshipData.GetValueOrDefault(socialName)?.TalkedToToday??false,
         item=socialItem,consumed=socialStack-Game1.player.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack),
-        quest=socialQuest,quest_completed=Game1.player.questLog.Any(q=>q.id.Value==socialQuest&&q.completed.Value)
+        quest=socialQuest,quest_completed=socialQuestObject?.completed.Value==true
         ,relationship_status=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Status.ToString(),spouse=Game1.player.spouse
     };
     private void StartSocial(JsonElement args) {
@@ -24,7 +25,8 @@ public sealed partial class PlayerExecutor {
         if(socialMode is not ("talk" or "gift" or "deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
         if(socialNpc.IsMonster||socialNpc.currentLocation==null)throw new InvalidOperationException("npc_not_available");
-        if(socialMode=="deliver"&&!Game1.player.questLog.Any(q=>q.id.Value==socialQuest&&!q.completed.Value))throw new InvalidOperationException("active_quest_id_required");
+        socialQuestObject=socialMode=="deliver"?NativeQuestIdentity.Find(socialQuest):null;
+        if(socialMode=="deliver"&&(socialQuestObject==null||socialQuestObject.completed.Value))throw new InvalidOperationException("active_quest_id_required");
         socialSlot=AgentToolRegistry.Number(args,"slot",-1);socialItem="";socialStack=0;socialPages=0;
         if(socialMode is "gift" or "relationship" || socialMode=="deliver"&&socialSlot>=0) {
             SelectSlot(args,true);
@@ -54,7 +56,7 @@ public sealed partial class PlayerExecutor {
             if(!p.CanMove||p.freezePause>0)return;
             var f=p.friendshipData.GetValueOrDefault(socialName);bool complete=socialMode switch {
                 "talk"=>f?.TalkedToToday==true,
-                "deliver"=>p.questLog.Any(q=>q.id.Value==socialQuest&&q.completed.Value),
+                "deliver"=>socialQuestObject?.completed.Value==true,
                 "gift"=>(f?.GiftsToday??0)>socialGifts,
                 _=>p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)<socialStack&&RelationshipResult(f)
             };
@@ -76,13 +78,13 @@ public sealed partial class PlayerExecutor {
             var item=p.ActiveObject;
             if(item?.QualifiedItemId!=socialItem)throw new InvalidOperationException("social_item_changed");
             var matching=p.questLog.Where(q=>!q.completed.Value&&q.OnItemOfferedToNpc(npc,item,true)).ToArray();
-            if(socialMode=="deliver"&&!matching.Any(q=>q.id.Value==socialQuest))throw new InvalidOperationException("quest_does_not_accept_this_item_or_npc");
+            if(socialMode=="deliver"&&!matching.Any(q=>NativeQuestIdentity.Id(q)==socialQuest))throw new InvalidOperationException("quest_does_not_accept_this_item_or_npc");
             if(socialMode!="deliver"&&(matching.Length>0||p.team.specialOrders.Any(o=>o.onItemDelivered?.GetInvocationList().Cast<Func<Farmer,NPC,Item,bool,int>>().Any(f=>f(p,npc,item,true)>0)==true)))
                 throw new InvalidOperationException("gift_would_deliver_quest_item_use_delivery");
             int used=socialMode=="deliver"?item.Stack:1;
             ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,used}},"",socialMode=="deliver"?"quest:"+socialQuest:"");
         } else if(socialMode=="deliver") {
-            var q=p.questLog.First(q=>q.id.Value==socialQuest);
+            var q=p.questLog.First(q=>NativeQuestIdentity.Id(q)==socialQuest);
             string? recipient=q switch {ResourceCollectionQuest r=>r.target.Value,FishingQuest f=>f.target.Value,SlayMonsterQuest s=>s.target.Value,_=>null};
             if(recipient!=socialName)throw new InvalidOperationException("quest_needs_item_or_different_recipient");
         }

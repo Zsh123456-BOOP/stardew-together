@@ -65,6 +65,7 @@ public sealed partial class ModEntry {
                                 else if(achievement is 24 or 25 or 26)node.dependencies.Add(new(dep,relation:"choose_remaining_distinct"));
                             }
                         }
+                        if(achievement is 29 or 30)node.actions.Add(Action("progress.pursue",new{targets=new[]{id},enabled=true}));
                         if(achievement is 18 or 19)node.dependencies.Add(new("house:"+(achievement==18?1:2)));
                         if(achievement is 0 or 1 or 2 or 3 or 4)node.actions.Add(Action("farm.economy",new{priority="income"}));
                         if(achievement is 31 or 32&&rule.TryGetProperty("details",out var cropList)&&cropList.ValueKind==JsonValueKind.Array)foreach(var crop in cropList.EnumerateArray())if(crop.GetProperty("shipped").GetInt32()<crop.GetProperty("required").GetInt32())node.dependencies.Add(new("ship:"+crop.GetProperty("item").GetString(),crop.GetProperty("required").GetInt32()-crop.GetProperty("shipped").GetInt32(),relation:achievement==31?"all":"any"));
@@ -110,7 +111,9 @@ public sealed partial class ModEntry {
                 }else if(definition.kind is "quest" or "order") {
                     var quest=Facts.Goals.FirstOrDefault(g=>g.Id==id);
                     if(quest!=null)foreach(var requirement in quest.Needs)node.dependencies.Add(new(requirement.Item,requirement.Count,requirement.Quality));
-                    node.actions.Add(Action("progress.read",new{}));node.gaps.Add("交付目标/期限/原生计数分别核验；仅备齐物品不代表任务完成");
+                    node.actions.Add(Action("progress.read",new{}));
+                    if(id.StartsWith("quest:"))node.actions.Add(Action("progress.pursue",new{targets=new[]{id},enabled=true}));
+                    node.gaps.Add("普通送物/采集/钓鱼/讨伐按原生计数衔接；其它任务类型需要相应交互适配");
                 }else node.gaps.Add(definition.gap);
             }else if(id.StartsWith("house:")&&int.TryParse(id[6..],out int targetLevel)&&targetLevel is >=1 and <=3) {
                 node.kind="house_upgrade";node.title="房屋升级 "+targetLevel;int currentLevel=Game1.player.HouseUpgradeLevel;

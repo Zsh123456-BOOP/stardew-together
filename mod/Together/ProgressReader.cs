@@ -17,23 +17,24 @@ public static class ProgressReader {
         var player=Game1.player;
         foreach(var q in player.questLog) {
             string type=q.GetType().Name;
-            var goal=new ProgressGoal{Id="quest:"+q.id.Value,Kind=type,Title=q.questTitle,Complete=q.completed.Value,
+            var goal=new ProgressGoal{Id="quest:"+NativeQuestIdentity.Id(q),Kind=type,Title=q.questTitle,Complete=q.completed.Value,
                 Deadline=q.daysLeft.Value>0?f.Day+q.daysLeft.Value:-1};
             string item=Text(q,"ItemId","itemId","fishId","resource","item");
             int count=Math.Max(1,Number(q,"number","numberToCollect","numberToFish","numberToDeliver"));
-            if(item.Length>0 && !item.Contains(" ") && type is "ItemDeliveryQuest" or "ResourceCollectionQuest" or "FishingQuest") {
+            if(item.Length>0 && !item.Contains(" ") && type=="ItemDeliveryQuest") {
                 string id=ItemRegistry.QualifyItemId(item)??item;
                 if(!ItemRegistry.GetDataOrErrorItem(id).IsErrorItem)goal.Needs.Add(new(){Item=id,Name=ItemRegistry.GetDataOrErrorItem(id).DisplayName,Count=count,
                     Owned=f.Stock.Where(s=>s.Item==id).Sum(s=>s.Count),Source=goal.Id});
             }
             goal.PlayerStep=type switch {
-                "ItemDeliveryQuest"=>"伙伴可备料、送回收货箱并陪同；由玩家亲手向目标 NPC 交付，游戏确认完成。",
-                "ResourceCollectionQuest"=>"备料与采集计数不同：观察任务实际计数，不能只凭库存判完成；由玩家交付。",
-                "FishingQuest"=>"伙伴渔获可供备料；是否计入指定钓鱼任务只以游戏实际计数为准，不能替代玩家亲自钓鱼要求。",
-                "SlayMonsterQuest"=>"可一起战斗；击杀归属与目标类型由原生任务计数确认，由玩家领奖。",
+                "ItemDeliveryQuest"=>"算法备料并调用玩家原生交付；NPC 可采集和运输。",
+                "ResourceCollectionQuest"=>"按本任务原生采集计数劳动，达标后玩家自动找对象交付；不重复取箱伪造采集。",
+                "FishingQuest"=>"玩家按目标鱼种选时段钓点并真实钓获，以本任务计数核验后交付；伙伴鱼不替代。",
+                "SlayMonsterQuest"=>"玩家优先当前可见目标怪物；未找到时从已解锁矿层探索，按实际任务计数交付/领奖。",
                 _=>"读取目标与期限，陪同和备料；本任务的特殊交互由玩家完成。"
             };
             f.Goals.Add(goal);
+            var nativeCount=NativeQuestIdentity.Count(q);f.Objectives.Add(new{goal=goal.Id,type,current=nativeCount.Current,max=nativeCount.Required,completed=q.completed.Value,description=q.currentObjective});
         }
         foreach(var order in player.team.specialOrders) {
             var goal=new ProgressGoal{Id="order:"+Text(order,"questKey"),Kind="special_order",Title=order.GetName(),Complete=order.questState.Value.ToString()=="Complete",

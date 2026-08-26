@@ -66,6 +66,7 @@ public sealed partial class ModEntry:Mod {
         Settings=helper.ReadConfig<Config>();
         SetupKnowledge();
         SetupAutoplay();
+        NativeQuestIdentity.Install(ModManifest.UniqueID);
         helper.Events.GameLoop.GameLaunched+=(_,_)=>{
             api=helper.ModRegistry.GetApi<ICompanionControl>("ThaliaFawnheart.TheStardewSquad");
             Notice=api==null?"需要带同行接口的 Squad 版本。":"同行已准备好，按 F8 打开。";

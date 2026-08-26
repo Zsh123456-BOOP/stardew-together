@@ -8,6 +8,7 @@ namespace Together;
 public sealed partial class ModEntry {
     private void TickMineTrip(SemanticJob job) {
         var p=Game1.player;
+        if(job.NativeQuest!=null&&(job.NativeQuest.completed.Value||NativeQuestIdentity.Count(job.NativeQuest).Current>=NativeQuestIdentity.Count(job.NativeQuest).Required))job.MineReturnReason="native_quest_objective_reached";
         if((job.Attempts>=512||(DateTime.UtcNow-job.Started).TotalMinutes>25)&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_execution_budget_return";
         if(Game1.timeOfDay>=job.Until&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_time_reserve_return";
         if((p.health<45||p.Stamina<job.Reserve+6)&&job.MineReturnReason.Length==0) {
@@ -18,6 +19,14 @@ public sealed partial class ModEntry {
             if((mine.mineLevel>120)!=(job.MineRegion=="skull")){job.MineReturnReason="mine_region_changed";WorkChild(job,"player.mine_access",new{mode="leave"},"mine_exit");return;}
             int depth=mine.mineLevel-(job.MineRegion=="skull"?120:0);job.completed=Math.Max(job.completed,depth);
             if(job.MineReturnReason.Length==0&&PlayerExecutor.TreasureChests(mine).Any()){WorkChild(job,"player.treasure",new{},"mine_treasure");return;}
+            if(job.MineReturnReason.Length==0&&job.NativeQuest is StardewValley.Quests.SlayMonsterQuest quest&&mine.characters.OfType<Monster>().Any(m=>m.Health>0&&quest.OnMonsterSlain(mine,m,false,false,true))) {
+                WorkChild(job,"player.combat",new{count=1,quest_id=job.quest_id,min_health=40},"mine_combat");return;
+            }
+            if(job.MineReturnReason.Length==0&&job.NativeQuest is StardewValley.Quests.ResourceCollectionQuest resource) {
+                var ore=mine.objects.Pairs.Where(o=>!job.Excluded.Contains(o.Key.X+","+o.Key.Y)&&ResourceRules.Nodes.GetValueOrDefault(o.Value.ItemId)==resource.ItemId.Value).OrderBy(o=>Vector2.DistanceSquared(o.Key,p.Tile)).FirstOrDefault(o=>WorkStand(mine,o.Key.ToPoint())!=null);
+                int pick=WorkSlot(i=>i is Pickaxe);
+                if(ore.Value!=null&&pick>=0&&p.Stamina-Math.Max(4,ore.Value.MinutesUntilReady*2+2)>=job.Reserve){WorkChild(job,"player.work",new{skill="clear",slot=pick,tiles=new[]{new{x=(int)ore.Key.X,y=(int)ore.Key.Y}}},"mine_stone",ore.Key.X+","+ore.Key.Y);return;}
+            }
             if(depth>=job.MineTarget&&job.MineReturnReason.Length==0)job.MineReturnReason="mine_target_depth_reached";
             if(job.MineReturnReason.Length>0){WorkChild(job,"player.mine_access",new{mode="leave"},"mine_exit");return;}
             if(job.MineFloor!=mine.mineLevel){job.MineFloor=mine.mineLevel;job.Excluded.Clear();}
@@ -37,7 +46,7 @@ public sealed partial class ModEntry {
             if(mine.characters.OfType<Monster>().Any(m=>m.Health>0)){WorkChild(job,"player.combat",new{count=1,min_health=40},"mine_combat");return;}
             job.MineReturnReason="mine_no_reachable_progress_route";return;
         }
-        if(job.MineReturnReason.Length>0){StopSemanticWork(job,job.MineReturnReason,job.MineReturnReason=="mine_target_depth_reached");return;}
+        if(job.MineReturnReason.Length>0){StopSemanticWork(job,job.MineReturnReason,job.MineReturnReason is "mine_target_depth_reached" or "native_quest_objective_reached");return;}
         if(job.MineRegion=="skull") {
             if(!p.hasSkullKey&&!Utility.IsPassiveFestivalDay("DesertFestival")){StopSemanticWork(job,"native_skull_key_required_collect_floor_120_chest");return;}
             if(Game1.currentLocation.NameOrUniqueName is not ("Desert" or "SkullCave")) {
@@ -46,7 +55,7 @@ public sealed partial class ModEntry {
             }
             WorkChild(job,"player.mine_access",new{mode="skull"},"mine_enter");return;
         }
-        int stop=Math.Min(MineShaft.lowestLevelReached,job.MineTarget-1)/5*5;
+        int stop=job.MineStartLevel>=0?job.MineStartLevel:Math.Min(MineShaft.lowestLevelReached,job.MineTarget-1)/5*5;
         WorkChild(job,"player.mine_access",new{mode=stop>=5?"elevator":"enter",level=stop>=5?stop:1},"mine_enter");
     }
 }

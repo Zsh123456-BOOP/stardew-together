@@ -69,7 +69,7 @@ public sealed partial class ModEntry {
         foreach(var pursuit in Data.Autoplay.Campaign.Targets) {
             if(!ReconcilePursuitTasks(pursuit))continue;
             if(!native.TryGetValue(pursuit.Target,out var target)) {
-                if(pursuit.CompletionObserved&&pursuit.State!="blocked"&&pursuit.Target.StartsWith("quest:"))PursuitState(pursuit,"complete","已观察原生完成，领奖后从活动日志移除");
+                if(pursuit.Target.StartsWith("quest:")&&(pursuit.CompletionObserved||NativeQuestIdentity.Completed(pursuit.Target[6..])))PursuitState(pursuit,"complete","已观察原生完成，领奖后从活动日志移除");
                 else PursuitState(pursuit,"blocked","native_target_no_longer_available");continue;
             }
             pursuit.CompletionObserved=target.completed==true;

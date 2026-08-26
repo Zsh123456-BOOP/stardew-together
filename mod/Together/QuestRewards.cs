@@ -18,7 +18,7 @@ public sealed partial class PlayerExecutor {
     private int rewardBefore,rewardAmount;
     private void StartQuestReward(System.Text.Json.JsonElement args) {
         rewardId=AgentToolRegistry.Text(args,"quest_id");
-        rewardQuest=Game1.player.questLog.FirstOrDefault(q=>q.id.Value==rewardId);
+        rewardQuest=Game1.player.questLog.FirstOrDefault(q=>NativeQuestIdentity.Id(q)==rewardId);
         rewardQuest??=Game1.player.team.specialOrders.FirstOrDefault(q=>q.questKey.Value==rewardId);
         if(rewardQuest==null||!rewardQuest.ShouldDisplayAsComplete()||!rewardQuest.HasMoneyReward())throw new InvalidOperationException("completed_unclaimed_money_reward_required");
         rewardBefore=Game1.player.Money;rewardAmount=rewardQuest.GetMoneyReward();rewardMenu=new();Game1.activeClickableMenu=rewardMenu;Current!.phase="reward_find";

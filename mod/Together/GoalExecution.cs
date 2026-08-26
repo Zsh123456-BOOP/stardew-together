@@ -31,8 +31,13 @@ public sealed partial class ModEntry {
         return locations.SelectMany(l=>l.objects.Values.Where(o=>o.GetMachineData()!=null).Select(o=>(l,o)));
     }
     private string? FindGoalResourceLocation(string item,string skill) {
-        var locations=new[]{Game1.currentLocation,Game1.getFarm()}.Concat(Game1.locations).Distinct();
-        return locations.FirstOrDefault(l=>skill=="resource"?l.objects.Values.Any(o=>ResourceRules.Nodes.GetValueOrDefault(o.ItemId)==item):l.resourceClumps.Any(c=>ResourceRules.Clump(c.parentSheetIndex.Value)?.Output==item))?.NameOrUniqueName;
+        var locations=new[]{Game1.currentLocation,Game1.getFarm()}.Concat(Game1.locations).Concat(StardewValley.Locations.MineShaft.activeMines).Distinct();
+        bool Source(GameLocation l)=>l.objects.Values.Any(o=>skill switch {
+            "resource"=>ResourceRules.Nodes.GetValueOrDefault(o.ItemId)==item,
+            "wood"=>o.IsTwig(),"stone"=>o.IsBreakableStone(),"fiber"=>o.IsWeeds(),_=>false
+        })||skill=="wood"&&l.terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.Tree>().Any(t=>t.growthStage.Value>=5&&!t.tapped.Value)||
+        l.resourceClumps.Any(c=>ResourceRules.Clump(c.parentSheetIndex.Value) is {} rule&&rule.Output==item&&Game1.player.Items.OfType<Tool>().Any(t=>t.UpgradeLevel>=rule.Level&&(rule.Tool=="axe"?t is StardewValley.Tools.Axe:t is StardewValley.Tools.Pickaxe)));
+        return locations.FirstOrDefault(l=>Source(l)&&(l==Game1.currentLocation||PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)!=null))?.NameOrUniqueName;
     }
     internal GoalBatch AgentGoalPrepare(JsonElement args) {
         RefreshFacts(true);

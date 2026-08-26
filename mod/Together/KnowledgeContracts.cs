@@ -10,7 +10,7 @@ public sealed partial class ModEntry {
         void Check(bool pass,string label)=>results.Add(new{pass,label});
         var notebook=JsonSerializer.Serialize(Data.Knowledge);
         var random=Game1.random;Game1.random=new Random(82519);
-        string Before()=>JsonSerializer.Serialize(new{money=Game1.player.Money,items=Game1.player.Items.Where(i=>i!=null).Select(i=>new{i.QualifiedItemId,i.Stack,i.Quality}),quests=Game1.player.questLog.Select(q=>new{id=q.id.Value,complete=q.completed.Value}),fish=Game1.player.fishCaught.Pairs.Select(p=>new{p.Key,p.Value}),achievements=Game1.player.achievements.ToArray()});
+        string Before()=>JsonSerializer.Serialize(new{money=Game1.player.Money,items=Game1.player.Items.Where(i=>i!=null).Select(i=>new{i.QualifiedItemId,i.Stack,i.Quality}),quests=Game1.player.questLog.Select(q=>new{id=NativeQuestIdentity.Id(q),complete=q.completed.Value}),fish=Game1.player.fishCaught.Pairs.Select(p=>new{p.Key,p.Value}),achievements=Game1.player.achievements.ToArray()});
         string before=Before();
         try {
             Data.Knowledge.DiscoveredOnly=false;

@@ -106,9 +106,9 @@ public static class WorldReader {
             f.Animals.Add(new{name=animal.displayName,location=animal.currentLocation?.NameOrUniqueName,x=animal.TilePoint.X,y=animal.TilePoint.Y,home=animal.home?.GetIndoors()?.NameOrUniqueName,pet=animal.wasPet.Value,fullness=animal.fullness.Value});
         }
         foreach(var q in p.questLog) {
-            try{f.Quests.Add(new{id=q.id.Value,type=q.GetType().Name,title=q.questTitle,objective=q.currentObjective,complete=q.completed.Value,
+            try{f.Quests.Add(new{id=NativeQuestIdentity.Id(q),native_id=q.id.Value,progress=new{current=NativeQuestIdentity.Count(q).Current,required=NativeQuestIdentity.Count(q).Required},type=q.GetType().Name,title=q.questTitle,objective=q.currentObjective,complete=q.completed.Value,
                 days_left=q.daysLeft.Value,daily=q.dailyQuest.Value,conditions=QuestConditions(q),credit="read_only_player_quest; companion labor does not imply completion"});}
-            catch{f.Errors.Add("quest:"+q.id.Value);}
+            catch{f.Errors.Add("quest:"+NativeQuestIdentity.Id(q));}
         }
         foreach(var pair in Game1.netWorldState.Value.BundleData) {
             try {

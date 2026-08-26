@@ -8,10 +8,14 @@ namespace Together;
 public sealed partial class PlayerExecutor {
     private int combatRequested,combatMinHealth,combatWeaponSlot,combatSwings;
     private uint combatBaseline;
+    private StardewValley.Quests.SlayMonsterQuest? combatQuest;
+    private int combatQuestBefore;
     private Monster? combatTarget;
     private int combatTargetHealth;
     private Point combatTargetTile;
     private void StartCombat(JsonElement args) {
+        string questId=AgentToolRegistry.Text(args,"quest_id");combatQuest=null;
+        if(questId.Length>0){combatQuest=NativeQuestIdentity.Find(questId) as StardewValley.Quests.SlayMonsterQuest??throw new InvalidOperationException("active_slay_quest_required");combatQuestBefore=combatQuest.numberKilled.Value;}
         combatRequested=AgentToolRegistry.Number(args,"count",0);combatMinHealth=AgentToolRegistry.Number(args,"min_health",35);
         if(combatRequested is <0 or >50||combatMinHealth is <20 or >200)throw new InvalidOperationException("invalid_combat_limits");
         combatWeaponSlot=Enumerable.Range(0,Game1.player.Items.Count).Where(i=>Game1.player.Items[i] is MeleeWeapon w&&!w.isScythe()).OrderByDescending(i=>((MeleeWeapon)Game1.player.Items[i]).maxDamage.Value).FirstOrDefault(-1);
@@ -22,7 +26,8 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("combat_location_changed");
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("combat_interrupted_by_menu");
         var p=Game1.player;
-        Current!.completed=(int)Math.Max(0,(long)p.stats.MonstersKilled-combatBaseline);
+        Current!.completed=combatQuest!=null?Math.Max(0,combatQuest.numberKilled.Value-combatQuestBefore):(int)Math.Max(0,(long)p.stats.MonstersKilled-combatBaseline);
+        if(combatQuest?.completed.Value==true){Current.effects.Add(new{kind="native_quest_completed",quest=NativeQuestIdentity.Id(combatQuest)});Finish("succeeded");return;}
         if(p.health<combatMinHealth||Game1.timeOfDay>=2300)throw new InvalidOperationException("combat_health_or_time_reserve_retreat_required");
         if(p.UsingTool||!p.CanMove)return;
         if(Current.phase=="combat_swing") {
@@ -33,7 +38,7 @@ public sealed partial class PlayerExecutor {
             if(after<combatTargetHealth)combatSwings=0;Current.phase="combat_select";
         }
         if(combatRequested>0&&Current.completed>=combatRequested){Finish("succeeded");return;}
-        var monsters=Game1.currentLocation.characters.OfType<Monster>().Where(m=>m.Health>0).OrderBy(m=>Vector2.DistanceSquared(m.Position,p.Position)).ToArray();
+        var monsters=Game1.currentLocation.characters.OfType<Monster>().Where(m=>m.Health>0).OrderBy(m=>Vector2.DistanceSquared(m.Position,p.Position)<128*128?0:combatQuest?.OnMonsterSlain(Game1.currentLocation,m,false,false,true)==true?1:2).ThenBy(m=>Vector2.DistanceSquared(m.Position,p.Position)).ToArray();
         if(monsters.Length==0){Finish(combatRequested==0?"succeeded":"failed",combatRequested==0?null:"current_area_clear_before_requested_kills");return;}
         if(combatTarget==null||!monsters.Contains(combatTarget)){combatTarget=monsters[0];combatSwings=0;StopWalk();}
         if(Math.Abs(combatTarget.TilePoint.X-p.TilePoint.X)+Math.Abs(combatTarget.TilePoint.Y-p.TilePoint.Y)>1) {

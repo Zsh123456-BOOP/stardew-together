@@ -38,7 +38,10 @@ public sealed class SemanticJob {
     internal bool IncludeTrees;
     internal string PlanId="";
     internal int MinimumQuality;
-    internal int MineTarget,MineFloor=-1;
+    internal int MineTarget,MineFloor=-1,MineStartLevel=-1;
+    internal StardewValley.Quests.Quest? NativeQuest;
+    public string? quest_id {get;set;}
+    public object? native_quest_progress=>NativeQuest==null?null:new{current=NativeQuestIdentity.Count(NativeQuest).Current,required=NativeQuestIdentity.Count(NativeQuest).Required,completed=NativeQuest.completed.Value};
     internal string MineRegion="normal";
     internal int MineTravelBudget,MineKeepGold=500,VolcanoFailures;
     internal string MineReturnReason="";
@@ -62,6 +65,17 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        string questId=AgentToolRegistry.Text(args,"quest_id");
+        if(questId.Length>0) {
+            job.NativeQuest=NativeQuestIdentity.Find(questId)??throw new InvalidOperationException("active_native_quest_required");job.quest_id=questId;
+            bool matches=job.NativeQuest switch {
+                StardewValley.Quests.FishingQuest q=>goal=="fish"&&q.ItemId.Value==AgentToolRegistry.Text(args,"item"),
+                StardewValley.Quests.ResourceCollectionQuest q=>goal=="mine_trip"||goal is "wood" or "stone" or "fiber" or "hardwood" or "resource"&&q.ItemId.Value==job.Item,
+                StardewValley.Quests.SlayMonsterQuest=>goal=="mine_trip",
+                _=>false
+            };
+            if(actor!="player"||!matches||job.NativeQuest.completed.Value)throw new InvalidOperationException("quest_work_goal_or_actor_mismatch");
+        }
         if(goal=="fish") {
             job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
             if(job.requested is <1 or >100||job.Item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(job.Item.StartsWith("(O)")?job.Item[3..]:job.Item))throw new InvalidOperationException("fish_trip_requires_valid_item_and_count");
@@ -72,9 +86,10 @@ public sealed partial class ModEntry {
             if(job.MineTarget is <1 or >10||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_volcano_target_or_budget");job.requested=0;
         }
         if(goal=="mine_trip") {
+            job.MineStartLevel=AgentToolRegistry.Number(args,"start_level",-1);
             job.MineRegion=AgentToolRegistry.Text(args,"region","normal");job.MineTarget=AgentToolRegistry.Number(args,"target_level",job.MineRegion=="skull"?25:Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5));
             job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
-            if(job.MineRegion is not ("normal" or "skull")||job.MineTarget<1||job.MineTarget>(job.MineRegion=="skull"?1000:120)||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_mine_target_or_budget");job.requested=0;
+            if(job.MineStartLevel < -1||job.MineStartLevel>=job.MineTarget||job.MineStartLevel>StardewValley.Locations.MineShaft.lowestLevelReached||job.MineStartLevel>=0&&job.MineStartLevel%5!=0||job.MineRegion is not ("normal" or "skull")||job.MineTarget<1||job.MineTarget>(job.MineRegion=="skull"?1000:120)||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_mine_target_or_budget");job.requested=0;
         }
         if(goal=="resource"&&!ResourceRules.Nodes.Values.Contains(job.Item))throw new InvalidOperationException("resource_item_has_no_known_native_node_route");
         job.IncludeTrees=args.TryGetProperty("include_trees",out var trees)&&trees.ValueKind==JsonValueKind.True;
@@ -113,7 +128,7 @@ public sealed partial class ModEntry {
     }
     private JsonElement WorkActor(string id)=>World().GetProperty("actors").EnumerateArray().First(a=>a.GetProperty("id").GetString()==id);
     private static int CompanionCargoSlots(JsonElement actor)=>actor.TryGetProperty("cargo_slots",out var slots)?slots.GetInt32():actor.GetProperty("cargo").EnumerateObject().Count();
-    private int WorkCount(SemanticJob j)=>j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
+    private int WorkCount(SemanticJob j)=>j.NativeQuest!=null?NativeQuestIdentity.Count(j.NativeQuest).Current:j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
@@ -168,6 +183,7 @@ public sealed partial class ModEntry {
         if(Game1.Date.TotalDays!=j.Day){StopSemanticWork(j,"day_changed_replan");return;}
         if(Game1.eventUp||Game1.activeClickableMenu!=null){StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
+        if(j.NativeQuest!=null&&j.goal!="mine_trip"&&(j.NativeQuest.completed.Value||NativeQuestIdentity.Count(j.NativeQuest).Current>=NativeQuestIdentity.Count(j.NativeQuest).Required)){StopSemanticWork(j,"native_quest_objective_reached",true);return;}
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
         if(j.goal=="fish"){TickFishingTrip(j);return;}
         if(j.goal=="mine_trip"){TickMineTrip(j);return;}

@@ -25,7 +25,7 @@ public sealed partial class ModEntry {
         if(Facts.AnimalsUnpetted>0)Add(92,"animals:pet","动物还有未完成抚摸，可由玩家或伙伴分担",new{tool="work.run",args=new{goal="pet",count=0}});
         if(Facts.FeedNeeded>0)Add(93,"animals:feed","食槽缺草，先取筒仓实际库存再喂养",new{tool="work.run",args=new{goal="feed",count=0}});
         foreach(var quest in Game1.player.questLog.Where(q=>q.completed.Value&&q.HasMoneyReward()).Take(3))
-            Add(90,"reward:"+quest.id.Value,"任务已完成，金币奖励尚未领取",new{tool="player.claim_reward",args=new{quest_id=quest.id.Value}});
+            Add(90,"reward:"+NativeQuestIdentity.Id(quest),"任务已完成，金币奖励尚未领取",new{tool="player.claim_reward",args=new{quest_id=NativeQuestIdentity.Id(quest)}});
         if(Game1.player.deepestMineLevel<120&&Game1.player.Stamina>=80&&Game1.player.health>=70&&Game1.timeOfDay<1400&&Game1.player.Items.Any(i=>i is StardewValley.Tools.Pickaxe)&&Game1.player.Items.Any(i=>i is StardewValley.Tools.MeleeWeapon w&&!w.isScythe()))
             Add(60,"mine:next_checkpoint","体力生命和时间允许，推进下一电梯里程碑",new{tool="work.run",args=new{goal="mine_trip",target_level=Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5),until=2100,reserve_stamina=25}});
         foreach(var bundle in Facts.Bundles.Where(b=>!b.Complete&&b.Missing.Any(n=>Facts.Stock.Where(s=>s.Item==n.Item&&s.Quality>=n.Quality).Sum(s=>s.Count)>=n.Count)).Take(2))

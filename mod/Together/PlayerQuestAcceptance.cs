@@ -8,7 +8,7 @@ public sealed partial class PlayerExecutor {
     internal static object ReadQuestBoard() {
         if(Game1.activeClickableMenu is Billboard billboard) {
             var q=Game1.questOfTheDay;
-            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=q.id.Value,title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value}};
+            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value}};
         }
         if(Game1.activeClickableMenu is SpecialOrdersBoard orders) {
             object? Entry(SpecialOrder? order,bool available)=>order==null?null:new{id=order.questKey.Value,title=order.GetName(),description=order.GetDescription(),deadline=order.dueDate.Value,available,objectives=order.objectives.Select(o=>new{type=o.GetType().Name,description=o.GetDescription(),current=o.GetCount(),required=o.GetMaxCount()})};
@@ -20,7 +20,7 @@ public sealed partial class PlayerExecutor {
         string id=AgentToolRegistry.Text(args,"id");
         if(Game1.activeClickableMenu is Billboard board) {
             var q=Game1.questOfTheDay;
-            if(q==null||q.id.Value!=id||!board.acceptQuestButton.visible||q.accepted.Value)throw new InvalidOperationException("observed_daily_quest_unavailable");
+            if(q==null||NativeQuestIdentity.Id(q)!=id||!board.acceptQuestButton.visible||q.accepted.Value)throw new InvalidOperationException("observed_daily_quest_unavailable");
             var bounds=board.acceptQuestButton.bounds;board.receiveLeftClick(bounds.Center.X,bounds.Center.Y);
             if(!q.accepted.Value||!Game1.player.questLog.Contains(q))throw new InvalidOperationException("native_daily_quest_acceptance_not_verified");
             Current!.effects.Add(new{kind="native_daily_quest_accepted",id,deadline=Game1.Date.TotalDays+q.daysLeft.Value});board.exitThisMenu();

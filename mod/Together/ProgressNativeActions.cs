@@ -28,7 +28,7 @@ public sealed partial class ModEntry {
     }
     private bool TryClaimPursuitReward(ProgressPursuit pursuit) {
         if(pursuit.State=="blocked")return false;
-        IQuest? quest=pursuit.Target.StartsWith("quest:")?Game1.player.questLog.FirstOrDefault(q=>q.id.Value==pursuit.Target[6..]):pursuit.Target.StartsWith("order:")?Game1.player.team.specialOrders.FirstOrDefault(q=>q.questKey.Value==pursuit.Target[6..]):null;
+        IQuest? quest=pursuit.Target.StartsWith("quest:")?Game1.player.questLog.FirstOrDefault(q=>NativeQuestIdentity.Id(q)==pursuit.Target[6..]):pursuit.Target.StartsWith("order:")?Game1.player.team.specialOrders.FirstOrDefault(q=>q.questKey.Value==pursuit.Target[6..]):null;
         return quest?.ShouldDisplayAsComplete()==true&&quest.HasMoneyReward()&&QueuePursuit(pursuit,new[]{("player.claim_reward",(object)new{quest_id=pursuit.Target[6..]})});
     }
     // Withdraw exact real stock first. Only delegate acquisition to a shared goal
@@ -73,6 +73,7 @@ public sealed partial class ModEntry {
     private bool TryAdvanceNativePursuit(ProgressPursuit pursuit,NativeGoalDefinition definition) {
         string id=pursuit.Target;var p=Game1.player;var policy=Data.Autoplay.Campaign;var actions=new List<(string Tool,object Args)>();
         if(id.StartsWith("achievement:")&&int.TryParse(id[12..],out int incomeAchievement)&&incomeAchievement is >=0 and <=4)return PursueIncome(pursuit,incomeAchievement);
+        if(id is "achievement:29" or "achievement:30")return PursueQuestAchievement(pursuit,int.Parse(id[12..]));
         if(id is "family:marriage" or "family:children" or "platform-condition:Achievement_FullHouse")return PursueFamily(pursuit,id!="family:marriage");
         if(id.StartsWith("friendship:")) {
             string npc=id[11..];int threshold=Game1.characterData.TryGetValue(npc,out var character)&&character.CanBeRomanced?2000:2500;
@@ -191,18 +192,7 @@ public sealed partial class ModEntry {
             QueuePursuit(pursuit,new[]{("player.service",(object)new{location="ArchaeologyHouse",service="museum_donate"}),("player.donate_museum",(object)new{count=0})});return true;
         }
         if(id.StartsWith("quest:")) {
-            var quest=p.questLog.FirstOrDefault(q=>q.id.Value==id[6..]);if(quest==null)return false;
-            string? recipient=quest switch{ItemDeliveryQuest q=>q.target.Value,ResourceCollectionQuest q=>q.target.Value,FishingQuest q=>q.target.Value,SlayMonsterQuest q=>q.target.Value,_=>null};
-            if(recipient==null)return false;
-            if(quest is ItemDeliveryQuest) {
-                var needs=Facts.Goals.First(g=>g.Id==id).Needs;
-                if(!PursuitMaterials(pursuit,needs.Select(n=>(n.Item,n.Count,n.Quality)),actions))return true;
-                if(actions.Count>0){QueuePursuit(pursuit,actions);return true;} // Resolve the real slot after the withdrawal.
-                var npc=Game1.getCharacterFromName(recipient);int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]!=null&&quest.OnItemOfferedToNpc(npc,p.Items[i],true),-1);
-                if(slot<0){PursuitState(pursuit,"waiting","原生任务当前不接受背包物品");return true;}
-                QueuePursuit(pursuit,new[]{("player.social",(object)new{npc=recipient,mode="deliver",quest_id=quest.id.Value,slot})});return true;
-            }
-            PursuitState(pursuit,"waiting","采集/钓鱼/击杀任务需先满足本任务原生行为计数，再交付；不能用已有库存替代");return true;
+            var quest=NativeQuestIdentity.Find(id[6..]);return quest!=null&&PursueQuest(pursuit,quest);
         }
         if(id.StartsWith("ship:")||id is "achievement:31" or "achievement:32" or "achievement:34") {
             var needs=new List<(string Item,int Count,int Quality)>();

@@ -10,6 +10,10 @@ public sealed partial class ModEntry {
     // not evidence that a human played a fishing minigame or that NPC loot earned credit.
     private string NativeQuestContracts() {
         var results=new List<object>();var p=Game1.player;
+        var generatedA=new ResourceCollectionQuest();var generatedB=new ResourceCollectionQuest();
+        string handleA=NativeQuestIdentity.Id(generatedA),handleB=NativeQuestIdentity.Id(generatedB);
+        var reloaded=new ResourceCollectionQuest();reloaded.modDataForSerialization=generatedA.modDataForSerialization;
+        results.Add(new{kind="generated_quest_identity",distinct=handleA!=handleB,stable=handleA==NativeQuestIdentity.Id(generatedA),metadata_roundtrip=handleA==NativeQuestIdentity.Id(reloaded),native_id_unchanged=string.IsNullOrEmpty(generatedA.id.Value)});
         var npc=FindCharacter("Leah");var wrongNpc=FindCharacter("Abigail");
         var delivery=new ItemDeliveryQuest("Leah","(O)24","同行交付检查","交付实际物品","交付防风草","收到了，谢谢。") {id={Value="together-lab-delivery"}};
         p.questLog.Add(delivery);
@@ -34,7 +38,7 @@ public sealed partial class ModEntry {
         var combat=new SlayMonsterQuest();combat.id.Value="together-lab-combat";combat.monsterName.Value="Green Slime";combat.numberToKill.Value=1;combat.target.Value="null";p.questLog.Add(combat);
         combat.OnMonsterSlain(Game1.currentLocation,new Monster("Bat",Vector2.Zero),false,false);int wrongMonster=combat.numberKilled.Value;
         combat.OnMonsterSlain(Game1.currentLocation,new Monster("Green Slime",Vector2.Zero),false,false);
-        results.Add(new{kind="combat",wrong_monster_count=wrongMonster,native_event_count=combat.numberKilled.Value,completed=combat.completed.Value});
+        results.Add(new{kind="combat",wrong_monster_count=wrongMonster,native_event_count=combat.numberKilled.Value,completed=combat.completed.Value,removed_completion_recorded=NativeQuestIdentity.Completed(NativeQuestIdentity.Id(combat))});
         foreach(var q in new Quest[]{delivery,resource,fish,combat})p.questLog.Remove(q);
         Game1.exitActiveMenu();
         return JsonSerializer.Serialize(new{scope="native game event contracts, with explicit lab fixtures; not a player gameplay recording",results});

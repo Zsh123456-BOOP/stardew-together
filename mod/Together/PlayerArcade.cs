@@ -67,7 +67,7 @@ public sealed partial class PlayerExecutor {
             for(int y=0;y<l.Map.Layers[0].LayerHeight&&arcadeCabinet==null;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++)if(l.doesTileHaveProperty(x,y,"Action","Buildings")==action)try{var p=new Point(x,y);Walk(Approach(p,true));arcadeCabinet=p;break;}catch(InvalidOperationException){}
             if(arcadeCabinet==null)throw new InvalidOperationException("native_arcade_cabinet_unreachable");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(arcadeCabinet.Value);Face(arcadeCabinet.Value);NativeMenuInput.InteractWorld(arcadeCabinet.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(arcadeCabinet.Value);Face(arcadeCabinet.Value);NativeMenuInput.InteractWorld(arcadeCabinet.Value);
         if(Game1.currentMinigame==null&&Game1.activeClickableMenu==null)throw new InvalidOperationException("native_arcade_did_not_open");
     }
     internal Keys[] ArcadeKeys(AbigailGame game) {

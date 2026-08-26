@@ -53,7 +53,7 @@ public sealed partial class PlayerExecutor {
             }
             if(shipmentBin==null)throw new InvalidOperationException("native_shipping_bin_unreachable");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(shipmentTile);Face(shipmentTile);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(shipmentTile);Face(shipmentTile);
         if(!NativeMenuInput.InteractWorld(shipmentTile)||Game1.activeClickableMenu is not ItemGrabMenu {shippingBin:true})throw new InvalidOperationException("native_shipping_menu_did_not_open");Current!.phase="shipping_manifest";
     }
 }

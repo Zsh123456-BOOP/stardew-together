@@ -35,7 +35,7 @@ public sealed partial class PlayerExecutor {
             StopWalk();Walk(home.getKitchenStandingSpot());Current.phase="production_kitchen";return;
         }
         if(Current.phase=="production_kitchen") {
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();OpenProductionMenu();return;
+            if(!AtWalkTarget){MonitorWalk();return;}StopWalk();OpenProductionMenu();return;
         }
         if(productionMenu==null||Game1.activeClickableMenu!=productionMenu)throw new InvalidOperationException("crafting_menu_replaced");
         if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(200);

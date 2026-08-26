@@ -93,6 +93,8 @@ public sealed partial class ModEntry {
                 break;
             }
             case "agent_fixture": {
+                foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=can.waterCanMax;
+                Game1.player.Stamina=Game1.player.MaxStamina;Game1.player.health=Game1.player.maxHealth;
                 PauseAutoplay("lab_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
                 Game1.warpFarmer("Farm",62,17,false);
                 for(int x=61;x<=63;x++)for(int y=18;y<=19;y++){farm.objects.Remove(new Vector2(x,y));farm.terrainFeatures.Remove(new Vector2(x,y));}
@@ -185,6 +187,19 @@ public sealed partial class ModEntry {
                     animal.home=coop;animal.currentLocation=house;
                     house.animals.Add(animal.myID.Value,animal);house.animalsThatLiveHere.Add(animal.myID.Value);
                 }
+                break;
+            }
+            case "business_fixture": {
+                RunLabScenario(JsonSerializer.Serialize(new{scenario="production"}));
+                farm.animals.Remove(-449404282);
+                Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.SharedGoals.Clear();Data.Projects.Clear();
+                Game1.player.Money=20000;Game1.timeOfDay=1000;Game1.player.Stamina=Game1.player.MaxStamina;
+                foreach(int i in Enumerable.Range(0,Game1.player.Items.Count))if(Game1.player.Items[i] is StardewValley.Object)Game1.player.Items[i]=null;
+                foreach(var supply in new[]{("(O)398",20),("(O)24",20),("(O)176",20),("(BC)105",1)})Game1.player.addItemToInventoryBool(ItemRegistry.Create(supply.Item1,supply.Item2));
+                foreach(var spec in new[]{(48,25,"(BC)12"),(49,25,"(BC)15"),(50,25,"(BC)24")}) {
+                    var tile=new Vector2(spec.Item1,spec.Item2);farm.terrainFeatures.Remove(tile);var machine=ItemRegistry.Create<StardewValley.Object>(spec.Item3);machine.TileLocation=tile;farm.objects[tile]=machine;
+                }
+                var treeTile=new Vector2(52,25);farm.objects.Remove(treeTile);farm.terrainFeatures[treeTile]=new Tree("1",5);
                 break;
             }
             case "animal_products": {

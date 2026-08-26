@@ -21,13 +21,14 @@ public sealed partial class ModEntry {
         return null;
     }
     private bool HasLivingMaterialRoute(string item) {
-        if(ReadyLivingSource(item)!=null)return true;
+        if(ReadyLivingSource(item)!=null||HasTappedSource(item))return true;
         var crops=DataLoader.Crops(Game1.content);var farm=Game1.getFarm();
         return farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)==item)
             ||crops.Any(c=>ItemRegistry.QualifyItemId(c.Value.HarvestItemId)==item&&c.Value.Seasons.Contains(farm.GetSeason())&&Facts.Stock.Any(s=>s.Item=="(O)"+c.Key&&s.Count>0));
     }
     private bool PrepareLivingMaterial(SharedGoal goal,GoalNode node,Action<string,object,string> add,out string wait) {
         wait="";
+        if(PrepareTappedMaterial(node,add,out wait))return true;
         if(ReadyLivingSource(node.Item) is {} source) {
             add("work.run",new{goal=source.Skill,location=source.Location,item=node.Item,count=Math.Min(node.ToPrepare,999),quality=node.Quality},"按真实地图收集目标材料，品质以实际入包计数");return true;
         }

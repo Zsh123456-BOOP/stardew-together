@@ -9,10 +9,10 @@ public sealed partial class ModEntry {
         if(args.TryGetProperty("assignments",out var raw)) {
             if(raw.ValueKind!=JsonValueKind.Object)throw new InvalidOperationException("routine_assignments_required");
             var assignments=JsonSerializer.Deserialize<Dictionary<string,string>>(raw.GetRawText())!;
-            if(assignments.Count>11)throw new InvalidOperationException("routine_size_limit");
+            if(assignments.Count>12)throw new InvalidOperationException("routine_size_limit");
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
             foreach(var pair in assignments) {
-                if(pair.Key is not ("crab_pots" or "orchard" or "mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "crab_pots" or "orchard" or "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
+                if(pair.Key is not ("clear_dead" or "crab_pots" or "orchard" or "mail" or "cooking_tv" or "water" or "harvest" or "pet" or "feed" or "milk" or "shear" or "animal_collect")||!actors.Contains(pair.Value)||pair.Value!="player"&&pair.Key is "clear_dead" or "crab_pots" or "orchard" or "mail" or "cooking_tv" or "milk" or "shear" or "animal_collect")throw new InvalidOperationException("unsupported_routine_assignment");
             }
             policy.Assignments=assignments;policy.Version++;policy.SubmittedDay=-1;
         }
@@ -28,7 +28,7 @@ public sealed partial class ModEntry {
         try {
             RefreshFacts(true);var tasks=new List<AgentTaskSpec>();var skips=new List<object>();
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
-            foreach(string goal in new[]{"cooking_tv","mail","harvest","water","feed","pet","animal_collect","milk","shear","orchard","crab_pots"}) {
+            foreach(string goal in new[]{"cooking_tv","mail","clear_dead","harvest","water","feed","pet","animal_collect","milk","shear","orchard","crab_pots"}) {
                 if(!policy.Assignments.TryGetValue(goal,out string? actor))continue;
                 if(!actors.Contains(actor)){skips.Add(new{goal,reason="assigned_companion_not_available"});continue;}
                 if(goal=="crab_pots") {
@@ -42,6 +42,13 @@ public sealed partial class ModEntry {
                 if(goal is "mail" or "cooking_tv") {
                     bool available=goal=="mail"?Game1.mailbox.Count>0:Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Sun"||Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Wed"&&Game1.stats.DaysPlayed>7;
                     if(available)tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-{goal}",actor="player",tool=goal=="mail"?"player.read_mail":"player.watch_tv",args=JsonSerializer.SerializeToElement(new{channel="cooking"}),purpose="按持续政策阅读今日邮件/烹饪节目",day=Game1.Date.TotalDays,deadline=1800});
+                    continue;
+                }
+                if(goal is "water" or "harvest" or "clear_dead") {
+                    foreach(var location in MaterialLocations().Where(l=>l.IsFarm||l.IsGreenhouse)) {
+                        bool cropWork=location.terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Any(d=>d.crop!=null&&(goal=="clear_dead"?d.crop.dead.Value:!d.crop.dead.Value&&(goal=="harvest"?d.readyForHarvest():d.needsWatering()&&d.state.Value!=1)));
+                        if(cropWork)tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-{goal}-{tasks.Count}",actor=actor,tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id=actor,goal,location=location.NameOrUniqueName,count=0,until=1800}),purpose="按实际农场/温室地块完成"+goal,day=Game1.Date.TotalDays,deadline=1800});
+                    }
                     continue;
                 }
                 bool needed=goal switch{"harvest"=>Facts.RipeCrops>0,"water"=>Facts.DryCrops>0,"pet"=>Facts.AnimalsUnpetted>0,"feed"=>Facts.FeedNeeded>0,_=>Game1.getFarm().getAllFarmAnimals().Any()};

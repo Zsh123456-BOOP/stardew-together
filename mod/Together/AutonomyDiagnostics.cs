@@ -8,7 +8,7 @@ public sealed partial class ModEntry {
         native_wait=new{menu=Game1.activeClickableMenu?.GetType().Name,event_active=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,transition=Game1.fadeToBlack||Game1.locationRequest!=null,can_move=Game1.player.CanMove},
         actors=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).GroupBy(t=>t.spec.actor).Select(g=>new{actor=g.Key,tasks=g.Select(t=>new{t.spec.id,t.state,t.spec.purpose,t.error,t.command_id})}),
         work=semanticJobs.Values.Where(j=>j.status=="running").Select(j=>new{j.actor,j.goal,j.phase,j.location,j.completed,j.gained,j.deposited,j.requested,j.child_id}),
-        campaign=Data.Autoplay.Campaign,farm_investment=Data.FarmInvestment,
+        business=ReadBusinessLedger(),campaign=Data.Autoplay.Campaign,farm_investment=Data.FarmInvestment,
         memory=new{timeline=agentSaveEpoch,visible_checkpoints=Data.Autoplay.Memory.Cursors.Count,day_summaries=Data.Autoplay.Memory.Days.Count,season_summaries=Data.Autoplay.Memory.Seasons.Count,pending_archive_writes=Data.Autoplay.Memory.Pending.Count,last_error=Data.Autoplay.Memory.LastError,active_promises=Data.SharedGoals.Where(g=>g.Status is "active" or "paused").Select(g=>new{g.Id,g.Title,g.Status,g.AutoBlockedReason})},
         budget=ModelRequestBudget.Status(),verification=new{Data.Autoplay.VerifiedActions,Data.Autoplay.SleepDays,meaning="这些是动作/睡觉证据计数，不代表已通过完整通关验收"}
     };

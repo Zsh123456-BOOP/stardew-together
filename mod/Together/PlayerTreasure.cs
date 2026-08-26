@@ -39,7 +39,7 @@ public sealed partial class PlayerExecutor {
             if(!verified){if(DateTime.UtcNow<nextInteraction)return;throw new InvalidOperationException("treasure_removed_but_native_reward_not_verified");}
             Current.effects.Add(new{kind="native_treasure_reward",tile=treasureTile,items=treasureExpected,special=treasureSpecial.Select(which=>new{which,present=SpecialRewardPresent(which)}),stamina_before=treasureStamina,stamina_after=Game1.player.MaxStamina});Current.completed=1;Finish("succeeded");return;
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(treasureTile);Face(treasureTile);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(treasureTile);Face(treasureTile);
         if(DateTime.UtcNow<nextInteraction)return;
         if(++treasureClicks>4)throw new InvalidOperationException("native_treasure_open_did_not_finish");
         NativeMenuInput.InteractWorld(treasureTile);Current.phase="treasure_opening";nextInteraction=DateTime.UtcNow.AddSeconds(3);

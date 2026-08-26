@@ -53,7 +53,7 @@ public sealed partial class PlayerExecutor {
             if(orderDropTile==null)throw new InvalidOperationException("native_order_dropbox_unreachable");
         }
         if(Current!.phase=="order_donation_opening")return;
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+        if(!AtWalkTarget){MonitorWalk();return;}
         StopWalk();Face(orderDropTile.Value);Adjacent(orderDropTile.Value);
         if(!Game1.tryToCheckAt(orderDropTile.Value.ToVector2(),Game1.player))throw new InvalidOperationException("native_order_dropbox_rejected");Current.phase="order_donation_opening";
     }

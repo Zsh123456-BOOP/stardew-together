@@ -38,7 +38,7 @@ public sealed partial class PlayerExecutor {
         if(islandPurchaseSent||!Game1.player.CanMove)return;
         if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
         if(!islandPerchApproached){Walk(Approach(perch.tilePosition.Value,true));islandPerchApproached=true;}
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+        if(!AtWalkTarget){MonitorWalk();return;}
         StopWalk();Adjacent(perch.tilePosition.Value);Face(perch.tilePosition.Value);CheckIslandBudget();islandNutsBefore=Game1.netWorldState.Value.GoldenWalnuts;
         NativeMenuInput.InteractWorld(perch.tilePosition.Value);
         if(Game1.activeClickableMenu==null){islandPurchaseSent=true;Current!.phase="island_upgrade_building";}

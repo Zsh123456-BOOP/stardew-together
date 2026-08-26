@@ -32,7 +32,7 @@ public sealed partial class PlayerExecutor {
             }
             if(machineTile==null){bool complete=machineCount==0&&!machineUnreachable;Finish(complete?"succeeded":"failed",complete?null:machineUnreachable?"some_machine_targets_unreachable":"eligible_machines_exhausted");return;}
         }
-        if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();var tile=machineTile.Value;Adjacent(tile);Face(tile);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var tile=machineTile.Value;Adjacent(tile);Face(tile);
         if(!Game1.currentLocation.objects.TryGetValue(tile.ToVector2(),out var machine)||machine.GetMachineData() is not {} data)throw new InvalidOperationException("machine_changed");
         if(machineMode=="collect") {
             var output=machine.heldObject.Value;

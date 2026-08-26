@@ -67,7 +67,7 @@ public sealed partial class PlayerExecutor {
             for(int y=0;y<location.Map.Layers[0].LayerHeight&&jojaCounter==null;y++)for(int x=0;x<location.Map.Layers[0].LayerWidth;x++)if(location.doesTileHaveProperty(x,y,"Action","Buildings")=="JoinJoja")try{var tile=new Point(x,y);Walk(Approach(tile,true));jojaCounter=tile;break;}catch(InvalidOperationException){}
             if(jojaCounter==null)throw new InvalidOperationException("joja_counter_unreachable");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(jojaCounter.Value);Face(jojaCounter.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(jojaCounter.Value);Face(jojaCounter.Value);
         if(++jojaVisits>3)throw new InvalidOperationException("joja_offer_not_available_today");
         NativeMenuInput.InteractWorld(jojaCounter.Value);Current!.phase="joja_offer";
     }

@@ -41,7 +41,7 @@ public sealed partial class PlayerExecutor {
             }
             if(crabTile==null){Finish(crabCount==0&&crabUnreachable==0?"succeeded":"failed",crabCount==0&&crabUnreachable==0?null:"no_reachable_eligible_crab_pot_target");return;}
         }
-        if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();var at=crabTile.Value;Adjacent(at);Face(at);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var at=crabTile.Value;Adjacent(at);Face(at);
         if(crabMode=="place") {
             int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId=="(O)710",-1);if(slot<0)throw new InvalidOperationException("crab_pot_item_missing");
             var item=(StardewValley.Object)p.Items[slot];ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},"","place:(O)710");p.CurrentToolIndex=slot;p.netItemStowed.Value=false;

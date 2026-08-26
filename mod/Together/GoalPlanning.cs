@@ -11,6 +11,7 @@ public sealed class SharedGoal {
     public int CreatedDay {get;set;}
     public int BaselineCrafts {get;set;}
     public string Completion {get;set;}="owned";
+    public bool AllowNewFacilities {get;set;}
     public bool AutoExecute {get;set;}
     public string AutoBlockedReason {get;set;}="";
     public string AutoBlockedConditions {get;set;}="";
@@ -105,7 +106,7 @@ public static class GoalPlanner {
             if(goal.DirectGather.Contains(path)){node.Reason="你选择直接收集成品，暂不展开制作链；购买仍按已有清单和预算。";return path;}
             if(quality>0){node.Reason="需要达到最低品质的实际物品；不把普通品质制作产物预测成高品质。";return path;}
             // Building a whole new processing facility is not an implicit prerequisite for collecting a common resource.
-            var alternatives=recipes.Values.Where(r=>r.Item==item && (r.Kind!="process" || r.Known || depth==0)).ToArray();
+            var alternatives=recipes.Values.Where(r=>r.Item==item && (r.Kind!="process" || r.Known || depth==0 || goal.AllowNewFacilities&&!ResourceRules.Nodes.Values.Contains(item)&&item is not ("(O)388" or "(O)390" or "(O)771"))).ToArray();
             var recipe=selected??alternatives.OrderByDescending(r=>r.Known).ThenBy(r=>r.Kind=="craft"?0:1).ThenBy(r=>r.Output).ThenBy(r=>r.Id,StringComparer.Ordinal).FirstOrDefault();
             if(recipe==null){node.Reason=alternatives.Length>1?"存在多种制作途径，请从百科选择具体配方":"先收集；没有已核实的制作配方，可查百科或请玩家处理获取条件";return path;}
             node.Kind=recipe.Kind;node.Recipe=recipe.Id;node.Source=recipe.Source;

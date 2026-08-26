@@ -41,7 +41,7 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
         var at=careCollectTile.Value;
         if(Current!.phase!="animal_products_walk"&&Current.phase!="animal_products_opening"){Walk(Approach(at,true));Current.phase="animal_products_walk";}
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Face(at);Adjacent(at);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Face(at);Adjacent(at);
         if(Current.phase=="animal_products_opening")return;
         if(!Game1.currentLocation.objects.TryGetValue(at.ToVector2(),out var product))throw new InvalidOperationException("animal_product_changed");
         if(careCollectChest==null&&!Game1.player.couldInventoryAcceptThisItem(product))throw new InvalidOperationException("animal_products_inventory_full");

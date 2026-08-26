@@ -35,9 +35,9 @@ public sealed partial class ModEntry {
             foreach(var tile in sources.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile)).Take(64)) {
                 foreach(var at in new[]{new Point(tile.X,tile.Y+1),new Point(tile.X-1,tile.Y),new Point(tile.X+1,tile.Y),new Point(tile.X,tile.Y-1)}) {
                     if(!PlayerExecutor.Passable(l,at))continue;
-                    var path=new PathFindController(Game1.player,l,at,-1);
-                    if(at!=Game1.player.TilePoint && path.pathToEndPoint?.Count is not >0)continue;
-                    options.Add(new{location=l.NameOrUniqueName,move=new{x=at.X,y=at.Y},use_tool=new{slot,x=tile.X,y=tile.Y},route_tiles=path.pathToEndPoint?.Count??0});break;
+                    var path=PlayerExecutor.PreviewPath(l,at);
+                    if(at!=Game1.player.TilePoint && path?.Count is not >0)continue;
+                    options.Add(new{location=l.NameOrUniqueName,move=new{x=at.X,y=at.Y},use_tool=new{slot,x=tile.X,y=tile.Y},route_tiles=path?.Count??0});break;
                 }
                 if(options.Count==3)break;
             }
@@ -77,8 +77,8 @@ public sealed partial class ModEntry {
             foreach(var at in new[]{new Point(c.Tile.X,c.Tile.Y+1),new Point(c.Tile.X-1,c.Tile.Y),new Point(c.Tile.X+1,c.Tile.Y),new Point(c.Tile.X,c.Tile.Y-1)}.OrderBy(x=>Vector2.DistanceSquared(x.ToVector2(),p.Tile))) {
                 if(!PlayerExecutor.Passable(l,at))continue;
                 if(at==p.TilePoint){stand=at;break;}
-                var path=new PathFindController(p,l,at,-1);
-                if(path.pathToEndPoint?.Count>0){stand=at;count=path.pathToEndPoint.Count;break;}
+                var path=PlayerExecutor.PreviewPath(l,at);
+                if(path?.Count>0){stand=at;count=path.Count;break;}
             }
             if(stand==null)continue;
             int minutes=Math.Max(10,(int)Math.Ceiling((count*64/Math.Max(1,p.getMovementSpeed())/60.0+4+c.Energy)*10/7/10)*10);

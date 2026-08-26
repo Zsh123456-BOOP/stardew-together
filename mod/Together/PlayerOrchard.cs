@@ -26,7 +26,7 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
         var location=Game1.currentLocation;
         if(Current!.phase=="orchard_pickup") {
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();
+            if(!AtWalkTarget){MonitorWalk();return;}StopWalk();
             if(orchardPickupWalk.TryDequeue(out var point)){Walk(point);return;}
             Current.phase="orchard_settle";nextInteraction=DateTime.UtcNow.AddSeconds(1);return;
         }
@@ -48,7 +48,7 @@ public sealed partial class PlayerExecutor {
                 }
             }else FindOrchardSite();
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Point selected=orchardTile!.Value;Adjacent(selected);Face(selected);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Point selected=orchardTile!.Value;Adjacent(selected);Face(selected);
         if(orchardMode=="plant") {
             int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i]?.QualifiedItemId==orchardItem,-1);
             if(slot<0||Game1.player.Items[slot] is not StardewValley.Object sapling)throw new InvalidOperationException("orchard_sapling_supply_missing");

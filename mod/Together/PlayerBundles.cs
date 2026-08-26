@@ -57,7 +57,7 @@ public sealed partial class PlayerExecutor {
             }
             if(!reached)throw new InvalidOperationException("bundle_note_unreachable");donationNote=note;Current!.phase="bundle_walk";
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Face(donationNote.Value);Adjacent(donationNote.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Face(donationNote.Value);Adjacent(donationNote.Value);
         if(Current!.phase=="bundle_opening")return;
         if(!Game1.tryToCheckAt(donationNote.Value.ToVector2(),Game1.player))throw new InvalidOperationException("native_bundle_note_rejected");Current.phase="bundle_opening";
     }

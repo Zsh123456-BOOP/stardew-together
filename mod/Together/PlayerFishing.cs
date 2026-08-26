@@ -23,8 +23,8 @@ public sealed partial class PlayerExecutor {
         Game1.player.CurrentToolIndex=slot;fishBaseline=fishCastBaseline=NativeFishCount();fishCasts=0;fishCastPending=fishLandingChecked=false;
         var l=Game1.currentLocation;var rod=(FishingRod)Game1.player.Items[slot];
         foreach(var site in FishingRules.Sites(l,rod,fishTarget).OrderByDescending(s=>s.Depth).ThenBy(s=>Vector2.DistanceSquared(s.Stand.ToVector2(),Game1.player.Tile)).Take(160)) {
-            var route=new PathFindController(Game1.player,l,site.Stand,-1);
-            if(site.Stand!=Game1.player.TilePoint&&route.pathToEndPoint?.Count is not >0)continue;
+            var route=PreviewPath(l,site.Stand);
+            if(site.Stand!=Game1.player.TilePoint&&route?.Count is not >0)continue;
             fishDirection=site.Direction;FishingCastPower=site.Power;Walk(site.Stand);Current!.phase="fishing_walk";return;
         }
         throw new InvalidOperationException("no_reachable_native_cast_site");
@@ -33,7 +33,7 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("fishing_location_changed");
         if(Game1.player.CurrentTool is not FishingRod rod)throw new InvalidOperationException("fishing_rod_changed");
         if(Current!.phase=="fishing_walk") {
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Current.phase="fishing";
+            if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Current.phase="fishing";
         }
         if(Game1.activeClickableMenu is BobberBar){Current.phase="fishing_minigame";return;}
         if(Game1.activeClickableMenu is ItemGrabMenu reward&&reward.context is FishingRod) {

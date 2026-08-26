@@ -8,7 +8,7 @@ public sealed partial class ModEntry {
         string root=Path.Combine(Helper.DirectoryPath,"memory-archive",Game1.uniqueIDForThisGame+"-"+Game1.player.UniqueMultiplayerID);
         memoryArchive=new(root,agentSaveEpoch,Data.Autoplay.Memory);
         memoryArchive.Flush();
-        Data.Autoplay.Archive=(kind,text)=>memoryArchive.Append(Game1.Date.TotalDays,"autoplay",kind,text);
+        Data.Autoplay.Archive=(kind,text)=>{memoryArchive.Append(Game1.Date.TotalDays,"autoplay",kind,text);WriteBusinessLog(kind,text);};
         foreach(var person in Data.People)BindCompanionArchive(person.Key,person.Value);
     }
     private void BindCompanionArchive(string name,Companion person) {

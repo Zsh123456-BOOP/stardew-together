@@ -48,7 +48,7 @@ public sealed partial class PlayerExecutor {
                 Current.completed++;nutSite=null;Current.phase="walnuts_next";return;
             }
             if(DateTime.UtcNow>nutCollectDeadline)throw new InvalidOperationException("walnut_dropped_but_not_picked_up");
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+            if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();while(nutPickupRoute.TryDequeue(out var next))try{Walk(next);return;}catch(InvalidOperationException){}
             return;
         }
@@ -64,7 +64,7 @@ public sealed partial class PlayerExecutor {
                 Finish("succeeded");return;
             }
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(nutSite.Tile);Face(nutSite.Tile);nutFoundBefore=Game1.netWorldState.Value.GoldenWalnutsFound;
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(nutSite.Tile);Face(nutSite.Tile);nutFoundBefore=Game1.netWorldState.Value.GoldenWalnutsFound;
         if(nutSite.Kind=="buried") {
             int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is Hoe,-1);
             if(slot<0||Game1.player.Stamina<12)throw new InvalidOperationException("walnut_dig_needs_hoe_and_stamina");

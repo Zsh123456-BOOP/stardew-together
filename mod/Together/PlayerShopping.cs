@@ -6,6 +6,7 @@ using StardewValley.Menus;
 namespace Together;
 public sealed partial class PlayerExecutor {
     private ShopMenu? purchaseMenu;
+    private bool? purchaseRecipe;
     private string purchaseId="";
     private string purchaseTrade="";
     private int purchaseTradeBudget,purchaseTradeSpent,purchaseCurrency;
@@ -13,6 +14,7 @@ public sealed partial class PlayerExecutor {
     private void StartPurchase(JsonElement args) {
         purchaseMenu=Game1.activeClickableMenu as ShopMenu??throw new InvalidOperationException("open_native_shop_first");
         if(purchaseMenu.ShopId!=AgentToolRegistry.Text(args,"shop"))throw new InvalidOperationException("shop_changed_read_again");
+        purchaseRecipe=args.TryGetProperty("recipe",out var recipeFlag)?recipeFlag.GetBoolean():null;
         purchaseId=AgentToolRegistry.Text(args,"item");purchaseRemaining=AgentToolRegistry.Number(args,"count",1);
         purchasePriceLimit=AgentToolRegistry.Number(args,"max_unit_price",-1);purchaseKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
         purchaseBudget=AgentToolRegistry.Number(args,"budget",-1);purchaseSpent=0;
@@ -38,7 +40,7 @@ public sealed partial class PlayerExecutor {
             if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("purchased_output_needs_inventory_space");
         }else if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("unknown_shop_held_item");
         if(purchaseRemaining==0){purchaseMenu.exitThisMenu();purchaseMenu=null;Finish("succeeded");return;}
-        var item=purchaseMenu.itemPriceAndStock.Keys.FirstOrDefault(i=>i.QualifiedItemId==purchaseId)??throw new InvalidOperationException("shop_item_unavailable");
+        var item=purchaseMenu.itemPriceAndStock.Keys.FirstOrDefault(i=>i.QualifiedItemId==purchaseId&&(!purchaseRecipe.HasValue||i.IsRecipe==purchaseRecipe.Value))??throw new InvalidOperationException("shop_item_unavailable");
         if(!purchaseMenu.itemPriceAndStock.TryGetValue(item,out var offer)||offer.Stock<1||!item.IsRecipe&&!item.CanBuyItem(Game1.player))throw new InvalidOperationException("shop_stock_or_condition_changed");
         int currency=ShopMenu.getPlayerCurrencyAmount(Game1.player,purchaseCurrency);
         if(offer.Price<0||offer.Price>purchasePriceLimit||offer.Price>purchaseBudget-purchaseSpent||offer.Price>currency-purchaseKeepGold)throw new InvalidOperationException("purchase_budget_or_price_changed");

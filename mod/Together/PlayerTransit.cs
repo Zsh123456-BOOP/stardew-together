@@ -90,7 +90,7 @@ public sealed partial class PlayerExecutor {
             if(transitTile==null)throw new InvalidOperationException("native_transport_interaction_not_found");
             Walk(touch?transitTile.Value:Approach(transitTile.Value,true));Current.phase="transit_walk";
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();
         if(touch) {if(Current.phase=="transit_touch_wait")throw new InvalidOperationException("native_transport_touch_not_triggered");Current.phase="transit_touch_wait";nextInteraction=DateTime.UtcNow.AddMilliseconds(750);return;}
         Adjacent(transitTile.Value);Face(transitTile.Value);
         NativeMenuInput.InteractWorld(transitTile.Value);

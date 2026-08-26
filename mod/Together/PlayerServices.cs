@@ -35,6 +35,8 @@ public sealed partial class PlayerExecutor {
                 "claim_tool"=>Game1.player.toolBeingUpgraded.Value==null&&Game1.player.Items.OfType<Tool>().Any(t=>t.QualifiedItemId==serviceAction),_=>false
             };
             if(ready&&Current.skill=="player.upgrade_house"){Current.phase="house_confirm";return;}
+            if(ready&&Current.skill=="player.acquire_animal"){StartLivestockPurchase(procurementArgs);return;}
+            if(ready&&Current.skill=="player.procure"){StartPurchase(procurementArgs);return;}
             if(ready){Current.effects.Add(new{kind="native_service_opened",service,shop=(menu as ShopMenu)?.ShopId,menu=menu?.GetType().Name,note="服务已打开；购买/建造/升级决策仍需执行并核验"});Finish("succeeded");return;}
             if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(400);
             if(menu is DialogueBox dialogue) {
@@ -84,7 +86,7 @@ public sealed partial class PlayerExecutor {
             }
             if(!serviceTile.HasValue)throw new InvalidOperationException("no_reachable_native_service_counter");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();var counter=serviceTile.Value;Adjacent(counter);Face(counter);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var counter=serviceTile.Value;Adjacent(counter);Face(counter);
         if(service=="claim_tool") {
             var tool=Game1.player.toolBeingUpgraded.Value;if(tool==null||Game1.player.daysLeftForToolUpgrade.Value>0)throw new InvalidOperationException("no_finished_tool_upgrade");
             serviceAction=tool.QualifiedItemId;

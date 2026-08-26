@@ -18,7 +18,8 @@ public sealed partial class ModEntry {
         return result;
     }
     internal object PlanFarmEconomy(JsonElement args) {
-        RefreshFacts(true);var l=Game1.getFarm();var p=Game1.player;
+        RefreshFacts(true);var l=PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location","Farm"))??throw new InvalidOperationException("unknown_farm_location");var p=Game1.player;
+        if(!(l.IsFarm||l.IsGreenhouse)||l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)throw new InvalidOperationException("reachable_farm_or_greenhouse_required");
         int budget=AgentToolRegistry.Number(args,"budget",0),keep=AgentToolRegistry.Number(args,"keep_gold",500),limit=AgentToolRegistry.Number(args,"plots",24),dailyManual=AgentToolRegistry.Number(args,"max_daily_manual_water",24);
         string priority=AgentToolRegistry.Text(args,"priority","income");
         if(budget is <0 or >10000000||keep<0||limit is <1 or >96||dailyManual is <0 or >96||priority is not ("income" or "collection" or "low_labor"))throw new InvalidOperationException("invalid_economy_limits");
@@ -33,7 +34,7 @@ public sealed partial class ModEntry {
             var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;bool pass=PlayerExecutor.Passable(l,new(x,y));
             if(l.CanRefillWateringCanOnTile(x,y))water.Add(at);
             bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
-            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0));
+            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0));
         }
         var distances=FarmLayout.WaterDistances(grid,water);grid=grid.Select(c=>c with{DistanceToWater=distances.GetValueOrDefault(c.Tile,10000)}).ToList();
         var home=l.buildings.FirstOrDefault(b=>b.buildingType.Value=="Farmhouse");
@@ -43,7 +44,7 @@ public sealed partial class ModEntry {
         var seeds=new List<EconomySeed>();var crops=DataLoader.Crops(Game1.content);
         var paddy=water.SelectMany(w=>Enumerable.Range(-3,7).SelectMany(dx=>Enumerable.Range(-3,7).Select(dy=>new FarmCell(w.X+dx,w.Y+dy)))).ToHashSet();
         foreach(string id in stock.Keys.Union(quotes.Keys)) {
-            string raw=id.StartsWith("(O)")?id[3..]:id;if(!crops.TryGetValue(raw,out var data)||!data.Seasons.Contains(l.GetSeason())||!l.CheckItemPlantRules(raw,false,true,out _))continue;
+            string raw=id.StartsWith("(O)")?id[3..]:id;if(!crops.TryGetValue(raw,out var data)||!l.SeedsIgnoreSeasonsHere()&&!data.Seasons.Contains(l.GetSeason())||!l.CheckItemPlantRules(raw,false,true,out _))continue;
             var growth=new Dictionary<FarmCell,int>();foreach(var cell in grid.Where(c=>c.Plantable))if(l.CanPlantSeedsHere(raw,cell.Tile.X,cell.Tile.Y,false,out _)) {
                 var dirt=l.terrainFeatures.GetValueOrDefault(new Vector2(cell.Tile.X,cell.Tile.Y)) as HoeDirt;
                 growth[cell.Tile]=CropGrowth.Stages(data.DaysInPhase,dirt?.GetFertilizerSpeedBoost()??0,p.professions.Contains(5),data.IsPaddyCrop&&paddy.Contains(cell.Tile)).Sum();
@@ -53,7 +54,7 @@ public sealed partial class ModEntry {
             int bundleMissing=Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Where(n=>n.Item==output).Sum(n=>n.Count);
             int reserve=Math.Max(0,Math.Max(reserved,bundleMissing)-owned);
             int price=ItemRegistry.Create<StardewValley.Object>(output).sellToStorePrice();
-            seeds.Add(new(id,Math.Max(0,stock.GetValueOrDefault(id)-Data.Reservations.GetValueOrDefault(id)),quotes.GetValueOrDefault(id),price,data.RegrowDays>0?data.RegrowDays:-1,CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,data.Seasons.Select(x=>(int)x).ToHashSet(),false),data.IsRaised,reserve,!p.basicShipped.ContainsKey(data.HarvestItemId)?1:0,growth,data.IsPaddyCrop?paddy:new()));
+            seeds.Add(new(id,Math.Max(0,stock.GetValueOrDefault(id)-Data.Reservations.GetValueOrDefault(id)),quotes.GetValueOrDefault(id),price,data.RegrowDays>0?data.RegrowDays:-1,CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,data.Seasons.Select(x=>(int)x).ToHashSet(),l.SeedsIgnoreSeasonsHere()),data.IsRaised,reserve,!p.basicShipped.ContainsKey(data.HarvestItemId)?1:0,growth,data.IsPaddyCrop?paddy:new()));
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
         var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds);

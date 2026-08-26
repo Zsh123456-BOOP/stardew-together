@@ -40,7 +40,7 @@ public sealed partial class PlayerExecutor {
             for(int y=0;y<l.Map.Layers[0].LayerHeight&&masteryPlaque==null;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++)if(l.doesTileHaveProperty(x,y,"Action","Buildings")==action)try{var tile=new Point(x,y);Walk(Approach(tile,true));masteryPlaque=tile;break;}catch(InvalidOperationException){}
             if(masteryPlaque==null)throw new InvalidOperationException("native_mastery_plaque_unreachable");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(masteryPlaque.Value);Face(masteryPlaque.Value);NativeMenuInput.InteractWorld(masteryPlaque.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(masteryPlaque.Value);Face(masteryPlaque.Value);NativeMenuInput.InteractWorld(masteryPlaque.Value);
         if(Game1.activeClickableMenu is not MasteryTrackerMenu)throw new InvalidOperationException("native_mastery_plaque_not_opened");
     }
 }

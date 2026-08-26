@@ -284,7 +284,7 @@ public sealed partial class ModEntry {
         foreach(var at in new[]{new Point(tile.X,tile.Y+1),new Point(tile.X-1,tile.Y),new Point(tile.X+1,tile.Y),new Point(tile.X,tile.Y-1)}.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile))) {
             if(!PlayerExecutor.Passable(l,at))continue;
             if(at==Game1.player.TilePoint)return at;
-            var path=new PathFindController(Game1.player,l,at,-1);if(path.pathToEndPoint?.Count>0)return at;
+            var path=PlayerExecutor.PreviewPath(l,at);if(path?.Count>0)return at;
         }
         return null;
     }

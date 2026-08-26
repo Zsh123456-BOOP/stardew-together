@@ -18,6 +18,7 @@ public sealed class PlayerAction {
     public object? after {get;set;}
     public int completed {get;set;}
     public List<object> effects {get;set;}=new();
+    public object? navigation {get;set;}
 }
 public sealed partial class PlayerExecutor {
     private readonly Dictionary<string,PlayerAction> receipts=new();
@@ -45,7 +46,11 @@ public sealed partial class PlayerExecutor {
     public bool ClaimsTile(string location,int x,int y)=>Busy && origin==location && (Current!.skill=="player.work"?workTiles.Skip(workIndex).Any(p=>p.X==x&&p.Y==y):Current.skill is "player.use_tool" or "player.place" or "player.interact" && target.X==x&&target.Y==y);
     public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;}
     public void ClearStopped(){if(!Busy){Current=null;receipts.Clear();}}
-    public object Poll(string id)=>receipts.TryGetValue(id,out var r)?r:throw new InvalidOperationException("unknown_player_action");
+    public object Poll(string id) {
+        if(!receipts.TryGetValue(id,out var r))throw new InvalidOperationException("unknown_player_action");
+        if(r==Current&&Busy)r.navigation=new{target,actual=Game1.player.TilePoint,path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds};
+        return r;
+    }
     public object Cancel(string? id=null) {
         if(id!=null && (!receipts.TryGetValue(id,out var receipt) || receipt!=Current))return Poll(id);
         if(Busy) {
@@ -106,6 +111,10 @@ public sealed partial class PlayerExecutor {
                 case "player.beach":StartBeach(args);break;
                 case "player.crab_pots":StartCrabPots(args);break;
                 case "player.fish":StartFishing(args);break;
+                case "player.recruit_companion":StartSocial(JsonSerializer.SerializeToElement(new{npc=AgentToolRegistry.Text(args,"npc"),mode="recruit"}));break;
+                case "player.tap_tree":StartTapTree(args);break;
+                case "player.acquire_animal":StartAcquireAnimal(args);break;
+                case "player.procure":StartProcurement(args);break;
                 case "player.buy":StartPurchase(args);break;
                 case "player.craft":case "player.cook":StartProduction(skill,args);break;
                 case "player.eat":
@@ -183,6 +192,16 @@ public sealed partial class PlayerExecutor {
         var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+48-box.Center.Y);
         return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,true,false,false,true);
     }
+    // The native controller constructor teleports non-NPCs in unoccupied maps.
+    // Preview only the path; remote planning starts at a real map entrance.
+    internal static Stack<Point>? PreviewPath(GameLocation location,Point end) {
+        var start=Game1.player.TilePoint;
+        if(location!=Game1.currentLocation) {
+            var entry=location.warps.Select(w=>new Point(w.X,Math.Max(0,w.Y-1))).FirstOrDefault(p=>Passable(location,p));
+            if(!Passable(location,entry))return null;start=entry;
+        }
+        return PathFindController.findPath(start,end,PathFindController.isAtEndPoint,location,Game1.player,10000);
+    }
     private void StopWalk(){
         // Halt resets the sprite animation. Only halt movement owned by this executor;
         // native hold-up/receive-item animations must reach their own completion callbacks.
@@ -191,17 +210,18 @@ public sealed partial class PlayerExecutor {
         }
         ownedController=null;boundaryDriving=false;
     }
+    private bool AtWalkTarget=>Game1.player.TilePoint==target&&(ownedController?.pathToEndPoint?.Count??0)==0;
     private void Walk(Point p) {
-        StopWalk();target=p;if(Game1.player.TilePoint==p)return;
-        var controller=new PathFindController(Game1.player,Game1.currentLocation,p,-1);
+        StopWalk();target=p;
+        var controller=new PathFindController(PreviewPath(Game1.currentLocation,p),Game1.currentLocation,Game1.player,p){finalFacingDirection=-1};
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
         ownedController=controller;Game1.player.controller=controller;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
     }
     private Point Approach(Point p,bool adjacentOnly=false) {
         foreach(var option in new[]{p,new Point(p.X,p.Y+1),new Point(p.X-1,p.Y),new Point(p.X+1,p.Y),new Point(p.X,p.Y-1)}.OrderBy(t=>Vector2.Distance(t.ToVector2(),Game1.player.Tile)))
             if((!adjacentOnly || option!=p) && Passable(Game1.currentLocation,option)) {
-                var path=new PathFindController(Game1.player,Game1.currentLocation,option,-1);
-                if(option==Game1.player.TilePoint || path.pathToEndPoint?.Count>0)return option;
+                var path=PreviewPath(Game1.currentLocation,option);
+                if(option==Game1.player.TilePoint || path?.Count>0)return option;
             }
         throw new InvalidOperationException("exit_unreachable");
     }
@@ -264,12 +284,15 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.build"){TickConstruction();return;}
             if(Current.skill=="player.donate_museum"){TickMuseumDonation();return;}
             if(Current.skill=="player.collect_reward"){TickCollectReward();return;}
+            if(Current.skill=="player.tap_tree"){TickTapTree();return;}
+            if(Current.skill=="player.acquire_animal"){TickAcquireAnimal();return;}
+            if(Current.skill=="player.procure"){TickProcurement();return;}
             if(Current.skill=="player.service"){TickService();return;}
             if(Current.skill=="player.machine"){TickMachines();return;}
             if(Current.skill=="player.claim_reward"){TickQuestReward();return;}
             if(Current.skill=="player.care"){TickAnimalCare();return;}
             if(Current.skill=="player.find_lost_item"){TickLostItem();return;}
-            if(Current.skill=="player.social"){TickSocial();return;}
+            if(Current.skill is "player.social" or "player.recruit_companion"){TickSocial();return;}
             if(Current.skill=="player.combat"){TickCombat();return;}
             if(Current.skill=="player.mine_descend"){TickMineDescent();return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
@@ -280,7 +303,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.interact"){if((Game1.player.CanMove && !Game1.player.UsingTool && Game1.player.freezePause<=0) || Game1.activeClickableMenu!=null)Finish("succeeded");return;}
             if(Current.skill=="player.move") {
                 if(Game1.currentLocation.NameOrUniqueName!=origin){Finish("failed","location_changed_before_destination");return;}
-                if(Game1.player.TilePoint==target){Finish("succeeded");return;}
+                if(AtWalkTarget){Finish("succeeded");return;}
             } else if(Current.skill is "player.travel" or "player.sleep") {
                 if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
                 if(Current.skill=="player.travel"){Finish("succeeded");return;}
@@ -330,7 +353,7 @@ public sealed partial class PlayerExecutor {
             return;
         }
         if(Current.phase=="work_collect_walk") {
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+            if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();nextInteraction=DateTime.UtcNow.AddMilliseconds(750);Current.phase="work_collect_settle";return;
         }
         if(Current.phase=="work_collect_settle") {
@@ -378,7 +401,7 @@ public sealed partial class PlayerExecutor {
             Walk(Approach(tile,true));Current.phase="work_walk";
         }
         if(Current.phase=="work_walk") {
-            if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+            if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);

@@ -16,7 +16,7 @@ public sealed partial class PlayerExecutor {
         if(destination!=house.NameOrUniqueName){destination=house.NameOrUniqueName;edge=null;feedTarget=null;StopWalk();}
         if(Game1.currentLocation!=house){Current!.phase="feeding_travel";Travel();return;}
         if(feedTarget.HasValue) {
-            if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();var at=feedTarget.Value;Adjacent(at);Face(at);
+            if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var at=feedTarget.Value;Adjacent(at);Face(at);
             if(feedHopper) {
                 p.CurrentToolIndex=careSlot;int before=p.Items.Where(i=>i?.QualifiedItemId=="(O)178").Sum(i=>i.Stack),silo=house.GetRootLocation().piecesOfHay.Value;
                 if(!house.objects.TryGetValue(at.ToVector2(),out var hopper)||hopper.QualifiedItemId!="(BC)99"||silo<=0)throw new InvalidOperationException("feed_hopper_or_silo_unavailable");

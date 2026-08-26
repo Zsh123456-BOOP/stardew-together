@@ -10,7 +10,7 @@ public sealed partial class PlayerExecutor {
     private void StartFacilityPlacement(JsonElement args) {
         facilityItem=AgentToolRegistry.Text(args,"item");facilityGoal=AgentToolRegistry.Text(args,"goal_id");destination=AgentToolRegistry.Text(args,"location","Farm");
         if(Game1.getLocationFromName(destination)==null)throw new InvalidOperationException("unknown_facility_location");
-        if(!Game1.player.Items.Any(i=>i is StardewValley.Object {bigCraftable.Value:true}&&i.QualifiedItemId==facilityItem))throw new InvalidOperationException("carried_placeable_facility_required");
+        if(!Game1.player.Items.Any(i=>i is StardewValley.Object o&&(o.bigCraftable.Value||o.IsSprinkler())&&i.QualifiedItemId==facilityItem))throw new InvalidOperationException("carried_placeable_facility_required");
         facilitySite=null;Current!.phase="facility_travel";
     }
     private void TickFacilityPlacement() {
@@ -30,7 +30,13 @@ public sealed partial class PlayerExecutor {
                 if(PlacementProtected?.Invoke(destination,tile)==true&&passable)anchors.Add(new(x,y));
             }
             var start=new FarmCell(Game1.player.TilePoint.X,Game1.player.TilePoint.Y);
-            foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start).OrderBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y)).ThenBy(c=>c.Tile.Y).ThenBy(c=>c.Tile.X)) {
+            int IrrigationGain(LayoutCell cell) {
+                if(!item.IsSprinkler())return 0;
+                var probe=(StardewValley.Object)item.getOne();probe.TileLocation=new Vector2(cell.Tile.X,cell.Tile.Y);
+                var covered=location.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();
+                return probe.GetSprinklerTiles().Count(at=>!covered.Contains(at)&&location.terrainFeatures.TryGetValue(at,out var feature)&&feature is StardewValley.TerrainFeatures.HoeDirt {crop:not null})*10;
+            }
+            foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start).OrderByDescending(IrrigationGain).ThenBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y)).ThenBy(c=>c.Tile.Y).ThenBy(c=>c.Tile.X)) {
                 var tile=new Point(cell.Tile.X,cell.Tile.Y);var vector=tile.ToVector2();
                 if(anchors.Contains(cell.Tile)||PlacementProtected?.Invoke(destination,tile)==true||location.objects.ContainsKey(vector)||location.terrainFeatures.ContainsKey(vector)||location.doesTileHaveProperty(tile.X,tile.Y,"Action","Buildings")!=null||location.doesTileHaveProperty(tile.X,tile.Y,"TouchAction","Back")!=null||!item.canBePlacedHere(location,vector))continue;
                 try {
@@ -41,7 +47,7 @@ public sealed partial class PlayerExecutor {
             }
             if(facilitySite==null)throw new InvalidOperationException("no_clear_facility_site_preserving_access");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}
+        if(!AtWalkTarget){MonitorWalk();return;}
         StopWalk();var selected=facilitySite.Value;var at=selected.ToVector2();Adjacent(selected);Face(selected);
         if(location.objects.ContainsKey(at)||location.terrainFeatures.ContainsKey(at)||PlacementProtected?.Invoke(destination,selected)==true||!item.canBePlacedHere(location,at))throw new InvalidOperationException("facility_site_changed");
         ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},facilityGoal,facilityItem);Game1.player.CurrentToolIndex=slot;Game1.player.netItemStowed.Value=false;

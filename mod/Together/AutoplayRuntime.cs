@@ -6,6 +6,16 @@ using StardewValley;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private string RecruitForAgent(string name) {
+        var result=Request(name,"recruit");if(result.GetProperty("status").GetString()!="succeeded")throw new InvalidOperationException("native_companion_recruitment_failed");
+        var actor=Actor(World(),name)??throw new InvalidOperationException("recruited_companion_not_observed");
+        string id=actor.GetProperty("id").GetString()!;Person(name).DailyCompanion=true;agentKnownActors.Add(id);
+        if(Data.Business.Enabled) {
+            var routine=Data.Autoplay.Routine;foreach(string goal in new[]{"water","harvest","pet"})routine.Assignments[goal]=id;
+            routine.Version++;routine.SubmittedDay=-1;
+        }
+        Persist();return id;
+    }
     private PlayerExecutor playerExecutor=null!;
     private AgentToolRegistry agentTools=null!;
     private Task<ModelReply>? agentPending;
@@ -22,7 +32,7 @@ public sealed partial class ModEntry {
     private int agentReplyFailures;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){ApplyProfession=ApplyProfessionPolicy,ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){RecruitCompanion=RecruitForAgent,ApplyProfession=ApplyProfessionPolicy,ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         ArcadeInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
@@ -105,7 +115,7 @@ public sealed partial class ModEntry {
         playerExecutor.Tick();TickSemanticWork();
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        TickAgentSchedule();TickDailyAutomation();TickFarmInvestment();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();
+        TickAgentSchedule();TickDailyAutomation();TickFarmBusiness();TickFarmInvestment();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();TickBusinessTelemetry();
         try{if(TickAutomaticMenus())return;}catch(Exception e){PauseAutoplay("automatic_menu_requires_review:"+e.Message);return;}
         if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.beach" or "player.crab_pots" or "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
@@ -158,7 +168,7 @@ public sealed partial class ModEntry {
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),schedule=AgentPlanRead(true),companions=AgentCompanions(),ui,decision_reasons=agentWakeReasons.ToArray(),
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),business=new{policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(),ui,decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         string serialized=ContextCompression.Pack(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();

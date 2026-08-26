@@ -21,8 +21,13 @@ public sealed partial class ModEntry {
     private void TickFarmInvestment() {
         var p=Data.FarmInvestment;
         if(!AutoplayRunning||!p.Enabled||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null)return;
-        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();}
-        if(p.Phase is "done" or "blocked")return;
+        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
+        if(p.Phase=="done") {
+            if(!p.CompletedLocations.Contains(p.CropLocation))p.CompletedLocations.Add(p.CropLocation);
+            var next=MaterialLocations().FirstOrDefault(l=>l.IsGreenhouse&&!p.CompletedLocations.Contains(l.NameOrUniqueName));
+            if(next==null||Game1.timeOfDay>=1500)return;p.CropLocation=next.NameOrUniqueName;p.Phase="start_planning";
+        }
+        if(p.Phase=="blocked")return;
         try {
             if(p.Phase=="executing") {
                 var tasks=p.Tasks.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).ToArray();
@@ -67,7 +72,7 @@ public sealed partial class ModEntry {
                 p.Phase="start_planning";
             }
             if(p.Phase=="start_planning") {
-                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.Error=="shop_unavailable_use_owned_seeds_only"?0:Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold,plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority})));
+                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.Error=="shop_unavailable_use_owned_seeds_only"?0:Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold,plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
                 p.PlanId=response.GetProperty("plan_id").GetString()!;p.Phase="planning";
             }
         }catch(Exception error){p.Phase="blocked";p.Error=error is InvalidOperationException?error.Message:error.GetType().Name;Data.Autoplay.Record("farm_investment_blocked",p.Error);WakeAgent("farm_investment_blocked");}

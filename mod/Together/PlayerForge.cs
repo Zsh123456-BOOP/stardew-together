@@ -63,7 +63,7 @@ public sealed partial class PlayerExecutor {
             for(int y=0;y<l.Map.Layers[0].LayerHeight&&forgeTile==null;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++)if(l.doesTileHaveProperty(x,y,"Action","Buildings")=="Forge")try{var p=new Point(x,y);Walk(Approach(p,true));forgeTile=p;break;}catch(InvalidOperationException){}
             if(forgeTile==null)throw new InvalidOperationException("native_forge_unreachable");
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(forgeTile.Value);Face(forgeTile.Value);NativeMenuInput.InteractWorld(forgeTile.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(forgeTile.Value);Face(forgeTile.Value);NativeMenuInput.InteractWorld(forgeTile.Value);
         if(Game1.activeClickableMenu is not ForgeMenu)throw new InvalidOperationException("native_forge_not_opened");
     }
 }

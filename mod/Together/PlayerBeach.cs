@@ -69,7 +69,7 @@ public sealed partial class PlayerExecutor {
             foreach(var at in sites.OrderBy(t=>Vector2.DistanceSquared(t.ToVector2(),p.Tile)))try{Walk(Approach(at,true));beachTarget=at;break;}catch(InvalidOperationException){}
             if(beachTarget==null)throw new InvalidOperationException("beach_service_unreachable");
         }
-        if(p.TilePoint!=target){MonitorWalk();return;}StopWalk();Face(beachTarget.Value);Adjacent(beachTarget.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Face(beachTarget.Value);Adjacent(beachTarget.Value);
         NativeMenuInput.InteractWorld(beachTarget.Value);Current.phase="beach_confirm";
     }
 }

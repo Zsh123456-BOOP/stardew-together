@@ -5,8 +5,21 @@ root=Path(__file__).resolve().parents[1]
 cases=[('transit','check_autoplay_transit.py'),('resources','check_autoplay_resources.py'),('scheduler','check_autoplay_scheduler.py'),('dead-crops','check_autoplay_dead_crops.py'),('supplies','check_autoplay_supplies.py'),('native','check_autoplay_live.py')]
 parser=argparse.ArgumentParser();parser.add_argument('--cases',nargs='+',choices=[c[0] for c in cases]);args=parser.parse_args()
 if args.cases:cases=[c for c in cases if c[0] in args.cases]
+sys.path.insert(0,str(root))
+from agent.client import Bridge
+b=Bridge();assert b.state()['player']['name']=='AgentLab'
+# Test fixtures have explicit, independent preconditions; none of these runs
+# count as natural opening progression. The later live run uses a new save.
+def fixture():
+    b.state()
+    b.request('POST','/lab/together',{'session_id':b.session,'scenario':'agent_fixture'})
+    b.request('POST','/lab/together',{'session_id':b.session,'scenario':'warp_player','location':'Farm','x':44,'y':23})
+    import time
+    time.sleep(1)
+    b.reset_lab()
 results=[]
 for label,script in cases:
+    fixture()
     log=root/'work'/f'autoplay-suite-{label}.log'
     with log.open('w') as f:
         try:code=subprocess.run([sys.executable,str(root/'scripts'/script)],cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=180).returncode

@@ -81,7 +81,7 @@ public sealed partial class PlayerExecutor {
             }
             Walk(Approach(informationTile.Value,true));Current.phase="information_walk";
         }
-        if(Game1.player.TilePoint!=target){MonitorWalk();return;}StopWalk();Adjacent(informationTile.Value);Face(informationTile.Value);
+        if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Adjacent(informationTile.Value);Face(informationTile.Value);
         if(Current.skill=="player.read_mail") {
             informationLetter=Game1.mailbox[0];int before=Game1.mailbox.Count;
             NativeMenuInput.InteractWorld(informationTile.Value);

@@ -6,6 +6,7 @@ using StardewValley.Quests;
 namespace Together;
 
 public sealed partial class PlayerExecutor {
+    public Func<string,string>? RecruitCompanion {get;set;}
     private string socialName="",socialMode="",socialItem="",socialQuest="";
     private int socialSlot,socialStack,socialPoints,socialGifts,socialPages;
     private bool socialTalked;
@@ -22,7 +23,7 @@ public sealed partial class PlayerExecutor {
     };
     private void StartSocial(JsonElement args) {
         socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
-        if(socialMode is not ("talk" or "greet" or "gift" or "deliver" or "order_deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
+        if(socialMode is not ("recruit" or "talk" or "greet" or "gift" or "deliver" or "order_deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
         BindSocialOrder(args);
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
         if(socialNpc.IsMonster||socialNpc.currentLocation==null)throw new InvalidOperationException("npc_not_available");
@@ -77,7 +78,12 @@ public sealed partial class PlayerExecutor {
             if(DateTime.UtcNow>=nextInteraction){nextInteraction=DateTime.UtcNow.AddMilliseconds(500);Walk(Approach(npc.TilePoint,true));}
             else if(ownedController!=null)MonitorWalk();Current.phase="social_approach";return;
         }
-        StopWalk();p.CurrentToolIndex=socialSlot;p.netItemStowed.Value=false;Face(npc.TilePoint);
+        StopWalk();
+        if(socialMode=="recruit") {
+            string actor=RecruitCompanion?.Invoke(socialName)??throw new InvalidOperationException("companion_recruitment_unavailable");
+            Current.effects.Add(new{kind="companion_recruited",npc=socialName,actor});Current.completed=1;Finish("succeeded");return;
+        }
+        p.CurrentToolIndex=socialSlot;p.netItemStowed.Value=false;Face(npc.TilePoint);
         if(socialItem.Length>0) {
             var item=p.ActiveObject;
             if(item?.QualifiedItemId!=socialItem)throw new InvalidOperationException("social_item_changed");

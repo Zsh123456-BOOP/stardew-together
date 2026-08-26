@@ -39,6 +39,12 @@ public static class GoalChecks {
         check(g.Nodes.Any(n=>n.Item=="bar" && n.Kind=="gather") && !g.Nodes.Any(n=>n.Item=="ore"),"player can choose direct acquisition instead of an unsuitable production chain");
         g=Goal();recipes["process:bar"].Known=false;GoalPlanner.Rebuild(g,recipes,Ledger(),3,id=>id);
         check(g.Nodes.Any(n=>n.Item=="bar" && n.Kind=="gather") && !g.Nodes.Any(n=>n.Item=="furnace"),"missing processing equipment does not silently add a whole construction project for a material");
+        // Enabling expansion is a separate, persisted authority; existing callers keep direct acquisition.
+        g=Goal();g.AllowNewFacilities=true;GoalPlanner.Rebuild(g,recipes,Ledger(),3,id=>id);
+        check(g.Nodes.Any(n=>n.Item=="furnace")&&g.Nodes.Any(n=>n.Item=="ore"),"authorized enterprise can prepare missing processing equipment and raw inputs");
+        var expanded=JsonSerializer.Deserialize<SharedGoal>(JsonSerializer.Serialize(g))!;
+        check(expanded.AllowNewFacilities,"facility expansion policy survives save/load");
+
         recipes["process:bar"].Known=true;
         var circular=new Dictionary<string,GoalRecipe>{["craft:a"]=new(){Id="craft:a",Item="a",Known=true,Inputs=new(){new(){Item="b",Count=1}}},["craft:b"]=new(){Id="craft:b",Item="b",Known=true,Inputs=new(){new(){Item="a",Count=1}}}};
         g=new(){Entity="craft:a",Item="a"};GoalPlanner.Rebuild(g,circular,Ledger(),1,id=>id);

@@ -349,6 +349,9 @@ public sealed partial class CompanionControl {
             mod.FollowerManager.ClearMateTaskAndReset(mate);
             Game1.warpCharacter(npc, farm, new Vector2(spec.Item2,spec.Item3));
             mod.RecruitmentManager.Recruit(mate, Game1.player, isSilent: true);
+            // Fixtures must use the same ownership as the real recruit endpoint.
+            // Otherwise Squad's mimic tasks compete with the tested Farmer work.
+            managed.Add(Id(mate));stay.Add(Id(mate));
         }
         foreach (var tile in new[] { new Vector2(49,18), new Vector2(50,21), new Vector2(52,19) }) {
             var rock = new StardewValley.Object("343",1) { TileLocation = tile }; rock.minutesUntilReady.Value = 1;

@@ -31,11 +31,12 @@ public sealed partial class ModEntry {
         foreach(var o in l.objects.Pairs.Where(o=>o.Value.bigCraftable.Value))if(WorkStand(l,o.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
         foreach(var crop in l.terrainFeatures.Pairs.Where(x=>x.Value is HoeDirt {crop:not null}))if(WorkStand(l,crop.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
         for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++) {
-            var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;bool pass=PlayerExecutor.Passable(l,new(x,y));
+            var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;int clearance=PlotClearCost(l,new(x,y));bool pass=PlayerExecutor.Passable(l,new(x,y))||clearance>0;
             if(l.CanRefillWateringCanOnTile(x,y))water.Add(at);
-            bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&!l.objects.ContainsKey(v)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
-            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0));
+            bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
+            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
         }
+        ApplyFarmZoning(l,grid,anchors);
         var distances=FarmLayout.WaterDistances(grid,water);grid=grid.Select(c=>c with{DistanceToWater=distances.GetValueOrDefault(c.Tile,10000)}).ToList();
         var home=l.buildings.FirstOrDefault(b=>b.buildingType.Value=="Farmhouse");
         var start=Game1.currentLocation==l?new FarmCell(p.TilePoint.X,p.TilePoint.Y):home!=null?new(home.tileX.Value+home.humanDoor.Value.X,home.tileY.Value+home.humanDoor.Value.Y+1):anchors.FirstOrDefault(a=>grid.Any(c=>c.Tile==a&&c.Passable));
@@ -84,7 +85,7 @@ public sealed partial class ModEntry {
             var seed=job.Snapshot.Seeds.First(s=>s.Seed==group.Key);int purchased=result.Purchases.Where(b=>b.Seed==group.Key).Sum(b=>b.Count);
             int bag=Game1.player.Items.Where(i=>i?.QualifiedItemId==group.Key).Sum(i=>i.Stack),withdraw=Math.Max(0,group.Count()-bag-purchased);
             if(withdraw>0)Add("work.run",new{goal="withdraw",item=group.Key,count=withdraw},"取回已拥有的种子");
-            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=job.Snapshot.Day,Location=job.Location,Seed=group.Key,Tiles=group.Select(p=>p.Tile).ToList(),GrowthByTile=group.ToDictionary(p=>p.Tile,p=>p.Growth),LastGrowingDay=seed.LastDay,SalePrice=seed.SalePrice,RegrowDays=seed.Regrow,ManualWatering=group.Count(p=>p.Manual),GrowDays=group.Max(p=>p.Growth)};
+            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=job.Snapshot.Day,Location=job.Location,Seed=group.Key,PreparationTiles=result.Plants.Select(p=>p.Tile).ToList(),Tiles=group.Select(p=>p.Tile).ToList(),GrowthByTile=group.ToDictionary(p=>p.Tile,p=>p.Growth),LastGrowingDay=seed.LastDay,SalePrice=seed.SalePrice,RegrowDays=seed.Regrow,ManualWatering=group.Count(p=>p.Manual),GrowDays=group.Max(p=>p.Growth)};
             farmPlantPlans[plan.Id]=plan;Add("work.run",new{goal="plant",plan_id=plan.Id},"按预算组合与通道布局播种照料");
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};

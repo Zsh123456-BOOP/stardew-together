@@ -102,7 +102,7 @@ public sealed class AgentToolRegistry {
         ["farm.economy"]="{budget?:int,keep_gold?:int,plots?:1..96,max_daily_manual_water?:0..96,priority?:income|collection|low_labor}: 真实农场快照+今天shop.read观察报价，后台计算混合种植/采购/预留/照料负担，返回plan_id；不先花钱",
         ["farm.economy_status"]="{plan_id:string}: 查看后台经济规划及条件现金流；过日或读档必须重算",
         ["farm.execute"]="{plan_id:string}: 幂等把规划的采购/共享箱取种子/实际布局播种接入队列，真实预算/供货/占地再次核验",
-        ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:0..96,require_scarecrow?:bool,priority?:income|collection|low_labor}: 在农场/温室按已有种子和真实可达地形生成地块方案，保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)自动翻土播种浇水补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
+        ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:0..96,require_scarecrow?:bool,priority?:income|collection|low_labor}: 在农场/温室按已有种子和真实可达地形生成地块方案，为住宅保留门前院子、建筑缓冲和服务道路，再选紧凑田块；保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)先整块清障，再分批翻土、播种、浇水和补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
         ["perfection.read"]="{}: 原生完美度11类实绩、权重、关联目标、原生总分和豁免券分开读取；不是平台成就核验",
         ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|house|boat|shipping|mastery|book|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",

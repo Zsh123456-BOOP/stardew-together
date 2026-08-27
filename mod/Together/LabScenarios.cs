@@ -103,6 +103,28 @@ public sealed partial class ModEntry {
                 farm.animals.Remove(-449404285);farm.animals.Remove(-449404282);
                 break;
             }
+            case "plant_bed_fixture": {
+                PauseAutoplay("lab_plant_bed");Settings.Autonomy=false;Game1.exitActiveMenu();
+                Data.FarmPolicy=new();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();
+                foreach(var area in new[]{(0,0,46,100),(53,0,100,100),(46,0,7,28),(46,33,7,100)})
+                    Data.FarmPolicy.Areas.Add(new(){Id=Guid.NewGuid().ToString("N"),Location="Farm",X=area.Item1,Y=area.Item2,Width=area.Item3,Height=area.Item4,Enabled=true});
+                for(int x=44;x<=55;x++)for(int y=27;y<=34;y++){var tile=new Vector2(x,y);farm.objects.Remove(tile);farm.terrainFeatures.Remove(tile);}
+                for(int x=46;x<=52;x++)for(int y=28;y<=32;y++)if((x+y)%2==0) {
+                    var tile=new Vector2(x,y);var obj=ItemRegistry.Create<StardewValley.Object>(x%3==0?"(O)294":x%3==1?"(O)343":"(O)674");
+                    obj.TileLocation=tile;obj.HasBeenInInventory=false;if(obj.BaseName=="Stone")obj.MinutesUntilReady=2;farm.objects[tile]=obj;
+                }
+                farm.terrainFeatures[new(54,34)]=new Tree("1",5);farm.objects[new(44,30)]=new Chest(true){TileLocation=new(44,30)};
+                Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
+                Game1.player.Items[5]=ItemRegistry.Create("(O)472",15);
+                foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=0;
+                break;
+            }
+            case "plant_bed_read": {
+                var cells=(from x in Enumerable.Range(46,7) from y in Enumerable.Range(28,5) let tile=new Vector2(x,y)
+                    let dirt=farm.terrainFeatures.GetValueOrDefault(tile) as HoeDirt
+                    select new{x,y,obstacle=farm.objects.ContainsKey(tile),tilled=dirt!=null,planted=dirt?.crop!=null,watered=dirt?.state.Value==1}).ToArray();
+                return JsonSerializer.Serialize(new{cells,tree=farm.terrainFeatures.GetValueOrDefault(new(54,34)) is Tree,chest=farm.objects.GetValueOrDefault(new(44,30)) is Chest});
+            }
             case "agent_speed":Settings.AutoplayClockRate=AutoplaySpeed.Clock(Num("rate",2));break;
             case "goal_recipes":ReadGoalRecipes();return JsonSerializer.Serialize(goalRecipes.Values,jsonOptions);
             case "goal_suite":return GoalContracts();

@@ -45,11 +45,40 @@ public static class AutonomyDevelopmentChecks {
         check(layout.Tiles.Count==0,"trellis cannot block the only path to an exit");
         check(!FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(4,0)},new[]{new FarmCell(2,0)},Array.Empty<FarmCell>()),"building footprint cannot sever the only exit corridor");
         check(FarmLayout.KeepsAccess(cells,new(0,0),new[]{new FarmCell(3,0)},new[]{new FarmCell(4,0)},new[]{new FarmCell(3,0)}),"building at dead end keeps its entrance and existing access reachable");
+        var bedGrid=(from y in Enumerable.Range(0,8) from x in Enumerable.Range(0,10)
+                     select new LayoutCell(new(x,y),x>=2&&x<=6&&y>=2&&y<=4,true,false,false,true,false,0,(x+y)%2==0?4:0)).ToList();
+        // The walkable approach is clear. Obstacles only occupy the proposed bed.
+        bedGrid=bedGrid.Select(c=>c with{ClearCost=c.Plantable?c.ClearCost:0}).ToList();
+        var bed=FarmLayout.Choose(bedGrid,new(0,0),Array.Empty<FarmCell>(),15,false,15);
+        check(bed.Tiles.Count==15&&(bed.Tiles.Max(t=>t.X)-bed.Tiles.Min(t=>t.X)+1)*(bed.Tiles.Max(t=>t.Y)-bed.Tiles.Min(t=>t.Y)+1)==15,"debris does not fragment a compact 5 by 3 planting bed");
+        var reduced=FarmLayout.Choose(bedGrid,new(0,0),Array.Empty<FarmCell>(),15,false,6);
+        check(reduced.Tiles.Count==6&&reduced.ManualWatering==6,"compact bed shrinks to actual daily watering capacity");
+        var reservedBed=FarmLayout.Choose(bedGrid,new(0,0),new[]{new FarmCell(4,3)},15,false,15);
+        check(!reservedBed.Tiles.Contains(new(4,3))&&reservedBed.Tiles.Count<15,"planned bed never consumes a reserved interaction stand");
+        var island=bedGrid.Select(c=>c with{Passable=c.Plantable||c.Tile==new FarmCell(0,0)}).ToList();
+        check(FarmLayout.Choose(island,new(0,0),Array.Empty<FarmCell>(),15,false,15).Tiles.Count==0,"cannot plan a bed behind an unreachable barrier");
+        var bedSeed=new EconomySeed("seed",15,null,35,-1,28,false,0,0,bedGrid.ToDictionary(c=>c.Tile,c=>4),new());
+        var bedPortfolio=CropPortfolio.Plan(new(1,1,500,0,100,15,15,"income",new(0,0),bedGrid,new(),new(){bedSeed}));
+        check(bedPortfolio.Plants.Count==15&&bedPortfolio.Plants.All(p=>bed.Tiles.Contains(p.Tile)),"mixed-crop allocator shares the same compact prepared footprint");
+        var zoneGrid=(from y in Enumerable.Range(0,20) from x in Enumerable.Range(0,20) select new LayoutCell(new(x,y),true,true,false,false,true,false,0)).ToList();
+        var zones=FarmZoning.Reserve(zoneGrid,new[]{new FarmFootprint(6,2,7,4,true)},new(9,6),new[]{new FarmCell(20,8),new FarmCell(9,20)});
+        check(zones[new(9,8)]=="home_courtyard"&&zones.ContainsKey(new(6,6)),"full house frontage stays a courtyard, not just the door tile");
+        var zonedBed=FarmLayout.Choose(zoneGrid.Select(c=>c with{Plantable=!zones.ContainsKey(c.Tile)}).ToList(),new(9,6),Array.Empty<FarmCell>(),15,false,15);
+        check(zonedBed.Tiles.Count==15&&zonedBed.Tiles.All(t=>!zones.ContainsKey(t)),"nearby empty courtyard and service roads cannot win planting score");
+        check(zones.Any(z=>z.Key.X==19&&z.Value=="service_road")&&zones.Any(z=>z.Key.Y==19&&z.Value=="service_road"),"reserved roads connect house to map-boundary exits");
+        var sprinklerGrid=(from y in Enumerable.Range(0,5) from x in Enumerable.Range(0,5) let center=x==2&&y==2 let covered=x>=1&&x<=3&&y>=1&&y<=3
+            select new LayoutCell(new(x,y),covered&&!center,!center,false,covered,true,false,0,0,center)).ToList();
+        var sprinklerBed=FarmLayout.Choose(sprinklerGrid,new(0,0),Array.Empty<FarmCell>(),8,false,0);
+        check(sprinklerBed.Tiles.Count==8&&!sprinklerBed.Tiles.Contains(new(2,2)),"compact 3 by 3 module preserves sprinkler center and all eight irrigated plots");
         var seedQuote=new SeedQuote("seed","shop","shop-map",1,10,99,1);
         var economySeed=new EconomySeed("seed",0,seedQuote,30,-1,28,false,1,1,cells.ToDictionary(c=>c.Tile,c=>4),new());
         var economy=new EconomySnapshot(1,1,100,30,80,5,2,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed});
         var portfolio=CropPortfolio.Plan(economy);
         check(portfolio.Spent<=20&&portfolio.Manual<=2&&portfolio.Plants.Count<=2,"economic planting respects wallet reserve, purchase budget and daily care capacity");
+        var freePortfolio=CropPortfolio.Plan(economy with{Budget=0,Seeds=new(){economySeed with{Quote=seedQuote with{Price=0}}}});
+        check(freePortfolio.Plants.Count>0&&freePortfolio.Spent==0,"free observed seeds remain feasible with zero purchase budget");
+        var paddyPortfolio=CropPortfolio.Plan(new(1,1,500,0,100,15,0,"income",new(0,0),bedGrid,new(),new(){bedSeed with{Irrigated=bedGrid.Where(c=>c.Plantable).Select(c=>c.Tile).ToHashSet()}}));
+        check(paddyPortfolio.Plants.Count==15&&paddyPortfolio.Manual==0,"native paddy irrigation survives compact footprint preselection");
         var projection=portfolio.Reinvestment!;
         check(projection.Days.All(d=>d.Gold>=80&&d.ManualWater<=2&&d.PurchaseCost<=30),"multi-cycle cash forecast respects every day's gold reserve, care limit and purchase allowance");
         check(projection.Replantings.All(o=>o.Day%7!=3&&o.Day<=28),"future SeedShop purchases avoid Wednesdays and unobserved next-season offers");

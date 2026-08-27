@@ -59,6 +59,7 @@ public sealed partial class ModEntry {
     }
     private static bool OutputChest(Chest c)=>c.playerChest.Value&&c.modData.TryGetValue(WorkChestRole,out var role)&&role=="output";
     private int StoreCount(Item item) {
+        if(semanticJobs.Values.Any(j=>j.status=="running"&&j.goal=="plant"&&farmPlantPlans.TryGetValue(j.PlanId,out var plan)&&plan.Fertilizer==item.QualifiedItemId))return 0;
         if(item is not StardewValley.Object o||o.bigCraftable.Value||o.questItem.Value||o.Category==-74)return 0;
         // Storage is not consumption: reserved materials remain owned in shared
         // chests and are withdrawn by dependency tasks when actually needed.

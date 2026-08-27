@@ -39,6 +39,11 @@ public sealed partial class PlayerExecutor {
     private PathFindController? ownedController;
     private Warp? edge;
     private bool boundaryDriving;
+    private Stack<Point>? approachPath;
+    private Point approachStart,approachEnd;
+    private GameLocation? approachLocation;
+    private int pathSearches,pathRetries;
+    private double pathSearchMs;
     private List<Point> workTiles=new();
     private string workSkill="";
     private int workSlot,workIndex,workHits;
@@ -72,7 +77,7 @@ public sealed partial class PlayerExecutor {
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
         started=lastProgress=nextInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
-        activeSeconds=0;lastActiveTick=started;
+        activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
@@ -214,17 +219,24 @@ public sealed partial class PlayerExecutor {
         ownedController=null;boundaryDriving=false;
     }
     private bool AtWalkTarget=>Game1.player.TilePoint==target&&(ownedController?.pathToEndPoint?.Count??0)==0;
+    private Stack<Point>? MeasuredPath(Point p) {
+        var begin=System.Diagnostics.Stopwatch.GetTimestamp();
+        var path=PreviewPath(Game1.currentLocation,p);pathSearches++;
+        pathSearchMs+=(System.Diagnostics.Stopwatch.GetTimestamp()-begin)*1000.0/System.Diagnostics.Stopwatch.Frequency;return path;
+    }
     private void Walk(Point p) {
         StopWalk();target=p;
-        var controller=new PathFindController(PreviewPath(Game1.currentLocation,p),Game1.currentLocation,Game1.player,p){finalFacingDirection=-1};
+        var path=approachPath!=null&&approachLocation==Game1.currentLocation&&approachStart==Game1.player.TilePoint&&approachEnd==p?approachPath:MeasuredPath(p);
+        approachPath=null;
+        var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p);
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
         ownedController=controller;Game1.player.controller=controller;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
     }
     private Point Approach(Point p,bool adjacentOnly=false) {
         foreach(var option in new[]{p,new Point(p.X,p.Y+1),new Point(p.X-1,p.Y),new Point(p.X+1,p.Y),new Point(p.X,p.Y-1)}.OrderBy(t=>Vector2.Distance(t.ToVector2(),Game1.player.Tile)))
             if((!adjacentOnly || option!=p) && Passable(Game1.currentLocation,option)) {
-                var path=PreviewPath(Game1.currentLocation,option);
-                if(option==Game1.player.TilePoint || path?.Count>0)return option;
+                var path=MeasuredPath(option);
+                if(option==Game1.player.TilePoint || path?.Count>0){approachPath=path;approachStart=Game1.player.TilePoint;approachEnd=option;approachLocation=Game1.currentLocation;return option;}
             }
         throw new InvalidOperationException("exit_unreachable");
     }
@@ -341,12 +353,8 @@ public sealed partial class PlayerExecutor {
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("work_interrupted_by_menu");
         if(workIndex>=workTiles.Count){
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
-            // The last impact can finish before its debris reaches the Farmer. Let native
-            // collection settle so receipts include the final crop/material where picked up.
-            if(workSkill is "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage") {
-                if(Current!.phase!="settling_drops"){Current.phase="settling_drops";nextInteraction=DateTime.UtcNow.AddSeconds(1);}
-                if(DateTime.UtcNow<nextInteraction)return;
-            }
+            // Each collection step already walks onto the drop tile and settles.
+            // A second unconditional wait here paused after every semantic target.
             Finish("succeeded");return;
         }
         Point tile=workTiles[workIndex];
@@ -439,7 +447,7 @@ public sealed partial class PlayerExecutor {
     private void MonitorWalk() {
         if(Game1.player.TilePoint!=lastTile){lastTile=Game1.player.TilePoint;lastProgress=DateTime.UtcNow;}
         if((DateTime.UtcNow-lastProgress).TotalSeconds<3)return;
-        if(++retries>2)throw new InvalidOperationException("path_stalled");Walk(target);
+        if(++retries>2)throw new InvalidOperationException("path_stalled");pathRetries++;Walk(target);
     }
     private void Travel() {
         var l=Game1.currentLocation;
@@ -502,6 +510,7 @@ public sealed partial class PlayerExecutor {
         if(actionTargetBefore!=null && Context.IsWorldReady && Game1.currentLocation.NameOrUniqueName==origin) {
             var after=TileState(target);Current.effects.Add(new{before=actionTargetBefore,after,effect_observed=AgentJson.Encode(actionTargetBefore)!=AgentJson.Encode(after)});actionTargetBefore=null;
         }
+        Current.effects.Add(new{kind="navigation_summary",path_searches=pathSearches,path_search_ms=pathSearchMs,path_retries=pathRetries,active_seconds=activeSeconds});
         StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {

@@ -213,7 +213,7 @@ public sealed partial class ModEntry {
         if(j.goal=="storage_expand"){TickStorageSupport(j);return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
+        bool gathering=j.goal is "plant" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):CompanionCargoSlots(WorkActor(j.actor))>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         if(j.actor=="player"&&j.goal is "pet" or "feed" or "milk" or "shear" or "animal_collect") {
             if(j.goal is "milk" or "shear"&&Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"animal_care_energy_reserve");return;}

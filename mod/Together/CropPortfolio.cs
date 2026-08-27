@@ -24,6 +24,10 @@ public static class CropPortfolio {
     }
     private static EconomyResult PlanVariant(EconomySnapshot s,int variant,CancellationToken cancellation) {
         var watch=System.Diagnostics.Stopwatch.StartNew();var grid=s.Grid.ToList();var anchors=s.Anchors.ToList();
+        int available=Math.Min(s.Limit,s.Seeds.Sum(seed=>seed.Owned+(seed.Quote is {} q?Math.Min(q.Stock,q.Price==0?q.Stock:Math.Min(s.Budget,Math.Max(0,s.Money-s.KeepGold))/Math.Max(1,q.Price)):0)));
+        var footprint=grid.Select(c=>c with{Plantable=c.Plantable&&s.Seeds.Any(seed=>seed.Growth.TryGetValue(c.Tile,out int days)&&s.Date+days<=seed.LastDay),Irrigated=c.Irrigated||s.Seeds.Any(seed=>seed.Irrigated.Contains(c.Tile))}).ToList();
+        var bed=FarmLayout.Choose(footprint,s.Start,anchors,available,s.Seeds.All(seed=>seed.Trellis),s.ManualLimit).Tiles.ToHashSet();
+        grid=grid.Select(c=>c with{Plantable=c.Plantable&&bed.Contains(c.Tile),Passable=c.Passable&&(c.ClearCost==0||bed.Contains(c.Tile))}).ToList();
         var plants=new List<EconomyPlant>();var used=new Dictionary<string,int>();var purchased=new Dictionary<string,int>();
         int spent=0,manual=0;string stop="requested_land_limit";
         while(plants.Count<s.Limit) {
@@ -35,7 +39,7 @@ public static class CropPortfolio {
                 if(buy&&(seed.Quote==null||seed.Quote.Units!=1||purchased.GetValueOrDefault(seed.Seed)>=seed.Quote.Stock))continue;
                 int price=buy?seed.Quote!.Price:0;if(price<0||price>s.Budget-spent||price>s.Money-s.KeepGold-spent)continue;
                 var candidates=grid.Select(c=>c with{Plantable=c.Plantable&&seed.Growth.TryGetValue(c.Tile,out int days)&&s.Date+days<=seed.LastDay,Irrigated=c.Irrigated||seed.Irrigated.Contains(c.Tile)}).ToList();
-                var layout=FarmLayout.Choose(candidates,s.Start,anchors,1,seed.Trellis,s.ManualLimit-manual);if(layout.Tiles.Count==0)continue;
+                var layout=FarmLayout.ChooseWithinBed(candidates,s.Start,anchors,1,seed.Trellis,s.ManualLimit-manual);if(layout.Tiles.Count==0)continue;
                 var at=layout.Tiles[0];int growth=seed.Growth[at];bool water=!candidates.First(c=>c.Tile==at).Irrigated;
                 var crop=new Crop(seed.Seed,growth,seed.Regrow,price,seed.SalePrice);int yields=crop.NumHarvests(s.Date,seed.LastDay);
                 int reserved=Math.Min(yields,Math.Max(0,seed.ReserveYield-plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));

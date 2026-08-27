@@ -1,7 +1,7 @@
 namespace Together;
 
 public readonly record struct FarmCell(int X,int Y);
-public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool Watered,bool Irrigated,bool Protected,bool Tilled,int DistanceToWater);
+public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool Watered,bool Irrigated,bool Protected,bool Tilled,int DistanceToWater,int ClearCost=0,bool Equipment=false);
 public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
 
 public static class FarmLayout {
@@ -27,6 +27,46 @@ public static class FarmLayout {
     // Input is a detached grid. Every accepted trellis placement is checked against
     // the FUTURE collision map, preserving access to earlier crops and anchor tiles.
     public static LayoutResult Choose(IReadOnlyList<LayoutCell> source,FarmCell start,IReadOnlyList<FarmCell> anchors,int count,bool trellis,int manualLimit,bool requireProtection=false) {
+        // Select a whole bed before selecting individual plants. Passable includes
+        // removable debris; entry must be reachable WITHOUT clearing unrelated land.
+        var cells=source.ToDictionary(c=>c.Tile);
+        var actual=cells.ToDictionary(p=>p.Key,p=>p.Value with{Passable=p.Value.Passable&&p.Value.ClearCost==0});
+        var reached=Distances(actual,start,new());var reserved=anchors.ToHashSet();
+        var legal=source.Where(c=>c.Plantable&&(!requireProtection||c.Protected)&&!reserved.Contains(c.Tile)).ToDictionary(c=>c.Tile);
+        if(count<=0||legal.Count==0)return new(new(),0,0,"no_compact_plot");
+        int maxArea=count+Math.Min(12,source.Count(c=>c.Equipment));
+        List<FarmCell>? best=null;double bestScore=double.MaxValue;int bestManual=0;
+        var shapes=(from w in Enumerable.Range(1,Math.Min(maxArea,12)) from h in Enumerable.Range(1,Math.Min(maxArea,12))
+                    where w*h<=maxArea&&(!trellis||Math.Min(w,h)<=2) select (W:w,H:h)).GroupBy(s=>s.W*s.H).OrderByDescending(g=>g.Key);
+        foreach(var size in shapes) {
+            if(best!=null&&size.Key<best.Count)break;
+            foreach(var shape in size)foreach(var corner in legal.Keys) {
+                var bed=new List<LayoutCell>();bool valid=true;
+                for(int y=0;y<shape.H&&valid;y++)for(int x=0;x<shape.W;x++) {
+                    var at=new FarmCell(corner.X+x,corner.Y+y);
+                    if(legal.TryGetValue(at,out var cell))bed.Add(cell);
+                    else if(!cells.TryGetValue(at,out var equipment)||!equipment.Equipment||reserved.Contains(at)){valid=false;break;}
+                }
+                if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);if(manual>manualLimit)continue;
+                int entry=bed.SelectMany(c=>Neighbours(c.Tile).Append(c.Tile)).Where(reached.ContainsKey).Select(p=>reached[p]).DefaultIfEmpty(int.MaxValue).Min();
+                if(entry==int.MaxValue)continue;
+                double score=entry*2+Math.Abs(shape.W-shape.H)*3+bed.Sum(c=>c.ClearCost*3+(c.Irrigated?0:25)+(c.Protected?0:8)+(c.Tilled?0:6)+Math.Min(100,c.DistanceToWater)*.2);
+                if(best!=null&&bed.Count==best.Count&&score>=bestScore)continue;
+                var tiles=bed.Select(c=>c.Tile).ToHashSet();
+                if(trellis) {
+                    var future=source.Select(c=>c with{Passable=c.Passable&&(c.ClearCost==0||tiles.Contains(c.Tile))}).ToArray();
+                    var after=Distances(future.ToDictionary(c=>c.Tile),start,tiles);
+                    if(tiles.Contains(start)||anchors.Where(reached.ContainsKey).Any(a=>!after.ContainsKey(a))||tiles.Any(t=>!Neighbours(t).Any(after.ContainsKey)))continue;
+                }
+                // Serpentine rows avoid repeatedly crossing the entire bed.
+                best=bed.OrderBy(c=>c.Tile.Y).ThenBy(c=>(c.Tile.Y-corner.Y)%2==0?c.Tile.X:-c.Tile.X).Select(c=>c.Tile).ToList();bestScore=score;bestManual=manual;
+            }
+        }
+        if(best!=null)return new(best,bestManual,best.Count(t=>!cells[t].Protected),best.Count==count?"compact_plot_selected":"compact_plot_reduced_for_space_access_or_labor");
+        return new(new(),0,0,"no_reachable_compact_plot");
+    }
+    // Used inside an already selected bed by the mixed-crop budget allocator.
+    public static LayoutResult ChooseWithinBed(IReadOnlyList<LayoutCell> source,FarmCell start,IReadOnlyList<FarmCell> anchors,int count,bool trellis,int manualLimit,bool requireProtection=false) {
         var cells=source.ToDictionary(c=>c.Tile);var blocked=new HashSet<FarmCell>();var selected=new List<FarmCell>();
         var original=Distances(cells,start,blocked);var required=anchors.Where(original.ContainsKey).ToArray();
         var candidates=source.Where(c=>c.Plantable&&original.ContainsKey(c.Tile)&&(!requireProtection||c.Protected)&&!required.Contains(c.Tile)).ToArray();

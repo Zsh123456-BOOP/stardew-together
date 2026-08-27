@@ -17,7 +17,12 @@ public sealed partial class ModEntry {
     }
     private void ProfileFrame(double milliseconds) {
         measuredFrames.Enqueue(milliseconds);if(measuredFrames.Count>36000)measuredFrames.Dequeue();
+        if(milliseconds>=50&&DateTime.UtcNow>=nextSlowFrameLog) {
+            nextSlowFrameLog=DateTime.UtcNow.AddSeconds(10);
+            WriteBusinessLog("slow_frame",AgentJson.Encode(new{milliseconds,location=Game1.currentLocation?.NameOrUniqueName,action=playerExecutor.Current?.skill,phase=playerExecutor.Current?.phase,model_pending=agentPending!=null,investment=Data.FarmInvestment.Phase}));
+        }
     }
+    private DateTime nextSlowFrameLog;
     private readonly Queue<double> measuredFrames=new();
     private object Performance() {
         var values=measuredFrames.OrderBy(v=>v).ToArray();

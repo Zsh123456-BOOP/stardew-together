@@ -12,6 +12,7 @@ from agent.client import Bridge
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', action='store_true')
+    parser.add_argument('--fresh', action='store_true', help='Require an untouched normal opening before starting')
     parser.add_argument('--seconds', type=int, default=3600)
     parser.add_argument('--interval', type=int, default=10)
     parser.add_argument('--pause-at-end', action='store_true')
@@ -29,6 +30,11 @@ def main():
         return scenario('agent_tool', tool=name, args=values)
 
     baseline = b.request('GET', '/lab/together')['autoplay']
+    diagnostic=tool('agent.status')
+    if args.fresh and (baseline['snapshot']['day']!=0 or baseline['snapshot']['money']!=500 or state.get('actors') or diagnostic['business']['machines'] or any(b['type'] not in {'Farmhouse','Greenhouse','Shipping Bin','Pet Bowl'} for b in diagnostic['business']['buildings'])):
+        raise SystemExit('Fresh normal opening required; refusing to label fixture progression as natural gameplay.')
+    trace=Path(__file__).resolve().parents[1]/'work/CompanionMods/Together/logs'/diagnostic['save_id']/diagnostic['save_epoch']
+    (out/'run-info.json').write_text(json.dumps({'save_id':diagnostic['save_id'],'epoch':diagnostic['save_epoch'],'model':baseline.get('model'),'trace_directory':str(trace),'fresh_checks':args.fresh},ensure_ascii=False,indent=2))
     (out / 'baseline.json').write_text(json.dumps(baseline, ensure_ascii=False, indent=2))
     if args.start:
         tool('progress.pursue', enabled=False)
@@ -62,7 +68,9 @@ def main():
             time.sleep(args.interval)
     finally:
         if args.pause_at_end:
-            scenario('agent_pause')
+            b.session=None;b.state();scenario('agent_pause')
+        from summarize_farm_logs import summarize
+        (out/'summary.json').write_text(json.dumps(summarize(trace),ensure_ascii=False,indent=2))
         (out / 'result.json').write_text(json.dumps({'samples': samples, 'elapsed_seconds': time.monotonic()-start, 'last_status': last['state']['Status'], 'normal_sleeps': last['state']['SleepDays'], 'connection_failures': errors, 'paused_by_observer': args.pause_at_end, 'note': '运行观察，不代表跨季/后期已验收；权威动作日志在 Together/logs/<save>/<epoch>/day-*.jsonl。默认结束观察不暂停AI。'}, ensure_ascii=False, indent=2))
 
 

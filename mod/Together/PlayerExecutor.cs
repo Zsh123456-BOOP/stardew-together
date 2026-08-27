@@ -526,12 +526,26 @@ public sealed partial class PlayerExecutor {
         return Game1.getLocationFromName(name);
     }
     internal static Warp? NextExit(GameLocation from,string destination) {
-        var queue=new Queue<(GameLocation Location,Warp? First)>();queue.Enqueue((from,null));var visited=new HashSet<string>{from.NameOrUniqueName};
-        while(queue.Count>0&&visited.Count<150) {
-            var (l,first)=queue.Dequeue();foreach(var edge in Exits(l)) {
-                if(edge.TargetName==destination)return first??edge;
-                var next=LoadedLocation(edge.TargetName);if(next==null||!visited.Add(next.NameOrUniqueName))continue;
-                if(next.NameOrUniqueName==destination)return first??edge;queue.Enqueue((next,first??edge));
+        var queue=new PriorityQueue<(GameLocation Location,Warp? First),int>();queue.Enqueue((from,null),0);
+        var best=new Dictionary<string,int>{{from.NameOrUniqueName,0}};int examined=0;
+        while(queue.TryDequeue(out var node,out int cost)&&examined++<200) {
+            var l=node.Location;if(cost!=best[l.NameOrUniqueName])continue;
+            if(l.NameOrUniqueName==destination)return node.First;
+            foreach(var edge in Exits(l)) {
+                // A route's first doorway must actually be reachable. A farm full
+                // of starting debris can separate its north and south entrances.
+                if(node.First==null&&from==Game1.currentLocation) {
+                    var at=new Point(edge.X,edge.Y);
+                    bool reachable=new[]{at,new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}
+                        .Any(p=>Passable(l,p)&&(p==Game1.player.TilePoint||PreviewPath(l,p)?.Count>0));
+                    if(!reachable)continue;
+                }
+                var next=LoadedLocation(edge.TargetName);if(next==null)continue;
+                // Prefer the established road near the farmhouse instead of
+                // assuming a walk through un-cleared farmland is possible.
+                int nextCost=cost+1+(next.IsFarm&&l.NameOrUniqueName!="BusStop"?8:0);
+                if(best.TryGetValue(next.NameOrUniqueName,out int old)&&old<=nextCost)continue;
+                best[next.NameOrUniqueName]=nextCost;queue.Enqueue((next,node.First??edge),nextCost);
             }
         }
         return null;

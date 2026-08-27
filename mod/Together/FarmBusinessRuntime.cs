@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StardewValley;
+using StardewModdingAPI;
 using StardewValley.Locations;
 using StardewValley.Menus;
 using StardewValley.TerrainFeatures;
@@ -82,6 +83,12 @@ public sealed partial class ModEntry {
     private void TickFarmBusiness() {
         var b=Data.Business;
         if(!AutoplayRunning||!b.Enabled||DateTime.UtcNow<businessAt)return;businessAt=DateTime.UtcNow.AddSeconds(2);
+        // Regular Together life updates yield to Autoplay. Restore previously
+        // agreed companions here too, including ownership after save creation.
+        if(Context.IsPlayerFree&&Game1.timeOfDay<1200&&DateTime.UtcNow>=rejoinAt) {
+            rejoinAt=DateTime.UtcNow.AddSeconds(10);
+            foreach(var person in Data.People.Where(p=>p.Value.DailyCompanion==true))api?.ResumeDay(person.Key);
+        }
         RefreshFacts(true);
         if(b.Day!=Game1.Date.TotalDays) {
             if(b.Day>=0)Data.Autoplay.Record("business_day_close",AgentJson.Encode(new{day=b.Day,opening_cash=b.OpeningCash,current_cash=Game1.player.Money,cash_delta=Game1.player.Money-b.OpeningCash,earned_delta=(long)Game1.player.totalMoneyEarned-b.OpeningEarned,note="含原生过夜结算，现金差不是扣除所有机会成本后的利润"}));

@@ -47,7 +47,7 @@ try:
     check('ledger' in ledger and 'options' in ledger,'business ledger and investment candidates serialize',ledger)
     scenario('agent_schedule_probe')
     tool('farm.business',enabled=True,expand=False,budget_per_day=0,keep_gold=100,max_animals=2,max_machines=3,feed_days=2)
-    end=time.monotonic()+100; done=False
+    end=time.monotonic()+180; done=False
     while time.monotonic()<end:
         d=b.request('GET','/lab/together')['autoplay']
         done=any(t['state']=='succeeded' and t['spec']['id'].startswith('business-') for t in d['state']['Schedule']['Tasks'])

@@ -109,7 +109,7 @@ public sealed partial class ModEntry:Mod {
                 e.SpriteBatch.Draw(Game1.staminaRect,new Rectangle(24,Game1.uiViewport.Height-145,(int)size.X+24,(int)size.Y+20),new Color(248,239,216)*.96f);
                 e.SpriteBatch.DrawString(Font,toast,new Vector2(36,Game1.uiViewport.Height-135),new Color(43,65,57),0,Vector2.Zero,.85f,SpriteEffects.None,1);
             }
-            string text=$"{Settings.OpenKey} 同行 · {Selected}  "+(AutoplayRunning || Data.Autoplay.Status=="paused" && Data.Autoplay.Goal.Length>0?AgentHud():Thinking?"正在想怎么回答你…":Current.Job?.Status is "active" or "waiting"?JobText(Current.Job):"聊聊 / 小约定");
+            string text=$"{Settings.OpenKey} 同行 · 交谈对象 {Selected}  "+(AutoplayRunning || Data.Autoplay.Status=="paused" && Data.Autoplay.Goal.Length>0?AgentHud():Thinking?"正在想怎么回答你…":Current.Job?.Status is "active" or "waiting"?JobText(Current.Job):"聊聊 / 小约定");
             e.SpriteBatch.Draw(Game1.staminaRect,new Rectangle(16,Game1.uiViewport.Height-53,Math.Min(1180,Game1.uiViewport.Width-32),38),new Color(28,44,42)*.88f);
             e.SpriteBatch.DrawString(Font,text,new Vector2(28,Game1.uiViewport.Height-47),new Color(246,235,211),0,Vector2.Zero,.8f,SpriteEffects.None,1);
         };
@@ -328,12 +328,12 @@ public sealed partial class ModEntry:Mod {
         "paused"=>"等待继续 · "+job.Title,"waiting"=>"暂时等待 · "+job.Detail,
         _=>job.Index<job.Steps.Count?$"{job.Title} · {Decision.Labels[job.Steps[job.Index].skill]} {job.DoneInStep}/{job.Steps[job.Index].count}":job.Title};
     private void Update(object? sender,UpdateTickedEventArgs e) {
-        long started=System.Diagnostics.Stopwatch.GetTimestamp();
+        long started=System.Diagnostics.Stopwatch.GetTimestamp();frameStages.Clear();
         try {UpdateCore(sender,e);}finally {ProfileFrame((System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency);}
     }
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null || !canPersist)return;
-        Knowledge.Tick();
+        long stage=System.Diagnostics.Stopwatch.GetTimestamp();Knowledge.Tick();FrameStage("knowledge",ref stage);
         TickAutoplay();
         if(AutoplayRunning)return;
         CompleteReply();

@@ -4,11 +4,12 @@ using StardewValley.TerrainFeatures;
 
 namespace Together;
 public sealed partial class ModEntry {
-    private IEnumerable<GameLocation> MaterialLocations() {
+    private IEnumerable<GameLocation> MaterialLocations(Func<GameLocation,bool>? include=null) {
         var seen=new HashSet<GameLocation>();var queue=new Queue<GameLocation>(new[]{Game1.currentLocation,Game1.getFarm()}.Concat(Game1.locations));
         while(queue.TryDequeue(out var l)) {
             if(!seen.Add(l))continue;
             foreach(var building in l.buildings)if(building.GetIndoors() is {} indoor)queue.Enqueue(indoor);
+            if(include!=null&&!include(l))continue;
             if(Knowledge.Index.Get("location:"+l.Name) is {} entry&&!Knowledge.Visible(entry))continue;
             if(l==Game1.currentLocation||PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)!=null)yield return l;
         }

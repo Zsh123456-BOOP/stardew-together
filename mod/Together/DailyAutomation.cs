@@ -45,7 +45,7 @@ public sealed partial class ModEntry {
                     continue;
                 }
                 if(goal is "water" or "harvest" or "clear_dead") {
-                    foreach(var location in MaterialLocations().Where(l=>l.IsFarm||l.IsGreenhouse)) {
+                    foreach(var location in MaterialLocations(l=>(l.IsFarm||l.IsGreenhouse)&&l.terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Any(d=>d.crop!=null))) {
                         bool cropWork=location.terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Any(d=>d.crop!=null&&(goal=="clear_dead"?d.crop.dead.Value:!d.crop.dead.Value&&(goal=="harvest"?d.readyForHarvest():d.needsWatering()&&d.state.Value!=1)));
                         if(cropWork)tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-{goal}-{tasks.Count}",actor=actor,tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id=actor,goal,location=location.NameOrUniqueName,count=0,until=1800}),purpose="按实际农场/温室地块完成"+goal,day=Game1.Date.TotalDays,deadline=1800});
                     }

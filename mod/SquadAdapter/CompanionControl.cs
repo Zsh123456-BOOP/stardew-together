@@ -85,6 +85,7 @@ public sealed partial class CompanionControl {
             .Select(p=>(p.Key,(object)p.Value,"collect")));
         foreach (var pair in mate.Npc.currentLocation.terrainFeatures.Pairs) {
             if (pair.Value is not HoeDirt dirt || dirt.crop == null || dirt.crop.dead.Value) continue;
+            if(!Together.Shared.ForageCropRules.CanHarvest(dirt.crop.forageCrop.Value,dirt.crop.whichForageCrop.Value))continue;
             if (dirt.readyForHarvest() && HasHarvestRoom(mate) && mate.CanPerformTask(TaskType.Harvesting)) entries.Add((pair.Key,dirt,"harvest"));
             else if (dirt.state.Value == HoeDirt.dry && mate.CanPerformTask(TaskType.Watering)) entries.Add((pair.Key,dirt,"water"));
         }
@@ -96,7 +97,7 @@ public sealed partial class CompanionControl {
     private object[] Candidates(ISquadMate mate) => FindCandidates(mate).Select(c=>(object)new {
         target_id=c.Id, location=mate.Npc.currentLocation.NameOrUniqueName, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
     private static string[] CandidateOutputs(Candidate c) {
-        if(c.Skill=="harvest" && c.Source is HoeDirt dirt && dirt.crop!=null)return new[]{ItemRegistry.QualifyItemId(dirt.crop.indexOfHarvest.Value)??""};
+        if(c.Skill=="harvest" && c.Source is HoeDirt dirt && dirt.crop!=null)return new[]{Together.Shared.ForageCropRules.HarvestId(dirt.crop.forageCrop.Value,dirt.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(dirt.crop.indexOfHarvest.Value)??"")};
         if(c.Source is not StardewValley.Object item)return Array.Empty<string>();
         if(c.Skill=="forage")return new[]{item.QualifiedItemId};
         if(c.Skill=="collect" && item.heldObject.Value!=null)return new[]{item.heldObject.Value.QualifiedItemId};

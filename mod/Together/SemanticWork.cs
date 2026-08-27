@@ -35,8 +35,11 @@ public sealed class SemanticJob {
     internal string StorageLocation="",StorageSupportId="",StorageSupportFor="";
     internal int StorageSupportAttempts;
     internal bool Storing;
+    internal bool PickupPending;
+    internal List<Point> PickupTiles=new();
     internal bool IncludeTrees;
     internal string PlanId="";
+    internal string CleanupId="";
     internal int MinimumQuality;
     internal int MineTarget,MineFloor=-1,MineStartLevel=-1;
     internal StardewValley.Quests.Quest? NativeQuest;
@@ -58,9 +61,9 @@ public sealed partial class ModEntry {
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
-        if(goal is not ("storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
+        if(goal is not ("cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
@@ -120,6 +123,11 @@ public sealed partial class ModEntry {
             if(job.MinimumQuality is not (0 or 1 or 2 or 4))throw new InvalidOperationException("invalid_minimum_quality");
             if(job.Item.Length==0||ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem||count<1)throw new InvalidOperationException("withdraw_item_and_positive_count_required");
         }
+        if(goal=="cleanup") {
+            job.CleanupId=AgentToolRegistry.Text(args,"cleanup_id");
+            var order=Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==job.CleanupId&&o.Status=="active")??throw new InvalidOperationException("active_cleanup_order_required");
+            job.location="Farm";job.Reserve=Math.Max(reserve,order.ReserveStamina);job.Until=Math.Min(until,order.Until);job.requested=Math.Min(count>0?count:FarmCleanupRules.RemainingBudget(order),FarmCleanupRules.RemainingBudget(order));
+        }
         if(goal=="plant") {
             job.PlanId=AgentToolRegistry.Text(args,"plan_id");
             if(!farmPlantPlans.TryGetValue(job.PlanId,out var plan)||plan.Epoch!=agentSaveEpoch||plan.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("read_farm_plan_first");
@@ -136,10 +144,25 @@ public sealed partial class ModEntry {
     private object SemanticReceipt(string id,bool cancel) {
         if(!semanticJobs.TryGetValue(id,out var job))throw new InvalidOperationException("work_receipt_unavailable_replan");
         if(cancel&&job.status=="running") {
-            if(job.child_id!=null)AgentReceipt(job.child_id,true);
+            if(job.child_id!=null) {
+                PreserveCleanupPickup(job);
+                var receipt=JsonSerializer.SerializeToElement(AgentReceipt(job.child_id,true),AgentJson.Options);
+                // Cancellation may arrive between a native hit and the next semantic
+                // poll. Preserve verified partial work instead of replenishing quota.
+                if(job.ChildKind=="cleanup_labor"&&receipt.TryGetProperty("completed",out var completed)) {
+                    job.completed+=completed.GetInt32();RecordCleanupProgress(job,completed.GetInt32());
+                }
+                job.child_id=null;
+            }
             job.status="cancelled";job.stop_reason="cancelled_by_controller";job.phase="finished";
         }
         return job;
+    }
+    private void PreserveCleanupPickup(SemanticJob job) {
+        if(job.child_id!=playerExecutor.Current?.command_id||job.ChildKind is not ("cleanup_labor" or "pickup_recovery"))return;
+        var order=Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==job.CleanupId);if(order==null)return;
+        order.PendingPickup=order.PendingPickup.Concat(playerExecutor.PendingDropTiles().Select(p=>new FarmCell(p.X,p.Y))).Distinct().Take(128).ToList();
+        job.PickupTiles=order.PendingPickup.Select(p=>new Point(p.X,p.Y)).ToList();
     }
     private void ResetSemanticWork() {
         foreach(var j in semanticJobs.Values.Where(j=>j.status=="running").ToArray())try{SemanticReceipt(j.command_id,true);}catch{j.status="cancelled";}
@@ -150,6 +173,7 @@ public sealed partial class ModEntry {
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
+        if(tool=="player.work"&&json.TryGetProperty("tiles",out var tiles))j.PickupTiles=tiles.EnumerateArray().Select(t=>new Point(t.GetProperty("x").GetInt32(),t.GetProperty("y").GetInt32())).ToList();
         var result=JsonSerializer.SerializeToElement(tool=="companion.assign"?AgentCompanion(json):playerExecutor.Start(tool,json),AgentJson.Options);
         if(!result.TryGetProperty("command_id",out var id))throw new InvalidOperationException(result.TryGetProperty("error",out var e)?e.GetString():"work_child_not_started");
         j.child_id=id.GetString();j.phase=kind;
@@ -166,9 +190,15 @@ public sealed partial class ModEntry {
             var r=JsonSerializer.SerializeToElement(AgentReceipt(j.child_id,false),AgentJson.Options);
             if(r.GetProperty("status").GetString()=="running")return;
             bool ok=r.GetProperty("status").GetString()=="succeeded";
+            if(!ok)PreserveCleanupPickup(j);
             j.evidence.Add(new{command_id=j.child_id,kind=j.ChildKind,target=j.Target,status=r.GetProperty("status").GetString(),error=r.TryGetProperty("error",out var failure)?failure.GetString():null,gained=Math.Max(0,WorkCount(j)-j.BeforeCount)});
             if(j.evidence.Count>128)j.evidence.RemoveAt(0);agentClaims.Remove(j.child_id);j.child_id=null;
-            if(j.ChildKind=="labor")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
+            if(j.ChildKind is "labor" or "pickup_recovery")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
+            if(j.ChildKind is "labor" or "cleanup_labor") {
+                int completed=r.TryGetProperty("completed",out var amount)?amount.GetInt32():ok?1:0;
+                j.completed+=completed;if(j.ChildKind=="cleanup_labor")RecordCleanupProgress(j,completed);
+            }
+            if(ok&&j.CleanupId.Length>0&&j.ChildKind is "cleanup_labor" or "pickup_recovery")Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==j.CleanupId)?.PendingPickup.Clear();
             if(!ok) {
                 string error=r.TryGetProperty("error",out var e)?e.GetString()??"child_failed":"child_failed";
                 if(j.goal=="fish"&&j.ChildKind is "fish_attempt" or "fish_travel") {
@@ -182,9 +212,11 @@ public sealed partial class ModEntry {
                 }
                 else if(j.goal=="mine_trip"&&j.ChildKind!="mine_exit") {if(j.ChildKind=="mine_stone"&&error is "no_path" or "path_stalled" or "resource_no_longer_present")j.Excluded.Add(j.Target);else if(j.ChildKind=="mine_combat"&&error=="current_area_clear_before_requested_kills"){}else j.MineReturnReason="mine_interrupted:"+error;}
                 else if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
-                else if(j.ChildKind=="labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
+                else if(error=="pickup_inventory_full"&&j.actor=="player"&&j.PickupTiles.Count>0) {j.PickupPending=true;j.Storing=true;j.phase="storage_for_pickup";}
+                else if(j.ChildKind is "labor" or "cleanup_labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}
-            } else if(j.ChildKind=="labor") {j.completed++;j.phase="selecting";}
+            } else if(j.ChildKind is "labor" or "cleanup_labor") {j.phase="selecting";}
+            else if(j.ChildKind=="pickup_recovery"){j.PickupPending=false;j.phase="selecting";}
             else if(j.ChildKind=="care_batch"){j.completed+=r.TryGetProperty("completed",out var done)?done.GetInt32():1;j.phase="selecting";}
             else if(j.ChildKind=="recovery_eat") {j.FoodUsed++;j.phase="selecting";}
             else if(j.ChildKind=="storage_deposit") {
@@ -201,6 +233,11 @@ public sealed partial class ModEntry {
         if(Game1.Date.TotalDays!=j.Day){StopSemanticWork(j,"day_changed_replan");return;}
         if(Game1.eventUp||Game1.activeClickableMenu!=null){StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
+        if(j.PickupPending) {
+            if(j.Storing){TickWorkStorage(j);return;}
+            if(Game1.currentLocation.NameOrUniqueName!=j.location){WorkChild(j,"player.travel",new{location=j.location},"pickup_return");return;}
+            WorkChild(j,"player.collect_drops",new{tiles=j.PickupTiles.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;
+        }
         if(j.OrderObjective!=null&&j.goal!="mine_trip"&&j.OrderObjective.GetCount()>=j.OrderObjective.GetMaxCount()){StopSemanticWork(j,"native_order_objective_reached",true);return;}
         if(j.NativeQuest!=null&&j.goal!="mine_trip"&&(j.NativeQuest.completed.Value||NativeQuestIdentity.Count(j.NativeQuest).Current>=NativeQuestIdentity.Count(j.NativeQuest).Required)){StopSemanticWork(j,"native_quest_objective_reached",true);return;}
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
@@ -213,7 +250,7 @@ public sealed partial class ModEntry {
         if(j.goal=="storage_expand"){TickStorageSupport(j);return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "plant" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
+        bool gathering=j.goal is "cleanup" or "plant" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):CompanionCargoSlots(WorkActor(j.actor))>=8)) {j.Storing=true;TickWorkStorage(j);return;}
         if(j.actor=="player"&&j.goal is "pet" or "feed" or "milk" or "shear" or "animal_collect") {
             if(j.goal is "milk" or "shear"&&Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"animal_care_energy_reserve");return;}
@@ -223,7 +260,13 @@ public sealed partial class ModEntry {
         if(origin.Location.NameOrUniqueName!=j.location) {
             WorkChild(j,j.actor=="player"?"player.travel":"companion.assign",j.actor=="player"?(object)new{location=j.location}:new{actor_id=j.actor,skill="travel",destination=j.location},"travel");return;
         }
-        if(j.goal=="plant")TickPlantWork(j);
+        if(j.actor=="player"&&j.goal is "cleanup" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage"
+            &&!(j.goal=="cleanup"&&Data.Maintenance.Orders.Any(o=>o.Id==j.CleanupId&&o.PendingPickup.Count>0))) {
+            var loose=PlayerExecutor.LooseDrops(origin.Location).Where(d=>Vector2.DistanceSquared(d.Pixel,Game1.player.StandingPixel.ToVector2())<=256*256).Select(d=>(d.Pixel/64).ToPoint()).Distinct().Take(6).ToList();
+            if(loose.Count>0) {j.PickupTiles=loose;WorkChild(j,"player.collect_drops",new{tiles=loose.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;}
+        }
+        if(j.goal=="cleanup")TickCleanupWork(j);
+        else if(j.goal=="plant")TickPlantWork(j);
         else if(j.actor=="player")SelectPlayerWork(j);else SelectCompanionWork(j,origin.Location);
     }
     private int WorkSlot(Func<Item,bool> predicate)=>Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is {} item&&predicate(item),-1);
@@ -243,8 +286,8 @@ public sealed partial class ModEntry {
             if(match)candidates.Add((pair.Key.ToPoint(),j.goal=="forage"?"forage":"clear",tool,j.goal is "fiber" or "forage"?0:Math.Max(4,o.MinutesUntilReady*2+2),j.Item.Length>0?j.Item:o.QualifiedItemId));
         }
         foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt d&&d.crop!=null) {
-            bool match=j.goal switch{"water"=>!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest(),"harvest"=>!d.crop.dead.Value&&d.readyForHarvest()&&(j.Item.Length==0||ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)==j.Item),"clear_dead"=>d.crop.dead.Value,_=>false};
-            if(match)candidates.Add((pair.Key.ToPoint(),j.goal,tool,j.goal=="water"?4:0,j.goal=="harvest"?"(O)"+d.crop.indexOfHarvest.Value:""));
+            bool match=j.goal switch{"water"=>!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest(),"forage"=>d.crop.forageCrop.Value&&Together.Shared.ForageCropRules.CanHarvest(true,d.crop.whichForageCrop.Value)&&!d.crop.dead.Value&&d.readyForHarvest()&&(j.Item.Length==0||Together.Shared.ForageCropRules.HarvestId(d.crop.forageCrop.Value,d.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)??"")==j.Item),"harvest"=>!d.crop.dead.Value&&d.readyForHarvest()&&(j.Item.Length==0||Together.Shared.ForageCropRules.HarvestId(d.crop.forageCrop.Value,d.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)??"")==j.Item),"clear_dead"=>d.crop.dead.Value,_=>false};
+            if(match)candidates.Add((pair.Key.ToPoint(),j.goal=="forage"?"harvest":j.goal,tool,j.goal=="water"?4:0,j.goal=="harvest"?"(O)"+d.crop.indexOfHarvest.Value:""));
         }
         if(j.goal=="wood"&&j.IncludeTrees)foreach(var pair in l.terrainFeatures.Pairs)
             if(pair.Value is Tree t&&t.growthStage.Value>=5&&!t.tapped.Value)
@@ -259,12 +302,20 @@ public sealed partial class ModEntry {
         }
         string? constraint=null;
         foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
-            string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key))continue;
+            string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key)||MaintenanceProtects(l,c.Tile))continue;
             if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)){constraint="targets_claimed_by_other_actor";continue;}
             if(c.Energy>0&&p.Stamina-c.Energy<j.Reserve){constraint="energy_reserve_reached";continue;}
             if(c.Item.Length>0&&!p.couldInventoryAcceptThisItem(ItemRegistry.Create(c.Item))){constraint="inventory_full";continue;}
             if(WorkStand(l,c.Tile)==null){j.Excluded.Add(key);j.skipped++;continue;}
-            WorkChild(j,"player.work",new{skill=c.Skill,slot=c.Slot,tiles=new[]{new{x=c.Tile.X,y=c.Tile.Y}}},"labor",key);return;
+            var batch=new List<Point>{c.Tile};float cost=c.Energy;
+            // Nearby compatible actions share one native work command. Walking
+            // between them picks up drops naturally; one final debris sweep follows.
+            if(c.Skill=="clear")foreach(var next in candidates.Where(n=>n.Tile!=c.Tile&&n.Skill==c.Skill&&n.Slot==c.Slot).OrderBy(n=>Vector2.DistanceSquared(n.Tile.ToVector2(),c.Tile.ToVector2()))) {
+                if(batch.Count>=Math.Min(3,Math.Max(1,j.requested-j.gained)))break;
+                if(Vector2.DistanceSquared(next.Tile.ToVector2(),c.Tile.ToVector2())>36||p.Stamina-cost-next.Energy<j.Reserve||j.Excluded.Contains($"{next.Tile.X},{next.Tile.Y}")||MaintenanceProtects(l,next.Tile)||AgentTileBusy(l.NameOrUniqueName,next.Tile.X,next.Tile.Y)||WorkStand(l,next.Tile)==null)continue;
+                batch.Add(next.Tile);cost+=next.Energy;
+            }
+            WorkChild(j,"player.work",new{skill=c.Skill,slot=c.Slot,tiles=batch.Select(p=>new{x=p.X,y=p.Y})},"labor",key);return;
         }
         if(constraint=="energy_reserve_reached"&&TryWorkFood(j))return;
         bool all=candidates.Count==0&&j.requested==0;
@@ -307,22 +358,27 @@ public sealed partial class ModEntry {
         // actual available skills, cargo capacity and the adapter's safety checks.
         if(j.Item.Length>0&&CompanionCargoSlots(actor)>=8){j.Storing=true;TickWorkStorage(j);return;}
         bool claimed=false;
-        foreach(var c in actor.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==skill)) {
+        foreach(var c in actor.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==skill||j.goal=="forage"&&c.GetProperty("skill").GetString()=="harvest")) {
             var tile=c.GetProperty("tile");int x=tile[0].GetInt32(),y=tile[1].GetInt32();string key=$"{x},{y}";
-            if(j.Excluded.Contains(key))continue;
+            if(j.Excluded.Contains(key)||MaintenanceProtects(l,new(x,y)))continue;
             l.objects.TryGetValue(new Vector2(x,y),out var o);
-            if(j.goal=="forage"&&j.Item.Length>0&&o?.QualifiedItemId!=j.Item)continue;
+            string candidateSkill=c.GetProperty("skill").GetString()!;
+            if(j.goal=="forage") {
+                if(candidateSkill=="harvest") {
+                    if(l.terrainFeatures.GetValueOrDefault(new Vector2(x,y)) is not HoeDirt {crop:not null} wild||!wild.crop.forageCrop.Value||!Together.Shared.ForageCropRules.CanHarvest(true,wild.crop.whichForageCrop.Value)||j.Item.Length>0&&Together.Shared.ForageCropRules.HarvestId(true,wild.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(wild.crop.indexOfHarvest.Value)??"")!=j.Item)continue;
+                } else if(j.Item.Length>0&&o?.QualifiedItemId!=j.Item)continue;
+            }
             if(j.goal=="harvest"&&j.Item.Length>0&&(l.terrainFeatures.GetValueOrDefault(new Vector2(x,y)) is not HoeDirt crop||crop.crop==null||ItemRegistry.QualifyItemId(crop.crop.indexOfHarvest.Value)!=j.Item))continue;
             if(j.goal=="resource"&&(o==null||ResourceRules.Nodes.GetValueOrDefault(o.ItemId)!=j.Item))continue;
             if(j.goal=="wood"&&o?.IsTwig()!=true||j.goal=="fiber"&&o?.IsWeeds()!=true)continue;
             if(playerExecutor.ClaimsTile(l.NameOrUniqueName,x,y)||AgentTileBusy(l.NameOrUniqueName,x,y)){claimed=true;continue;}
-            WorkChild(j,"companion.assign",new{actor_id=j.actor,skill,target_id=c.GetProperty("target_id").GetString()},"labor",key);return;
+            WorkChild(j,"companion.assign",new{actor_id=j.actor,skill=candidateSkill,target_id=c.GetProperty("target_id").GetString()},"labor",key);return;
         }
         // Empty candidates may mean a capability/path/cargo restriction, not a cleared map.
         bool any=j.goal switch {
             "water"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.state.Value==0&&!d.readyForHarvest()),
-            "harvest"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.readyForHarvest()&&(j.Item.Length==0||ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)==j.Item)),
-            "forage"=>l.objects.Values.Any(o=>o.isForage()&&(j.Item.Length==0||o.QualifiedItemId==j.Item)),
+            "harvest"=>l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.readyForHarvest()&&(j.Item.Length==0||Together.Shared.ForageCropRules.HarvestId(d.crop.forageCrop.Value,d.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)??"")==j.Item)),
+            "forage"=>l.objects.Values.Any(o=>o.isForage()&&(j.Item.Length==0||o.QualifiedItemId==j.Item))||l.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop is not null&&d.crop.forageCrop.Value&&Together.Shared.ForageCropRules.CanHarvest(true,d.crop.whichForageCrop.Value)&&d.readyForHarvest()&&(j.Item.Length==0||Together.Shared.ForageCropRules.HarvestId(d.crop.forageCrop.Value,d.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(d.crop.indexOfHarvest.Value)??"")==j.Item)),
             "pet"=>Game1.getFarm().getAllFarmAnimals().Any(a=>a.currentLocation==l&&!a.wasPet.Value),
             "collect"=>l.objects.Values.Any(o=>o.heldObject.Value!=null&&o.readyForHarvest.Value),_=>true};
         bool met=j.requested==0&&!any;

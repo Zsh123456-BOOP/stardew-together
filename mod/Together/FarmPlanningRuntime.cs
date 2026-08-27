@@ -27,6 +27,7 @@ public sealed class FarmPlantPlan {
 public sealed partial class ModEntry {
     private readonly Dictionary<string,FarmPlantPlan> farmPlantPlans=new();
     private bool IsPlacementProtected(string location,Point tile) {
+        if(location=="Farm"&&Data.Maintenance.Zones.Any(z=>z.Contains(new(tile.X,tile.Y))&&z.Kind is "woodland" or "pasture" or "reserve"))return true;
         if(Game1.getLocationFromName(location) is {} orchard&&PlayerExecutor.ProtectsOrchardGrowth(orchard,tile))return true;
         if(Data.FarmPolicy.Areas.Any(a=>a.Enabled&&a.Location==location&&tile.X>=a.X&&tile.X<a.X+a.Width&&tile.Y>=a.Y&&tile.Y<a.Y+a.Height)||AgentTileBusy(location,tile.X,tile.Y))return true;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant")) {
@@ -106,14 +107,14 @@ public sealed partial class ModEntry {
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
         return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),evaluated_seeds=options.Count,zoning=zoning.GroupBy(z=>z.Value).Select(g=>new{reason=g.Key,reserved_tiles=g.Count()}),limitations=new[]{"仅已持有种子；采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","先规划连片田地，清完区域内杂草/树枝/小石头再翻土播种；保留现有作物、树木、设备与通道","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
     }
-    private static Dictionary<FarmCell,string> ApplyFarmZoning(GameLocation l,List<LayoutCell> grid,List<FarmCell> anchors) {
+    private Dictionary<FarmCell,string> ApplyFarmZoning(GameLocation l,List<LayoutCell> grid,List<FarmCell> anchors) {
         if(l.IsGreenhouse)return new();
         var buildings=l.buildings.Select(b=>new FarmFootprint(b.tileX.Value,b.tileY.Value,b.tilesWide.Value,b.tilesHigh.Value,b.buildingType.Value=="Farmhouse"||b.GetIndoors() is StardewValley.Locations.FarmHouse)).ToArray();
         var home=buildings.FirstOrDefault(b=>b.Home);
         if(home==null)return new();
         var start=grid.Where(c=>c.Passable&&c.Tile.Y>=home.Y+home.Height).OrderBy(c=>Math.Abs(c.Tile.X-(home.X+home.Width/2))+Math.Abs(c.Tile.Y-(home.Y+home.Height))).Select(c=>c.Tile).FirstOrDefault();
         var zones=FarmZoning.Reserve(grid,buildings,start,anchors);
-        for(int i=0;i<grid.Count;i++)if(zones.ContainsKey(grid[i].Tile))grid[i]=grid[i] with{Plantable=false,Equipment=false};
+        for(int i=0;i<grid.Count;i++)if(zones.ContainsKey(grid[i].Tile)||Data.Maintenance.Zones.Any(z=>z.Contains(grid[i].Tile)&&z.Kind is "production" or "woodland" or "pasture" or "reserve"))grid[i]=grid[i] with{Plantable=false,Equipment=false};
         return zones;
     }
     private object FarmForecast(FarmPlantPlan plan) {

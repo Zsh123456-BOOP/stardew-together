@@ -35,6 +35,11 @@ public sealed partial class CompanionControl {
     private static bool InterceptCapacity(Item item,ref bool __result) {
         bool? result=CargoAccept(item,false);if(!result.HasValue)return true;__result=result.Value;return false;
     }
+    private static void LocateOwnDebris(ref GameLocation location) {
+        // Native wild-crop harvesting omits location and otherwise uses the
+        // Farmer's map. An owned NPC action must emit into that NPC's map.
+        if(outputOwner!=null&&location==null)location=outputOwner.Npc.currentLocation;
+    }
     private static void CollectOwnDebris(Item item,GameLocation location,Debris __result) {
         if(outputOwner==null || location==null || location!=outputOwner.Npc.currentLocation || __result==null)return;
         if(CargoAccept(item,true)==true) {
@@ -70,7 +75,7 @@ public sealed partial class CompanionControl {
         harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createDebris),new[]{typeof(int),typeof(int),typeof(int),typeof(int),typeof(GameLocation)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(CaptureStoneDebris)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.addItemToInventoryBool),new[]{typeof(Item),typeof(bool)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptInventory)));
         harmony.Patch(AccessTools.Method(typeof(Farmer),nameof(Farmer.couldInventoryAcceptThisItem),new[]{typeof(Item)}),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(InterceptCapacity)));
-        harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createItemDebris)),postfix:new HarmonyMethod(typeof(CompanionControl),nameof(CollectOwnDebris)));
+        harmony.Patch(AccessTools.Method(typeof(Game1),nameof(Game1.createItemDebris)),prefix:new HarmonyMethod(typeof(CompanionControl),nameof(LocateOwnDebris)),postfix:new HarmonyMethod(typeof(CompanionControl),nameof(CollectOwnDebris)));
         foreach(var method in typeof(Game1).GetMethods().Where(m=>m.Name==nameof(Game1.createObjectDebris) && m.GetParameters().Length!=4 || m.Name==nameof(Game1.createObjectDebris) && m.GetParameters()[3].ParameterType==typeof(long)))
             harmony.Patch(method,prefix:new HarmonyMethod(typeof(CompanionControl),nameof(CaptureObjectDrop)));
         cargoPatched=true;

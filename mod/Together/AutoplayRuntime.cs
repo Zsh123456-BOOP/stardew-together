@@ -82,6 +82,8 @@ public sealed partial class ModEntry {
         if(wasRunning && !reason.StartsWith("lab_")){agentToast="自主游玩已暂停："+FriendlyAgentReason(reason);agentToastUntil=DateTime.UtcNow.AddSeconds(8);}
     }
     private void ResetAgentRuntime() {
+        maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
+        Data.Maintenance.WasWorking=false;Data.Maintenance.LastMinute=-1;
         agentGeneration++;agentReplyFailures=0;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)AgentReceipt(task.command_id,true);}catch{}
         ResetSemanticWork();Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
@@ -104,7 +106,7 @@ public sealed partial class ModEntry {
             string skill=AgentToolRegistry.Text(t.spec.args,"skill",t.spec.tool);
             return skill switch {"water"=>"浇水","clear_dead"=>"清枯苗","clear"=>"清理采集","mine"=>"挖矿","plant"=>"播种","till"=>"翻土","forage"=>"拾取资源","harvest"=>"收获","player.travel" or "travel"=>"赶路","player.move"=>"走向目标","player.sleep"=>"回家过夜",_=>"执行任务"};
         }
-        return (agentPending!=null?$"思考中 {agentWatch.Elapsed.TotalSeconds:0}秒 · ":"执行中 · ")+$"玩家：{Lane(true)} · 队友：{Lane(false)} · F10 暂停";
+        return (agentPending!=null?$"思考中 {agentWatch.Elapsed.TotalSeconds:0}秒 · ":"执行中 · ")+$"玩家：{Lane(true)} · 队友：{(agentKnownActors.Count<=1?"未招募":Lane(false))} · F10 暂停";
     }
     private object AgentSnapshot()=>new{day=Game1.Date.TotalDays,date=Game1.Date.ToString(),time=Game1.timeOfDay,clock_rate_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate),game_minutes_per_real_second_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate)*10/7,night_warning=Game1.timeOfDay>=2200?"接近深夜，优先安排返家；不要等待到凌晨两点":null,location=Game1.currentLocation.NameOrUniqueName,
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
@@ -112,10 +114,16 @@ public sealed partial class ModEntry {
     private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),work=semanticJobs.Values.TakeLast(12),decision_reasons=agentWakeReasons,
         model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
     private void TickAutoplay() {
-        playerExecutor.Tick();TickSemanticWork();
+        long stage=Stopwatch.GetTimestamp();playerExecutor.Tick();FrameStage("player_executor",ref stage);TickSemanticWork();FrameStage("semantic",ref stage);
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        TickAgentSchedule();TickDailyAutomation();TickFarmBusiness();TickFarmInvestment();TickProgressCampaign();TickGoalAutomation();ObserveAgentEvents();TickBusinessTelemetry();
+        TickAgentSchedule();FrameStage("schedule",ref stage);
+        TickDailyAutomation();FrameStage("daily",ref stage);
+        TickFarmBusiness();FrameStage("business",ref stage);
+        TickFarmInvestment();FrameStage("investment",ref stage);
+        TickFarmCleanup();FrameStage("cleanup",ref stage);
+        TickProgressCampaign();TickGoalAutomation();FrameStage("goals",ref stage);
+        ObserveAgentEvents();TickBusinessTelemetry();FrameStage("telemetry",ref stage);
         try{if(TickAutomaticMenus())return;}catch(Exception e){PauseAutoplay("automatic_menu_requires_review:"+e.Message);return;}
         if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.beach" or "player.crab_pots" or "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
@@ -168,7 +176,7 @@ public sealed partial class ModEntry {
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),day=AgentDay(),progression=AgentProgression(),business=new{policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(),ui,decision_reasons=agentWakeReasons.ToArray(),
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),day=AgentDay(),progression=AgentProgression(),business=new{policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(),recruitment=RecruitmentOptions(),ui,decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         string serialized=ContextCompression.Pack(context);
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
@@ -182,6 +190,13 @@ public sealed partial class ModEntry {
         var location=Game1.getLocationFromName(actor.GetProperty("location").GetString()!)??throw new InvalidOperationException("actor_location_unavailable");
         var tile=actor.GetProperty("tile");return (location,new(tile[0].GetInt32(),tile[1].GetInt32()));
     }
+    private object RecruitmentOptions()=>new {
+        selected=Selected,selected_is_not_proof_of_recruitment=true,
+        outdoors=Game1.locations.Where(l=>l.IsOutdoors).SelectMany(l=>l.characters.Where(n=>Game1.characterData.ContainsKey(n.Name)&&!n.IsMonster&&!n.IsInvisible&&!n.isSleeping.Value)
+            .Select(n=>new{npc=n.Name,location=l.NameOrUniqueName,x=n.TilePoint.X,y=n.TilePoint.Y}))
+            .OrderBy(n=>n.location==Game1.currentLocation.NameOrUniqueName?0:1).Take(8),
+        note="真实室外人物位置供邀请参考，不保证满足Squad好感/人数门槛。招募成功并出现在companions后才能派工；被锁门挡住就先做农务，按开放时间再访。"
+    };
     private object[] AgentCompanions() {
         var world=World();
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
@@ -200,7 +215,7 @@ public sealed partial class ModEntry {
             return (object)info;
         }).ToArray();
     }
-    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),goals=GoalContext()};}
+    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),recruitment=RecruitmentOptions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
         RefreshFacts(true);

@@ -4,6 +4,7 @@ using StardewValley.Menus;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private DateTime nextCropExpansionCheck;
     internal object ConfigureFarmInvestment(JsonElement args) {
         var p=Data.FarmInvestment;
         int budget=AgentToolRegistry.Number(args,"budget_per_day",p.BudgetPerDay),keep=AgentToolRegistry.Number(args,"keep_gold",p.KeepGold),plots=AgentToolRegistry.Number(args,"plots",p.Plots),water=AgentToolRegistry.Number(args,"max_daily_manual_water",p.ManualWaterLimit);
@@ -23,8 +24,9 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning||!p.Enabled||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null)return;
         if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
         if(p.Phase=="done") {
+            if(DateTime.UtcNow<nextCropExpansionCheck)return;nextCropExpansionCheck=DateTime.UtcNow.AddSeconds(10);
             if(!p.CompletedLocations.Contains(p.CropLocation))p.CompletedLocations.Add(p.CropLocation);
-            var next=MaterialLocations().FirstOrDefault(l=>l.IsGreenhouse&&!p.CompletedLocations.Contains(l.NameOrUniqueName));
+            var next=MaterialLocations(l=>l.IsGreenhouse&&!p.CompletedLocations.Contains(l.NameOrUniqueName)).FirstOrDefault();
             if(next==null||Game1.timeOfDay>=1500)return;p.CropLocation=next.NameOrUniqueName;p.Phase="start_planning";
         }
         if(p.Phase=="blocked")return;

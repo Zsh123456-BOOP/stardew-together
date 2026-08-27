@@ -6,7 +6,7 @@ public sealed partial class ModEntry {
         if(tool=="plan.read")return AgentPlanRead(true);
         if(tool is "day.read" or "day.plan" or "progress.roadmap")return new{status="observed",current_context=tool=="progress.roadmap"?"progression":"day"};
         if(tool=="action.status")return ReceiptSummary(result.GetRawText());
-        if(tool=="world.read")return new{snapshot=result.GetProperty("snapshot"),farm=result.GetProperty("farm"),inventory_plan=result.GetProperty("inventory_plan"),companions="本轮companions字段提供最新角色状态、位置和可执行能力",goals="本轮day.shared_goals字段"};
+        if(tool=="world.read")return new{snapshot=result.GetProperty("snapshot"),farm=result.GetProperty("farm"),farm_cleanup=result.GetProperty("farm_cleanup"),recruitment=result.GetProperty("recruitment"),inventory_plan=result.GetProperty("inventory_plan"),companions="本轮companions字段提供最新角色状态、位置和可执行能力",goals="本轮day.shared_goals字段"};
         return result;
     }
     private static object ReceiptSummary(string? text) {

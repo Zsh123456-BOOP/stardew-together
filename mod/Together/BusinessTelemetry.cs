@@ -28,7 +28,7 @@ public sealed partial class ModEntry {
     }
     private object ReadBusinessLedger() {
         var p=Game1.player;var farm=Game1.getFarm();
-        return new{policy=Data.Business,cash=p.Money,total_earned=p.totalMoneyEarned,
+        return new{policy=Data.Business,cleanup=FarmMaintenanceSummary(),cash=p.Money,total_earned=p.totalMoneyEarned,
             pending_shipping=farm.getShippingBin(p).Where(i=>i!=null).Select(i=>new{item=i.QualifiedItemId,count=i.Stack,quality=i.Quality,estimated_sale=i is StardewValley.Object o?(long)o.sellToStorePrice()*i.Stack:0}),
             inventory=Facts.Stock.Select(s=>new{s.Item,s.Count,s.Quality}),crops=new{Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops},animals=new{count=farm.getAllFarmAnimals().Count(),Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo},
             buildings=farm.buildings.Select(b=>new{type=b.buildingType.Value,construction=b.daysOfConstructionLeft.Value,upgrade=b.daysUntilUpgrade.Value}),

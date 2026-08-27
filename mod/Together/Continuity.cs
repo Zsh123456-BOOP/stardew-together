@@ -15,11 +15,16 @@ public sealed partial class ModEntry {
         if(skill=="fish" && evidence.TryGetProperty("caught_items",out var items))detail+=$"，已经收到 {items.GetArrayLength()} 件渔获（可能含杂物）";
         p.Life.Experiences.Add(new(){Id=id+":partial",Day=Game1.Date.TotalDays,Minute=Minute,Summary=detail,Skill=skill});
     }
+    private readonly Dictionary<string,double> frameStages=new();
+    private void FrameStage(string name,ref long start) {
+        long now=System.Diagnostics.Stopwatch.GetTimestamp();double ms=(now-start)*1000.0/System.Diagnostics.Stopwatch.Frequency;start=now;
+        if(ms>=8)frameStages[name]=ms;
+    }
     private void ProfileFrame(double milliseconds) {
         measuredFrames.Enqueue(milliseconds);if(measuredFrames.Count>36000)measuredFrames.Dequeue();
         if(milliseconds>=50&&DateTime.UtcNow>=nextSlowFrameLog) {
             nextSlowFrameLog=DateTime.UtcNow.AddSeconds(10);
-            WriteBusinessLog("slow_frame",AgentJson.Encode(new{milliseconds,location=Game1.currentLocation?.NameOrUniqueName,action=playerExecutor.Current?.skill,phase=playerExecutor.Current?.phase,model_pending=agentPending!=null,investment=Data.FarmInvestment.Phase}));
+            WriteBusinessLog("slow_frame",AgentJson.Encode(new{milliseconds,location=Game1.currentLocation?.NameOrUniqueName,action=playerExecutor.Current?.skill,phase=playerExecutor.Current?.phase,model_pending=agentPending!=null,investment=Data.FarmInvestment.Phase,stages=frameStages}));
         }
     }
     private DateTime nextSlowFrameLog;

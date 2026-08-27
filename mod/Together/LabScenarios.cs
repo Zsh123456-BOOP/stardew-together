@@ -103,9 +103,38 @@ public sealed partial class ModEntry {
                 farm.animals.Remove(-449404285);farm.animals.Remove(-449404282);
                 break;
             }
+            case "cleanup_fixture": {
+                PauseAutoplay("lab_cleanup_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
+                Data.FarmPolicy=new();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.Maintenance=new(){Enabled=false};
+                maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
+                for(int x=44;x<=55;x++)for(int y=27;y<=35;y++){var tile=new Vector2(x,y);farm.objects.Remove(tile);farm.terrainFeatures.Remove(tile);}
+                foreach(int x in new[]{46,48,50,52})foreach(int y in new[]{28,30}) {
+                    var tile=new Vector2(x,y);var obj=ItemRegistry.Create<StardewValley.Object>(x%3==0?"(O)294":x%3==1?"(O)343":"(O)674");
+                    obj.TileLocation=tile;obj.HasBeenInInventory=false;obj.MinutesUntilReady=obj.BaseName=="Stone"?2:0;farm.objects[tile]=obj;
+                }
+                farm.objects[new(52,29)]=new StardewValley.Object("674",1){TileLocation=new(52,29),HasBeenInInventory=false};
+                farm.terrainFeatures[new(53,29)]=new Grass(1,4);
+                farm.terrainFeatures[new(50,31)]=new Tree("1",1);farm.terrainFeatures[new(52,32)]=new Tree("1",5);
+                farm.terrainFeatures[new(54,34)]=new Tree("1",5);
+                farm.objects[new(45,33)]=new StardewValley.Object("294",1){TileLocation=new(45,33),HasBeenInInventory=false};
+                var chest=new Chest(true){TileLocation=new(44,30)};chest.modData["stardewagent.together/chest-role"]="output";farm.objects[new(44,30)]=chest;
+                Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
+                for(int i=0;i<Game1.player.Items.Count;i++)if(Game1.player.Items[i] is not Tool)Game1.player.Items[i]=ItemRegistry.Create("(O)390",10);
+                break;
+            }
+            case "cleanup_read": {
+                var targets=farm.objects.Pairs.Where(p=>p.Key.X>=46&&p.Key.X<=52&&p.Key.Y>=28&&p.Key.Y<=32).Select(p=>new{x=p.Key.X,y=p.Key.Y,item=p.Value.QualifiedItemId}).ToArray();
+                return JsonSerializer.Serialize(new{targets,young=farm.terrainFeatures.GetValueOrDefault(new(50,31)) is Tree,mature=farm.terrainFeatures.GetValueOrDefault(new(52,32)) is Tree,
+                    grass=farm.terrainFeatures.GetValueOrDefault(new(53,29)) is Grass,protected_tree=farm.terrainFeatures.GetValueOrDefault(new(54,34)) is Tree,protected_twig=farm.objects.ContainsKey(new(45,33)),
+                    chest=farm.objects.GetValueOrDefault(new(44,30)) is Chest,stored=(farm.objects.GetValueOrDefault(new(44,30)) as Chest)?.Items.Sum(i=>i?.Stack??0),orders=Data.Maintenance.Orders,
+                    loose=PlayerExecutor.LooseDrops(farm).Count(d=>d.Pixel.X>=44*64&&d.Pixel.X<=57*64&&d.Pixel.Y>=26*64&&d.Pixel.Y<=36*64),
+                    wood_carried=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack)});
+            }
             case "plant_bed_fixture": {
                 PauseAutoplay("lab_plant_bed");Settings.Autonomy=false;Game1.exitActiveMenu();
                 Data.FarmPolicy=new();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();
+                Data.Maintenance=new(){Enabled=false};Data.Autoplay.Agenda=new();
+                for(int i=0;i<Game1.player.Items.Count;i++)if(Game1.player.Items[i] is not Tool)Game1.player.Items[i]=null;
                 foreach(var area in new[]{(0,0,46,100),(53,0,100,100),(46,0,7,28),(46,33,7,100)})
                     Data.FarmPolicy.Areas.Add(new(){Id=Guid.NewGuid().ToString("N"),Location="Farm",X=area.Item1,Y=area.Item2,Width=area.Item3,Height=area.Item4,Enabled=true});
                 for(int x=44;x<=55;x++)for(int y=27;y<=34;y++){var tile=new Vector2(x,y);farm.objects.Remove(tile);farm.terrainFeatures.Remove(tile);}
@@ -113,7 +142,8 @@ public sealed partial class ModEntry {
                     var tile=new Vector2(x,y);var obj=ItemRegistry.Create<StardewValley.Object>(x%3==0?"(O)294":x%3==1?"(O)343":"(O)674");
                     obj.TileLocation=tile;obj.HasBeenInInventory=false;if(obj.BaseName=="Stone")obj.MinutesUntilReady=2;farm.objects[tile]=obj;
                 }
-                farm.terrainFeatures[new(54,34)]=new Tree("1",5);farm.objects[new(44,30)]=new Chest(true){TileLocation=new(44,30)};
+                farm.terrainFeatures[new(54,34)]=new Tree("1",5);var bedChest=new Chest(true){TileLocation=new(44,30)};
+                bedChest.modData["stardewagent.together/chest-role"]="output";farm.objects[new(44,30)]=bedChest;
                 Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
                 Game1.player.Items[5]=ItemRegistry.Create("(O)472",15);
                 foreach(var can in Game1.player.Items.OfType<StardewValley.Tools.WateringCan>())can.WaterLeft=0;

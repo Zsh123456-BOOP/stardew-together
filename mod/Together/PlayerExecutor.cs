@@ -46,6 +46,9 @@ public sealed partial class PlayerExecutor {
     private double pathSearchMs;
     private List<Point> workTiles=new();
     private string workSkill="";
+    private List<(string Skill,int Slot)> workSteps=new();
+    private List<Point?> workStands=new();
+    private int workPickupDoneIndex;
     private int workSlot,workIndex,workHits;
     private int eatingSlot,eatingBefore;
     private string eatingItem="";
@@ -78,9 +81,11 @@ public sealed partial class PlayerExecutor {
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
         started=lastProgress=nextInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
+        ResetPickup();
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
         try {
             switch(skill) {
+                case "player.collect_drops":StartPickup(args);break;
                 case "player.volcano_step":StartVolcanoStep(args);break;
                 case "player.treasure":StartTreasure();break;
                 case "player.walnuts":StartWalnuts(args);break;
@@ -136,9 +141,23 @@ public sealed partial class PlayerExecutor {
                     Current.phase="eating";break;
                 case "player.work":
                     workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "fertilize" or "harvest" or "clear" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    if(workSkill is not ("water" or "till" or "plant" or "fertilize" or "harvest" or "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
+                    workSteps.Clear();workStands.Clear();workPickupDoneIndex=-1;
+                    if(args.TryGetProperty("steps",out var steps)) {
+                        if(steps.ValueKind!=JsonValueKind.Array||steps.GetArrayLength()!=workTiles.Count)throw new InvalidOperationException("work_steps_must_match_tiles");
+                        foreach(var step in steps.EnumerateArray()) {
+                            string action=AgentToolRegistry.Text(step,"skill");int slot=AgentToolRegistry.Number(step,"slot",-1);
+                            if(action is not("clear" or "chop" or "prune")||slot<0||slot>=Game1.player.Items.Count||Game1.player.Items[slot] is not Tool)throw new InvalidOperationException("invalid_mixed_clear_step");
+                            workSteps.Add((action,slot));
+                            Point? stand=step.TryGetProperty("stand",out var plannedStand)?Tile(plannedStand):null;
+                            var at=workTiles[workSteps.Count-1];
+                            if(stand.HasValue&&Math.Abs(stand.Value.X-at.X)+Math.Abs(stand.Value.Y-at.Y)!=1)throw new InvalidOperationException("mixed_work_stand_must_be_adjacent");
+                            workStands.Add(stand);
+                        }
+                        (workSkill,workSlot)=workSteps[0];
+                    }
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
                     if(workSkill=="water" && Game1.player.CurrentTool is not StardewValley.Tools.WateringCan || workSkill=="till" && Game1.player.CurrentTool is not StardewValley.Tools.Hoe)throw new InvalidOperationException("wrong_tool_for_work");
                     Current.phase="work_next";break;
@@ -314,6 +333,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.combat"){TickCombat();return;}
             if(Current.skill=="player.mine_descend"){TickMineDescent();return;}
             if(Game1.locationRequest!=null || Game1.fadeToBlack || (!Game1.player.CanMove && Current.skill is "player.travel" or "player.sleep"))return;
+            if(Current.skill=="player.collect_drops"){if(!TickNativePickup(pickupTiles))Finish("succeeded");return;}
             if(Current.skill=="player.work"){TickWork();return;}
             if(Current.skill=="player.use_tool") {
                 if(!Game1.player.UsingTool && Game1.player.CanMove && startedUsing)Finish("succeeded");return;
@@ -349,30 +369,22 @@ public sealed partial class PlayerExecutor {
         return new{clump_id=clump?.parentSheetIndex.Value,clump_health=clump?.health.Value,x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,fertilizer=dirt?.fertilizer.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
     private void TickWork() {
+        ObserveWorkDrops();
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("work_interrupted_by_menu");
         if(workIndex>=workTiles.Count){
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
-            // Each collection step already walks onto the drop tile and settles.
-            // A second unconditional wait here paused after every semantic target.
+            if(workSkill is "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage")
+                if(TickNativePickup(workTiles))return;
             Finish("succeeded");return;
         }
         Point tile=workTiles[workIndex];
-        if(Current!.phase=="work_collect_start") {
-            if(!Game1.player.CanMove || Game1.player.UsingTool)return;
-            // Walk over the cleared tile so a drop thrown away from the adjacent work
-            // position is actually collected. Never insert loot directly into inventory.
-            if(Passable(Game1.currentLocation,tile)){Walk(tile);Current.phase="work_collect_walk";}
-            else {nextInteraction=DateTime.UtcNow.AddSeconds(1);Current.phase="work_collect_settle";}
-            return;
-        }
-        if(Current.phase=="work_collect_walk") {
-            if(!AtWalkTarget){MonitorWalk();return;}
-            StopWalk();nextInteraction=DateTime.UtcNow.AddMilliseconds(750);Current.phase="work_collect_settle";return;
-        }
-        if(Current.phase=="work_collect_settle") {
-            if(DateTime.UtcNow<nextInteraction || !Game1.player.CanMove)return;
-            Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";return;
+        if(workSteps.Count>0)(workSkill,workSlot)=workSteps[workIndex];
+        if(workSkill is "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage"
+            &&workIndex>0&&workPickupDoneIndex!=workIndex&&(Current!.phase=="work_next"&&workHits==0||Current!.phase.StartsWith("pickup_"))
+            &&(Current!.phase.StartsWith("pickup_")||Vector2.DistanceSquared(Game1.player.Tile,tile.ToVector2())>16)) {
+            if(TickNativePickup(workTiles.Take(workIndex).ToArray()))return;
+            workPickupDoneIndex=workIndex;Current.phase="work_next";
         }
         if(Current!.phase=="work_next") {
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
@@ -381,6 +393,10 @@ public sealed partial class PlayerExecutor {
                 var rule=ResourceRules.Clump(clump.parentSheetIndex.Value)??throw new InvalidOperationException("unknown_resource_clump");
                 var tool=Game1.player.Items[workSlot] as Tool;
                 if(tool==null||tool.UpgradeLevel<rule.Level||rule.Tool=="axe"&&tool is not StardewValley.Tools.Axe||rule.Tool=="pickaxe"&&tool is not StardewValley.Tools.Pickaxe)throw new InvalidOperationException("resource_clump_tool_upgrade_required");
+            }
+            if(workSkill=="prune") {
+                if(f is not Tree young||young.growthStage.Value>=5||young.tapped.Value)throw new InvalidOperationException("not_an_eligible_young_tree");
+                if(Game1.player.Items[workSlot] is not StardewValley.Tools.Axe)throw new InvalidOperationException("prune_requires_axe");
             }
             if(workSkill=="chop") {
                 if(f is not Tree tree || tree.growthStage.Value<5 || tree.tapped.Value)throw new InvalidOperationException("not_an_eligible_mature_tree");
@@ -391,7 +407,7 @@ public sealed partial class PlayerExecutor {
             if(workSkill=="clear") {
                 if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
-                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || (resource.BaseName=="Stone"||ResourceRules.Nodes.ContainsKey(resource.ItemId)) && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && Game1.player.CurrentTool?.isScythe()==true))throw new InvalidOperationException("wrong_resource_or_tool");
+                if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || (resource.BaseName=="Stone"||ResourceRules.Nodes.ContainsKey(resource.ItemId)) && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && (Game1.player.CurrentTool?.isScythe()==true||Game1.player.CurrentTool is StardewValley.Tools.Axe)))throw new InvalidOperationException("wrong_resource_or_tool");
                 if(Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
             }
             if(workSkill=="clear_dead") {
@@ -412,14 +428,14 @@ public sealed partial class PlayerExecutor {
             if(already){Current.effects.Add(new{tile=workBefore,status="already_satisfied"});workIndex++;return;}
             if(workSkill=="water"&&dirt?.crop==null || workSkill=="plant"&&(dirt==null||dirt.crop!=null) || workSkill=="harvest"&&dirt?.readyForHarvest()!=true)
                 throw new InvalidOperationException("work_target_not_eligible");
-            Walk(Approach(tile,true));Current.phase="work_walk";
+            Walk(workStands.Count>workIndex&&workStands[workIndex] is {} stand&&Passable(Game1.currentLocation,stand)?stand:Approach(tile,true));Current.phase="work_walk";
         }
         if(Current.phase=="work_walk") {
             if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
-            if(workSkill is "water" or "till" or "clear" or "chop" or "break_clump" or "clear_dead") {
+            if(workSkill is "water" or "till" or "clear" or "prune" or "chop" or "break_clump" or "clear_dead") {
                 if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
@@ -435,12 +451,11 @@ public sealed partial class PlayerExecutor {
         if(Current.phase=="work_impact" && !Game1.player.UsingTool) {
             var after=TileState(tile);
             if(JsonSerializer.Serialize(workBefore)==JsonSerializer.Serialize(after))throw new InvalidOperationException("work_effect_not_observed");
-            Current.effects.Add(new{before=workBefore,after});
-            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill=="chop"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2()) || workSkill=="break_clump"&&ClumpAt(tile)!=null) {
+            Current.effects.Add(new{before=workBefore,after,work_skill=workSkill,work_slot=workSlot});
+            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill is "chop" or "prune"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2()) || workSkill=="break_clump"&&ClumpAt(tile)!=null) {
                 if(++workHits>=64)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
-            if(workSkill is "clear" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage"){Current.phase="work_collect_start";return;}
             Current.completed++;workIndex++;workHits=0;retries=0;Current.phase="work_next";
         }
     }
@@ -459,7 +474,14 @@ public sealed partial class PlayerExecutor {
         if(distance<=1.1f && DateTime.UtcNow>=nextInteraction && Game1.activeClickableMenu==null) {
             nextInteraction=DateTime.UtcNow.AddSeconds(2);StopWalk();
             // Doors execute the native action; boundary warps are reached by walking, never by arbitrary teleport.
-            if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player))return;
+            if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player)) {
+                if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} denied) {
+                    Current!.effects.Add(new{kind="route_access_notice",location=l.NameOrUniqueName,destination,text=denied.getCurrentString()});
+                    denied.finishTyping();denied.receiveLeftClick(denied.xPositionOnScreen+16,denied.yPositionOnScreen+16);
+                    throw new InvalidOperationException("route_access_denied_check_opening_hours_or_friendship");
+                }
+                return;
+            }
             var warp=l.warps.FirstOrDefault(w=>w.X==edge.X&&w.Y==edge.Y&&NormalizeWarpTarget(w.TargetName)==edge.TargetName);
             if(warp!=null) {
                 // Keep native path ownership through the boundary. A one-frame movement flag
@@ -535,28 +557,34 @@ public sealed partial class PlayerExecutor {
         return Game1.getLocationFromName(name);
     }
     internal static Warp? NextExit(GameLocation from,string destination) {
-        var queue=new PriorityQueue<(GameLocation Location,Warp? First),int>();queue.Enqueue((from,null),0);
-        var best=new Dictionary<string,int>{{from.NameOrUniqueName,0}};int examined=0;
-        while(queue.TryDequeue(out var node,out int cost)&&examined++<200) {
-            var l=node.Location;if(cost!=best[l.NameOrUniqueName])continue;
-            if(l.NameOrUniqueName==destination)return node.First;
-            foreach(var edge in Exits(l)) {
-                // A route's first doorway must actually be reachable. A farm full
-                // of starting debris can separate its north and south entrances.
-                if(node.First==null&&from==Game1.currentLocation) {
-                    var at=new Point(edge.X,edge.Y);
-                    bool reachable=new[]{at,new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}
-                        .Any(p=>Passable(l,p)&&(p==Game1.player.TilePoint||PreviewPath(l,p)?.Count>0));
-                    if(!reachable)continue;
+        // Pick a topological route first. Previously every call ran A* for ALL
+        // Town doors even when only the BusStop exit was relevant. Validate only
+        // the chosen first exit; if blocked, exclude it and try an alternative.
+        var blocked=new HashSet<(int X,int Y,string Target)>();
+        int alternatives=Exits(from).Count();
+        for(int attempt=0;attempt<=alternatives;attempt++) {
+            var queue=new PriorityQueue<(GameLocation Location,Warp? First),int>();queue.Enqueue((from,null),0);
+            var best=new Dictionary<string,int>{{from.NameOrUniqueName,0}};int examined=0;Warp? candidate=null;
+            while(queue.TryDequeue(out var node,out int cost)&&examined++<200) {
+                var l=node.Location;if(cost!=best[l.NameOrUniqueName])continue;
+                if(l.NameOrUniqueName==destination){candidate=node.First;break;}
+                foreach(var edge in Exits(l)) {
+                    if(node.First==null&&blocked.Contains((edge.X,edge.Y,edge.TargetName)))continue;
+                    var next=LoadedLocation(edge.TargetName);if(next==null)continue;
+                    int nextCost=cost+1+(next.IsFarm&&l.NameOrUniqueName!="BusStop"?8:0);
+                    if(best.TryGetValue(next.NameOrUniqueName,out int old)&&old<=nextCost)continue;
+                    best[next.NameOrUniqueName]=nextCost;queue.Enqueue((next,node.First??edge),nextCost);
                 }
-                var next=LoadedLocation(edge.TargetName);if(next==null)continue;
-                // Prefer the established road near the farmhouse instead of
-                // assuming a walk through un-cleared farmland is possible.
-                int nextCost=cost+1+(next.IsFarm&&l.NameOrUniqueName!="BusStop"?8:0);
-                if(best.TryGetValue(next.NameOrUniqueName,out int old)&&old<=nextCost)continue;
-                best[next.NameOrUniqueName]=nextCost;queue.Enqueue((next,node.First??edge),nextCost);
             }
+            if(candidate==null)return null;
+            if(from!=Game1.currentLocation)return candidate;
+            var at=new Point(candidate.X,candidate.Y);
+            bool reachable=new[]{at,new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}
+                .Any(p=>Passable(from,p)&&(p==Game1.player.TilePoint||PreviewPath(from,p)?.Count>0));
+            if(reachable)return candidate;
+            blocked.Add((candidate.X,candidate.Y,candidate.TargetName));
         }
         return null;
     }
+
 }

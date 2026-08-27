@@ -1,0 +1,79 @@
+using System.Text.Json;
+using Microsoft.Xna.Framework;
+using StardewValley;
+
+namespace Together;
+
+public sealed partial class PlayerExecutor {
+    internal sealed record LooseDrop(Debris Source,Vector2 Pixel,Item Item);
+    private Debris? pickupTarget;
+    private DateTime pickupProgressAt;
+    private int pickupLastCount=-1,pickupWalks;
+    private bool pickupWalking;
+    private List<Point> pickupTiles=new();
+    private readonly HashSet<Debris> pickupTracked=new();
+    private readonly HashSet<Debris> pickupBaseline=new();
+    internal Point[] PendingDropTiles()=>LooseDrops(Game1.currentLocation).Where(d=>pickupTracked.Contains(d.Source)).Select(d=>(d.Pixel/64).ToPoint()).Distinct().ToArray();
+    private void ObserveWorkDrops() {
+        // Observe on every native work tick, including the tree's falling phase.
+        // Once linked, a debris group remains tracked wherever it scatters.
+        foreach(var drop in LooseDrops(Game1.currentLocation))
+            if(!pickupBaseline.Contains(drop.Source)&&workTiles.Take(Math.Min(workTiles.Count,workIndex+1)).Any(p=>Vector2.DistanceSquared(drop.Pixel,p.ToVector2()*64+new Vector2(32))<=768*768))pickupTracked.Add(drop.Source);
+    }
+    internal static IEnumerable<LooseDrop> LooseDrops(GameLocation location) {
+        foreach(var debris in location.debris) {
+            if(debris.debrisType.Value is not (Debris.DebrisType.OBJECT or Debris.DebrisType.RESOURCE or Debris.DebrisType.ARCHAEOLOGY))continue;
+            Item? item=debris.item;
+            if(item==null&&!string.IsNullOrEmpty(debris.itemId.Value))item=ItemRegistry.Create(debris.itemId.Value,1,debris.itemQuality);
+            if(item==null)continue;
+            foreach(var chunk in debris.Chunks)yield return new(debris,chunk.position.Value+new Vector2(32),item);
+        }
+    }
+    private void ResetPickup() {pickupTarget=null;pickupWalking=false;pickupLastCount=-1;pickupWalks=0;pickupTracked.Clear();pickupBaseline.Clear();if(Game1.currentLocation!=null)foreach(var d in Game1.currentLocation.debris)pickupBaseline.Add(d);pickupProgressAt=DateTime.UtcNow;}
+    private void StartPickup(JsonElement args) {
+        if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >128)throw new InvalidOperationException("pickup_centers_required");
+        pickupTiles=tiles.EnumerateArray().Select(Tile).Distinct().ToList();ResetPickup();Current!.phase="pickup_scan";
+    }
+    // Observe native debris and walk into the native magnetic radius. Never call
+    // Debris.collect, add inventory items, increase magnetism or teleport loot.
+    private bool TickNativePickup(IReadOnlyList<Point> centers) {
+        if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("pickup_location_changed");
+        var observed=LooseDrops(Game1.currentLocation).ToArray();
+        foreach(var drop in observed.Where(d=>centers.Any(p=>Vector2.DistanceSquared(d.Pixel,p.ToVector2()*64+new Vector2(32))<=320*320)))pickupTracked.Add(drop.Source);
+        var drops=observed.Where(d=>pickupTracked.Contains(d.Source)).ToArray();
+        if(drops.Length==0) {
+            StopWalk();Current!.effects.Add(new{kind="pickup_verified",remaining=0,walks=pickupWalks});return false;
+        }
+        if(drops.Length!=pickupLastCount){pickupLastCount=drops.Length;pickupProgressAt=DateTime.UtcNow;}
+        // Native magnetism assigns a farmer using the centre of an entire Debris
+        // group, not the nearest individual chunk of a felled tree.
+        var available=drops.Where(d=>Game1.player.couldInventoryAcceptThisItem(d.Item)).GroupBy(d=>d.Source)
+            .Select(g=>new LooseDrop(g.Key,g.Key.Chunks.Aggregate(Vector2.Zero,(sum,c)=>sum+c.position.Value+new Vector2(32))/g.Key.Chunks.Count,g.First().Item)).ToArray();
+        if(available.Length==0)throw new InvalidOperationException("pickup_inventory_full");
+        if(pickupWalking) {
+            if(!drops.Any(d=>d.Source==pickupTarget)){StopWalk();pickupWalking=false;}
+            else if(!AtWalkTarget){MonitorWalk();return true;}
+            else {StopWalk();pickupWalking=false;pickupProgressAt=DateTime.UtcNow;}
+        }
+        var player=Game1.player.StandingPixel.ToVector2();int radius=Game1.player.GetAppliedMagneticRadius();
+        // Native debris bounces, then accelerates towards the player. Wait only
+        // while actual collectable items are in range, never after every hit.
+        if(available.Any(d=>Math.Abs(d.Pixel.X-player.X)<=radius&&Math.Abs(d.Pixel.Y-player.Y)<=radius)) {
+            Current!.phase="pickup_native_attraction";
+            if((DateTime.UtcNow-pickupProgressAt).TotalSeconds>5)throw new InvalidOperationException("pickup_not_progressing");
+            return true;
+        }
+        foreach(var drop in available.OrderBy(d=>Vector2.DistanceSquared(d.Pixel,player))) {
+            var at=(drop.Pixel/64).ToPoint();
+            var stands=(from y in Enumerable.Range(at.Y-1,3) from x in Enumerable.Range(at.X-1,3) select new Point(x,y))
+                .Where(p=>p!=Game1.player.TilePoint&&Passable(Game1.currentLocation,p)&&Math.Abs(p.X*64+32-drop.Pixel.X)<=radius&&Math.Abs(p.Y*64+32-drop.Pixel.Y)<=radius)
+                .OrderBy(p=>Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y));
+            foreach(var stand in stands) {
+                var path=MeasuredPath(stand);if(path==null||path.Count==0)continue;
+                approachPath=path;approachLocation=Game1.currentLocation;approachStart=Game1.player.TilePoint;approachEnd=stand;
+                Walk(stand);pickupTarget=drop.Source;pickupWalking=true;pickupWalks++;pickupProgressAt=DateTime.UtcNow;Current!.phase="pickup_walk";return true;
+            }
+        }
+        throw new InvalidOperationException("pickup_unreachable");
+    }
+}

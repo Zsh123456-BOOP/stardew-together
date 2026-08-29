@@ -13,9 +13,9 @@ public sealed partial class PlayerExecutor {
     private DateTime treasureDeadline;
     internal static IEnumerable<(Point Tile,Chest Chest)> TreasureChests(GameLocation location)=>location.overlayObjects.Select(p=>(p.Key,p.Value)).Concat(location.objects.Pairs.Select(p=>(p.Key,p.Value))).Where(p=>p.Value is Chest c&&!c.playerChest.Value&&c.GetItemsForPlayer().Any(i=>i!=null)).Select(p=>(p.Key.ToPoint(),(Chest)p.Value));
     internal static bool SpecialRewardPresent(int which)=>which switch{4=>Game1.player.hasSkullKey,6=>Game1.player.hasDarkTalisman,7=>Game1.player.hasMagicInk,5=>Game1.player.hasMagnifyingGlass,3=>Game1.player.hasSpecialCharm,_=>false};
-    private void StartTreasure() {
+    private void StartTreasure(IEnumerable<(Point Tile,Chest Chest)>? candidates=null) {
         treasureChest=null;treasureClicks=0;
-        foreach(var chest in TreasureChests(Game1.currentLocation).OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),Game1.player.Tile)))try{Walk(Approach(chest.Tile,true));treasureTile=chest.Tile;treasureChest=chest.Chest;break;}catch(InvalidOperationException){}
+        foreach(var chest in (candidates??TreasureChests(Game1.currentLocation)).OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),Game1.player.Tile)))try{Walk(Approach(chest.Tile,true));treasureTile=chest.Tile;treasureChest=chest.Chest;break;}catch(InvalidOperationException){}
         if(treasureChest==null)throw new InvalidOperationException("no_reachable_native_treasure_chest");
         var items=treasureChest.GetItemsForPlayer().Where(i=>i!=null).ToArray();
         treasureSpecial=items.OfType<SpecialItem>().Select(i=>i.which.Value).ToArray();

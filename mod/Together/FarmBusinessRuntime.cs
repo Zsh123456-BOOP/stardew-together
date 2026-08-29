@@ -123,6 +123,7 @@ public sealed partial class ModEntry {
         try {
             Data.FarmInvestment.BudgetPerDay=Math.Max(Data.FarmInvestment.ReservedToday,b.DailyBudget-b.ReservedToday);
             Data.FarmInvestment.KeepGold=b.KeepGold;
+            if(PlayerExecutor.HasHomeGift()&&QueueBusiness("home_gifts",new[]{("player.collect_home_gifts",(object)new{})},"自动领取自家原生礼包，核验实际种子等补给后再安排种植"))return;
             int animals=Game1.getFarm().getAllFarmAnimals().Count();
             if(animals>0) {
                 foreach(var tool in new[]{("(T)MilkPail",typeof(StardewValley.Tools.MilkPail)),("(T)Shears",typeof(StardewValley.Tools.Shears))}) {

@@ -90,6 +90,7 @@ public sealed partial class PlayerExecutor {
                 case "player.collect_drops":StartPickup(args);break;
                 case "player.volcano_step":StartVolcanoStep(args);break;
                 case "player.treasure":StartTreasure();break;
+                case "player.collect_home_gifts":StartHomeSupplies();break;
                 case "player.walnuts":StartWalnuts(args);break;
                 case "player.forge":StartForge(args);break;
                 case "player.island_upgrade":StartIslandUpgrade(args);break;
@@ -314,6 +315,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.buy"){TickPurchase();return;}
             if(Current.skill=="player.volcano_step"){TickVolcanoStep();return;}
             if(Current.skill=="player.treasure"){TickTreasure();return;}
+            if(Current.skill=="player.collect_home_gifts"){TickHomeSupplies();return;}
             if(Current.skill=="player.walnuts"){TickWalnuts();return;}
             if(Current.skill=="player.forge"){TickForge();return;}
             if(Current.skill=="player.beach"){TickBeach();return;}

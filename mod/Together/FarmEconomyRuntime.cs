@@ -58,14 +58,31 @@ public sealed partial class ModEntry {
             seeds.Add(new(id,Math.Max(0,stock.GetValueOrDefault(id)-Data.Reservations.GetValueOrDefault(id)),quotes.GetValueOrDefault(id),price,data.RegrowDays>0?data.RegrowDays:-1,CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,data.Seasons.Select(x=>(int)x).ToHashSet(),l.SeedsIgnoreSeasonsHere()),data.IsRaised,reserve,!p.basicShipped.ContainsKey(data.HarvestItemId)?1:0,growth,data.IsPaddyCrop?paddy:new()));
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
-        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds);
+        var processing=CropProcessingLanes(seeds,crops);
+        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){Processing=processing};
         string jobId=Guid.NewGuid().ToString("N");economyJobs[jobId]=new(agentSaveEpoch,l.NameOrUniqueName,snapshot,Task.Run(()=>CropPortfolio.Plan(snapshot)));
         foreach(var old in economyJobs.Where(j=>j.Key!=jobId&&j.Value.Task.IsCompleted).Take(Math.Max(0,economyJobs.Count-8)).Select(j=>j.Key).ToArray())economyJobs.Remove(old);
         return new{status="planning",plan_id=jobId,existing_manual_water=existingManual,new_manual_limit=snapshot.ManualLimit,observed_seed_quotes=quotes.Count,next="farm.economy_status 查询；纯快照后台计算，不阻塞角色行动，不购买或播种。"};
     }
     internal object ReadFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)return new{status="planning"};
-        return new{status="planned",result=job.Task.GetAwaiter().GetResult(),quote_day=job.Snapshot.Day,assumptions="比较利润/周转/资金效率三类可行布局，并以有限宽度多轮补种现金流筛选；不是全局最优。Reinvestment是条件预测，未来报价必须重新读取；执行仅提交今日方案。仅今天观察的金币种子报价及已持有种子。保留目标/献祭产物不算销售收入；按每株每次一份基础品质估计、次日入账，未来行情/天气/额外产量/加工不作保证。实际执行重新校验位置与供货。"};
+        return new{status="planned",result=job.Task.GetAwaiter().GetResult(),quote_day=job.Snapshot.Day,assumptions="比较利润/周转/资金效率三类可行布局，并以有限宽度多轮补种现金流筛选；不是全局最优。Reinvestment是条件预测，未来报价必须重新读取；执行仅提交今日方案。仅今天观察的金币种子报价及已持有种子。保留目标/献祭产物不算销售收入；按每株每次一份基础品质估计、次日入账，未来行情/天气/额外产量不作保证；Processing仅估计已安装设备容量内的额外加工收益，不计入可用现金。实际执行重新校验位置与供货。"};
+    }
+    private List<ProcessingLane> CropProcessingLanes(List<EconomySeed> seeds,Dictionary<string,StardewValley.GameData.Crops.CropData> crops) {
+        var outputs=seeds.ToDictionary(s=>s.Seed,s=>ItemRegistry.QualifyItemId(crops[s.Seed.StartsWith("(O)")?s.Seed[3..]:s.Seed].HarvestItemId)!);
+        var objects=outputs.Values.Distinct().Select(id=>ItemRegistry.Create<StardewValley.Object>(id)).ToArray();
+        var options=BusinessProductionChoices(true,objects).ToArray();var lanes=new List<ProcessingLane>();
+        // Fuel is allocated conservatively once across machines, not counted once per crop.
+        var fuel=options.SelectMany(o=>o.Fuel.Keys).Distinct().ToDictionary(id=>id,id=>Math.Min(AccessibleStock(id),DisposableStock(id)));
+        foreach(var machine in GoalMachines()) {
+            var choices=options.Where(o=>o.Machine==machine.Object.QualifiedItemId&&o.Location==machine.Location.NameOrUniqueName).ToArray();if(choices.Length==0)continue;
+            int batches=28;foreach(var key in choices.SelectMany(c=>c.Fuel.Keys).Distinct()){int cost=choices.Max(c=>c.Fuel.GetValueOrDefault(key));if(cost>0)batches=Math.Min(batches,fuel.GetValueOrDefault(key)/cost);}
+            if(batches==0)continue;
+            foreach(var key in choices.SelectMany(c=>c.Fuel.Keys).Distinct())fuel[key]-=choices.Max(c=>c.Fuel.GetValueOrDefault(key))*batches;
+            string id=machine.Location.NameOrUniqueName+":"+machine.Object.TileLocation;
+            foreach(var option in choices)foreach(var seed in outputs.Where(s=>s.Value==option.Input))lanes.Add(new(id,seed.Key,option.Count,Math.Max(1,(int)Math.Ceiling(option.Minutes/1440d)),option.Margin,Game1.dayOfMonth+(int)Math.Ceiling(Math.Max(0,machine.Object.MinutesUntilReady)/1440d),batches));
+        }
+        return lanes;
     }
     private EconomyJob FindEconomyJob(JsonElement args) {
         if(!economyJobs.TryGetValue(AgentToolRegistry.Text(args,"plan_id"),out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("economy_plan_expired_recalculate");return job;

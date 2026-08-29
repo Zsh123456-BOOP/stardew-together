@@ -26,6 +26,8 @@ public sealed class AgentToolRegistry {
         ["farm.maintenance"]="{enabled?:bool,scope?:string}: 农场整理摘要（分类计数、体力估算、保留物、剩余订单），省略scope不返回坐标；enabled调整经营中的每日自动整理。scope返回最多32个详细目标。",
         ["farm.zones"]="{zones?:[{id:string,kind:crop|production|woodland|pasture|reserve,x:int,y:int,width:int,height:int,allow_trees?:bool}]}: 查询或原子替换农场分区列表，不重叠；先map.read观察。林区/牧草/保留区不清理；只有crop/production可授权树木整理。修改时玩家须空闲。",
         ["farm.cleanup"]="{request_id:string,mode?:run|pause,scopes?:[roads|courtyard|fields|general|all|zone:分区ID],reserve_stamina?:15..270,until?:HHMM<=2200,daily_limit?:1..120,remove_trees?:bool}: 保存持久清理目标，自动分批选目标、工具、寻路、存货续做；默认清杂草/树枝/小石头，树木须分区allow_trees且remove_trees。默认每日30目标、18点停止；30为安全底线，另预留未完浇水/播种和20%最大体力生产余量。所有整理订单共享35%最大体力成本与180游戏分钟日上限，额度用完不代表该睡觉。余量次日继续。相同request_id必须同参数，不重复创建；pause保留进度。AI暂停时不执行。当前执行角色为玩家，伙伴仍可独立承担已有农务/资源任务。",
+        ["farm.operating"]="{direction?:balanced|cashflow|low_labor,player_water_limit?:0..96,partner_water_limit?:0..96,reason?:string}: 设置统一经营方向和劳动容量，返回可用现金与实际/在途材料缺口",
+        ["companion.configure"]="{enabled?:bool,name?:string,appearance?:Leah|Alex|Sam|Maru|Sebastian|Abigail}: 创建/配置自定义伙伴；外观仅素材引用，不招募村民",
         ["farm.business"]="{enabled?:bool,expand?:bool,budget_per_day?:int,keep_gold?:int,max_animals?:0..96,max_machines?:0..200,feed_days?:2..28}: 持续经营政策，日常双角色照料、种植投资、饲料补给、机器投料收货、余量销售、按供给扩建畜舍与加工产能；预算共享，正常时间，不追逐成就",
         ["farm.business_status"]="{}: 实际经营账本、现金/待结算/在制品、产能投资选项、预计回收期依据与阻碍；待结算金额不可支出",
         ["player.acquire_animal"]="{type,name,location?:AnimalShop,budget,keep_gold}: 真实到牧场柜台选择动物、自动选已完工兼容畜舍并命名购买，核验原生动物和费用",
@@ -162,6 +164,8 @@ public sealed class AgentToolRegistry {
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
             "farm.cleanup"=>mod.ConfigureCleanup(args),"farm.zones"=>mod.ConfigureFarmZones(args),"farm.maintenance"=>mod.ConfigureFarmMaintenance(args),
+            "farm.operating"=>mod.ConfigureOperating(args),
+            "companion.configure"=>mod.ConfigurePartner(args),
             "farm.business"=>mod.ConfigureBusiness(args),"farm.business_status"=>mod.ReadBusiness(args),
             "shop.sources"=>PlayerExecutor.ShopSources(Text(args,"item"),args.TryGetProperty("recipe",out var recipe)&&recipe.GetBoolean()).Select(s=>new{s.Shop,s.Location}),
             "perfection.read"=>PerfectionProgress.Read(),"progress.pursue"=>mod.ConfigureProgressCampaign(args),"progress.dependencies"=>mod.ReadProgressDependencies(args),"capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),

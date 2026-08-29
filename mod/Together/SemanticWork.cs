@@ -231,7 +231,7 @@ public sealed partial class ModEntry {
             }
         }
         if(Game1.Date.TotalDays!=j.Day){StopSemanticWork(j,"day_changed_replan");return;}
-        if(Game1.eventUp||Game1.activeClickableMenu!=null){StopSemanticWork(j,"interaction_requires_model");return;}
+        if(Game1.eventUp||Game1.activeClickableMenu!=null){if(j.actor=="player")StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
         if(j.PickupPending) {
             if(j.Storing){TickWorkStorage(j);return;}

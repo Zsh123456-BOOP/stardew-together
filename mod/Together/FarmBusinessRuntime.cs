@@ -87,7 +87,7 @@ public sealed partial class ModEntry {
         // agreed companions here too, including ownership after save creation.
         if(Context.IsPlayerFree&&Game1.timeOfDay<1200&&DateTime.UtcNow>=rejoinAt) {
             rejoinAt=DateTime.UtcNow.AddSeconds(10);
-            foreach(var person in Data.People.Where(p=>p.Value.DailyCompanion==true))api?.ResumeDay(person.Key);
+            foreach(var person in Data.People.Where(p=>p.Value.DailyCompanion==true&&(!Data.Partner.Enabled||p.Key==PartnerName)))api?.ResumeDay(person.Key);
         }
         RefreshFacts(true);
         if(b.Day!=Game1.Date.TotalDays) {

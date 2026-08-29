@@ -138,6 +138,7 @@ public sealed partial class CompanionControl {
             path_preview=mate.Path.Take(6).Select(Tile).ToArray(),reachable_locations=Reachable(mate.Npc.currentLocation), returning_home=records.Values.Any(r=>r.Actor==Id(mate) && r.Skill=="dismiss" && r.Status=="running"), managed = managed.Contains(Id(mate)), can_reach_beach = mate.Npc.currentLocation.NameOrUniqueName=="Beach" || NextExit(mate.Npc.currentLocation,"Beach")!=null, can_reach_farm = mate.Npc.currentLocation.NameOrUniqueName=="Farm" || NextExit(mate.Npc.currentLocation,"Farm")!=null, candidates = Candidates(mate),
             travel_options=MineTravelOptions(mate.Npc.currentLocation).ToArray(), resource_sites=ResourceSites(mate).ToArray(), fishing_available = FishingAvailable(mate),
             control_mode = stay.Contains(Id(mate)) ? "independent" : "follow",
+            labor=Labor(mate.Npc),custom_partner=mate.Npc.modData.ContainsKey("stardewagent.together/custom-partner"),
             cargo = Counts(Pouch(mate)), cargo_slots = Pouch(mate).Count(i=>i!=null), cargo_capacity = 12,
             storable_cargo = Pouch(mate).Where(i=>i!=null).Sum(StoreableCargo), cargo_storage=CargoStorage(mate),
             in_combat = mate.Task?.Type == TaskType.Attacking,
@@ -188,6 +189,7 @@ public sealed partial class CompanionControl {
             Finish(receipt,"succeeded");records[id]=receipt;return Json(Result(receipt));
         }
         var mate = Mate(actor);
+        ValidateLabor(mate.Npc,skill);
         if (records.Values.Any(r => r.Actor == actor && r.Status == "running")) throw new InvalidOperationException("actor_busy");
         if (skill is not ("buy" or "ship" or "clear" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "travel" or "stay" or "pet" or "collect" or "mine" or "follow" or "water" or "harvest" or "fish" or "guard" or "rest" or "dismiss")) throw new InvalidOperationException("unsupported_skill");
         var record = new Record { Id = id, Actor = actor, Mate = mate, Skill = skill, Location = mate.Npc.currentLocation,
@@ -236,7 +238,7 @@ public sealed partial class CompanionControl {
             mod.FollowerManager.ClearMateTaskAndReset(mate);
             Finish(record, "succeeded"); // Result is switching mode, not an assertion of arrival.
         }
-        records[id] = record;
+        ChargeLabor(mate.Npc,skill);records[id] = record;
         return Json(Result(record));
     }
     private void Finish(Record r, string status, string? error = null) {

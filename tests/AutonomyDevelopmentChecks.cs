@@ -82,6 +82,13 @@ public static class AutonomyDevelopmentChecks {
         var projection=portfolio.Reinvestment!;
         check(projection.Days.All(d=>d.Gold>=80&&d.ManualWater<=2&&d.PurchaseCost<=30),"multi-cycle cash forecast respects every day's gold reserve, care limit and purchase allowance");
         check(projection.Replantings.All(o=>o.Day%7!=3&&o.Day<=28),"future SeedShop purchases avoid Wednesdays and unobserved next-season offers");
+        var processingSeed=economySeed with{ReserveYield=0,Owned=2};
+        var processingSnapshot=economy with{Seeds=new(){processingSeed},Processing=new(){new("one-machine","seed",1,7,100,1,1)}};
+        var processingPlants=new List<EconomyPlant>{new("seed",new(1,1),4,true,0),new("seed",new(2,1),4,true,0)};
+        var processed=ProcessingForecast.Evaluate(processingSnapshot,processingPlants);
+        check(processed.ProcessedUnits==1&&processed.AdditionalMargin==100,"processing forecast respects one actual fuel-limited machine, not one machine per crop");
+        check(ProcessingForecast.Evaluate(processingSnapshot with{Processing=new()},processingPlants).AdditionalMargin==0,"unbuilt machines cannot inflate planting income");
+        check(ProcessingForecast.Evaluate(processingSnapshot with{Processing=new(){new("one-machine","seed",1,30,100,1,99)}},processingPlants).AdditionalMargin==0,"processing which cannot pay within the horizon has no realized margin");
         var blockedCash=new EconomySnapshot(1,1,10,10,0,1,1,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed with{ReserveYield=0}});
         var reinvest=SeasonCashForecast.Plan(blockedCash,new(){new("seed",new(0,0),4,true,10)},10);
         check(reinvest.Replantings.All(o=>o.Day>=6),"cannot spend a first harvest's shipping proceeds on harvest day");

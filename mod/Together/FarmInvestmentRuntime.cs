@@ -74,7 +74,7 @@ public sealed partial class ModEntry {
                 p.Phase="start_planning";
             }
             if(p.Phase=="start_planning") {
-                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.Error=="shop_unavailable_use_owned_seeds_only"?0:Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold,plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
+                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.Error=="shop_unavailable_use_owned_seeds_only"?0:Data.Business.Enabled?OperatingMath.CashForSeeds(Game1.player.Money,Data.Business.KeepGold,Data.Business.DailyBudget,Data.Business.ReservedToday+p.ReservedToday,Data.Operating.DevelopmentCashHeld):Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold+(Data.Business.Enabled?Data.Operating.DevelopmentCashHeld:0),plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
                 p.PlanId=response.GetProperty("plan_id").GetString()!;p.Phase="planning";
             }
         }catch(Exception error){p.Phase="blocked";p.Error=error is InvalidOperationException?error.Message:error.GetType().Name;Data.Autoplay.Record("farm_investment_blocked",p.Error);WakeAgent("farm_investment_blocked");}

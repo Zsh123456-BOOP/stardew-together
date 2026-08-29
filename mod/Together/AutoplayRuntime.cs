@@ -73,6 +73,7 @@ public sealed partial class ModEntry {
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
         Data.Autoplay.Goal=goal;Data.Autoplay.Status="running";Data.Autoplay.Detail="DeepSeek 接管；F10 或方向键随时暂停。";
+        EnsureCustomPartner();
         agentKnownActors.Clear();agentKnownActors.Add("player");foreach(var actor in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(actor.GetProperty("id").GetString()!);agentIdleSignature="";
         agentStarting=true;WakeAgent("start_or_resume");agentNext=DateTime.UtcNow;Notice=Data.Autoplay.Detail;
     }
@@ -117,9 +118,9 @@ public sealed partial class ModEntry {
         long stage=Stopwatch.GetTimestamp();playerExecutor.Tick();FrameStage("player_executor",ref stage);TickSemanticWork();FrameStage("semantic",ref stage);
         if(!AutoplayRunning)return;
         if(Context.IsMultiplayer){PauseAutoplay("multiplayer_not_supported");return;}
-        TickAgentSchedule();FrameStage("schedule",ref stage);
+        TickCustomPartner();TickAgentSchedule();FrameStage("schedule",ref stage);
         TickDailyAutomation();FrameStage("daily",ref stage);
-        TickFarmBusiness();FrameStage("business",ref stage);
+        TickFarmBusiness();TickCooperativeBusiness();FrameStage("business",ref stage);
         TickFarmInvestment();FrameStage("investment",ref stage);
         TickFarmCleanup();FrameStage("cleanup",ref stage);
         TickProgressCampaign();TickGoalAutomation();FrameStage("goals",ref stage);

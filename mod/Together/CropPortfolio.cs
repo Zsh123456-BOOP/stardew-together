@@ -3,24 +3,25 @@ using StardewCropCalculatorLibrary;
 namespace Together;
 public sealed record SeedQuote(string Seed,string Shop,string Location,int Day,int Price,int Stock,int Units);
 public sealed record EconomySeed(string Seed,int Owned,SeedQuote? Quote,int SalePrice,int Regrow,int LastDay,bool Trellis,int ReserveYield,int NeedForCollection,Dictionary<FarmCell,int> Growth,HashSet<FarmCell> Irrigated);
-public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds);
+public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds) { public List<ProcessingLane> Processing {get;init;}=new(); }
 public sealed record EconomyPlant(string Seed,FarmCell Tile,int Growth,bool Manual,int PurchaseCost);
 public sealed record EconomyPurchase(string Seed,string Shop,string Location,int Count,int UnitPrice);
-public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null);
+public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null) { public ProcessingEstimate? Processing {get;init;} }
 
 // A bounded, greedy portfolio over detached native facts. It prioritizes feasible
 // work and reserves rather than claiming a globally optimal farming strategy.
 public static class CropPortfolio {
     public static EconomyResult Plan(EconomySnapshot s,CancellationToken cancellation=default) {
         var clock=System.Diagnostics.Stopwatch.StartNew();var results=new List<EconomyResult>();
-        foreach(int variant in new[]{0,1,2}) {cancellation.ThrowIfCancellationRequested();if(results.Count>0&&clock.ElapsedMilliseconds>5000)break;results.Add(PlanVariant(s,variant,cancellation));}
+        foreach(int variant in new[]{0,1,2}) {cancellation.ThrowIfCancellationRequested();if(results.Count>0&&clock.ElapsedMilliseconds>5000)break;var planned=PlanVariant(s,variant,cancellation);results.Add(planned with{Processing=ProcessingForecast.Evaluate(s,planned.Plants)});}
         int Reserved(EconomyResult r)=>s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));
         int Collection(EconomyResult r)=>s.Priority=="collection"?s.Seeds.Count(seed=>seed.NeedForCollection>0&&r.Plants.Any(p=>p.Seed==seed.Seed)):0;
         // Partial forecasts are useful diagnostics, but not comparable to a full
         // season. Keep their candidate's conservative first-planting value.
         bool comparable=results.All(r=>r.Reinvestment is {StopReason:"season_scenario_complete"});
         double Value(EconomyResult r)=>comparable&&r.Reinvestment is {} forecast?forecast.Gold:s.Money-r.Spent+r.Plants.Sum(p=>{var seed=s.Seeds.First(x=>x.Seed==p.Seed);return new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)*seed.SalePrice;})-s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)))*seed.SalePrice);
-        return results.OrderByDescending(Reserved).ThenByDescending(Collection).ThenByDescending(r=>s.Priority=="low_labor"?(Value(r)-s.Money)/Math.Max(1,r.Manual):Value(r)).ThenBy(r=>r.Spent).First();
+        double IntegratedValue(EconomyResult r)=>Value(r)+(r.Processing?.AdditionalMargin??0);
+        return results.OrderByDescending(Reserved).ThenByDescending(Collection).ThenByDescending(r=>s.Priority=="low_labor"?(IntegratedValue(r)-s.Money)/Math.Max(1,r.Manual):IntegratedValue(r)).ThenBy(r=>r.Spent).First();
     }
     private static EconomyResult PlanVariant(EconomySnapshot s,int variant,CancellationToken cancellation) {
         var watch=System.Diagnostics.Stopwatch.StartNew();var grid=s.Grid.ToList();var anchors=s.Anchors.ToList();

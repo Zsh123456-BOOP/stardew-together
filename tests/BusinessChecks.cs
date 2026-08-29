@@ -38,6 +38,9 @@ internal static class BusinessChecks {
         check(Together.Shared.ForageCropRules.HarvestId(true,"1","")=="(O)399","native spring onion maps to its actual harvest item even with empty crop index");
         check(Together.Shared.ForageCropRules.HarvestId(false,"1","(O)24")=="(O)24"&&Together.Shared.ForageCropRules.HarvestId(true,"2","")=="","normal crops and ginger are not guessed as spring onions");
         check(!Together.Shared.ForageCropRules.CanHarvest(true,"2")&&Together.Shared.ForageCropRules.CanHarvest(true,"1")&&Together.Shared.ForageCropRules.CanHarvest(false,""),"ginger requiring a hoe is not destroyed by an unsupported hand-harvest task");
+        check(OperatingMath.CashForSeeds(500,100,1000,200,250)==150,"seeds share delivered cash and approved development reserve");
+        check(OperatingMath.GatherDeficit(50,20,15)==15&&OperatingMath.DeliveredDeficit(50,20)==30,"in-transit cargo reduces gathering but cannot be spent before delivery");
+        check(OperatingMath.WaterCapacity(24,30,40,0)==0&&OperatingMath.WaterCapacity(24,270,40,24)==48,"farm scale follows available labor and falls back without a partner");
         var cheap=new BusinessOption("small","machine","a",100,100,100,0,1,"",Array.Empty<string>());
         var large=new BusinessOption("large","building","b",1000,3000,200,0,1,"",Array.Empty<string>());
         var unavailable=cheap with{Id="locked",Gaps=new[]{"missing_native_unlock"},DailyMargin=9999};

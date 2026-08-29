@@ -5,9 +5,9 @@ using StardewValley.GameData.Machines;
 namespace Together;
 public sealed partial class ModEntry {
     private sealed record ProductionChoice(string Machine,string Location,string Input,int Count,int Minutes,double Margin,int Available,Dictionary<string,int> Fuel);
-    private IEnumerable<ProductionChoice> BusinessProductionChoices(bool installedOnly=true) {
+    private IEnumerable<ProductionChoice> BusinessProductionChoices(bool installedOnly=true,IEnumerable<StardewValley.Object>? forecastInputs=null) {
         var p=Game1.player;
-        var inputs=p.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>()
+        var inputs=(forecastInputs??p.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>())
             .Where(o=>!o.bigCraftable.Value&&!o.questItem.Value&&o.Stack>0).GroupBy(o=>(o.QualifiedItemId,o.Quality)).Select(g=>g.First()).Take(100).ToArray();
         var machines=GoalMachines().Select(m=>(Machine:m.Object,Location:m.Location));
         if(!installedOnly)machines=machines.Concat(goalRecipes.Values.Where(r=>r.Kind=="craft"&&r.Known&&r.Item.StartsWith("(BC)")&&DataLoader.Machines(Game1.content).ContainsKey(r.Item))
@@ -15,7 +15,7 @@ public sealed partial class ModEntry {
         foreach(var entry in machines.DistinctBy(m=>(m.Machine.QualifiedItemId,m.Location.NameOrUniqueName))) {
             var machine=entry.Machine;var data=machine.GetMachineData();if(data==null)continue;
             foreach(var actual in inputs) {
-                var input=actual.getOne();input.Stack=Math.Min(999,DisposableStock(input.QualifiedItemId));if(input.Stack<1)continue;
+                var input=actual.getOne();input.Stack=forecastInputs==null?Math.Min(999,DisposableStock(input.QualifiedItemId)):999;if(input.Stack<1)continue;
                 if(!MachineDataUtility.TryGetMachineOutputRule(machine,data,MachineOutputTrigger.ItemPlacedInMachine,input,p,entry.Location,out var rule,out var trigger,out _,out _))continue;
                 // Only declarative, fixed outputs are valued here. Random products,
                 // custom callbacks and recursive machine side effects need an adapter.

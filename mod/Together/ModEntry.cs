@@ -10,7 +10,7 @@ namespace Together;
 public interface ICompanionControl {
     string GetState(); string GetMap(string actorId); string StartAction(string request);
     string PollAction(string id); string CancelAction(string id); string PrepareLab(); void Reset();
-    string ConfigureFarm(string json); NPC? GetCharacter(string name); bool ResumeDay(string name);
+    string ConfigureFarm(string json); NPC? GetCharacter(string name); bool ResumeDay(string name); bool AttachCustomCompanion(string name);
 }
 public sealed class Config {
     public SButton OpenKey {get;set;}=SButton.F8;
@@ -64,6 +64,7 @@ public sealed partial class ModEntry:Mod {
     }
     public override void Entry(IModHelper helper) {
         Settings=helper.ReadConfig<Config>();
+        SetupCustomPartner();
         SetupKnowledge();
         SetupAutoplay();
         NativeQuestIdentity.Install(ModManifest.UniqueID);
@@ -73,7 +74,7 @@ public sealed partial class ModEntry:Mod {
         };
         helper.Events.GameLoop.SaveLoaded+=(_,_)=>Load();
         helper.Events.GameLoop.DayEnding+=(_,_)=>CheckpointJobs();
-        helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist){ArchiveCompanionCheckpoint();Helper.Data.WriteSaveData("together-v2",Data);}};
+        helper.Events.GameLoop.Saving+=(_,_)=>{if(canPersist){SaveCustomPartner();ArchiveCompanionCheckpoint();Helper.Data.WriteSaveData("together-v2",Data);}};
         helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();playerExecutor.ClearWorld();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
@@ -190,6 +191,7 @@ public sealed partial class ModEntry:Mod {
                 if(Data.People.ContainsKey(actor.GetProperty("name").GetString()!))Request(actor.GetProperty("id").GetString()!,"follow");
         }catch{Notice="队伍尚未就绪；靠近队友后可重新邀请。";}
         EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
+        Helper.GameContent.InvalidateCache("Data/Characters");EnsureCustomPartner(true);
         if(Settings.EnableLab)Game1.options.pauseWhenOutOfFocus=false;
     }
     // State is committed by SMAPI's Saving event together with the game save.

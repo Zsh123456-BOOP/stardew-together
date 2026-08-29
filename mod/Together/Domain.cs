@@ -117,6 +117,8 @@ public sealed class StoragePolicy {
     public int WoodReserved {get;set;}
 }
 public sealed class SaveData {
+    public OperatingPlan Operating {get;set;}=new();
+    public CustomPartner Partner {get;set;}=new();
     public StoragePolicy Storage {get;set;}=new();
     public FarmBusiness Business {get;set;}=new();
     public FarmMaintenance Maintenance {get;set;}=new();

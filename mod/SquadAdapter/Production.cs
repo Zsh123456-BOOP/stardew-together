@@ -75,7 +75,15 @@ public sealed partial class CompanionControl {
         }
         return null;
     }
+    private sealed record GatherLitter(StardewValley.Object Item);
     private IEnumerable<Candidate> ProductionCandidates(ISquadMate mate) {
+        // Explicit resource orders for our custom worker do not require a seeded
+        // planting-area policy. Together filters protected zones before dispatch.
+        // Only loose twigs/weeds qualify here, never trees, crops or machines.
+        if(IsManaged(mate)&&mate.Npc.modData.ContainsKey("stardewagent.together/custom-partner")&&Pouch(mate).Count(i=>i!=null)<10)
+            foreach(var p in mate.Npc.currentLocation.objects.Pairs.Where(p=>p.Value.IsTwig()||p.Value.IsWeeds()).OrderBy(p=>Vector2.DistanceSquared(p.Key,mate.Npc.Tile)).Take(16)) {
+                var stand=StandingSpot(mate,p.Key.ToPoint());if(stand.HasValue)yield return new(TargetId(p.Value)+":gather","clear",p.Key.ToPoint(),new GatherLitter(p.Value),stand.Value);
+            }
         if(!farmPolicy.Enabled)yield break;
         var location=mate.Npc.currentLocation;
         foreach(var area in farmPolicy.Areas.Where(a=>a.Enabled && a.Location==location.NameOrUniqueName).Take(16)) {
@@ -123,6 +131,7 @@ public sealed partial class CompanionControl {
         }
     }
     private bool ProductionPending(Record r) {
+        if(r.Skill=="clear"&&r.Source is GatherLitter loose)return r.Mate.Npc.modData.ContainsKey("stardewagent.together/custom-partner")&&r.Location.objects.TryGetValue(r.Target.ToVector2(),out var actual)&&ReferenceEquals(actual,loose.Item)&&(actual.IsTwig()||actual.IsWeeds());
         if(!farmPolicy.Enabled)return false;
         if(r.Skill=="clear")return farmPolicy.ClearDesignatedPlots && farmPolicy.Areas.Any(a=>a.Enabled && a.Location==r.Location.NameOrUniqueName && r.Target.X>=a.X && r.Target.X<a.X+a.Width && r.Target.Y>=a.Y && r.Target.Y<a.Y+a.Height) && r.Location.objects.TryGetValue(r.Target.ToVector2(),out var litter) && ReferenceEquals(litter,r.Source) && (litter.IsTwig() || litter.IsWeeds());
         if(r.Skill=="tend")return r.Source is FarmAnimal animal && animal.currentLocation==r.Location && animal.TilePoint==r.Target && animal.currentProduce.Value!=null;
@@ -144,7 +153,7 @@ public sealed partial class CompanionControl {
         reservationTick=-1;
         if(!ProductionPending(r)){Finish(r,"failed","production_permission_or_target_changed");return;}
         if(r.Skill=="clear") {
-            var litter=(StardewValley.Object)r.Source!;var before=r.Location.debris.ToHashSet();
+            var litter=r.Source is GatherLitter loose?loose.Item:(StardewValley.Object)r.Source!;var before=r.Location.debris.ToHashSet();
             using(var output=OwnOutput(r.Mate)) {
                 bool removed=litter.performToolAction(new StardewValley.Tools.Axe{lastUser=player});
                 foreach(var drop in r.Location.debris.Where(d=>!before.Contains(d)).ToArray()) {

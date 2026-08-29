@@ -331,6 +331,13 @@ public sealed partial class CompanionControl {
     public void Reset() {
         foreach (var r in records.Values.Where(r => r.Status == "running").ToArray()) Finish(r, "cancelled", "session_reset");
         records.Clear();reachableCache.Clear(); managed.Clear();stay.Clear();fishingAvailability.Clear();resourceReservations.Clear();plotTargets.Clear();farmPolicy=new(){Enabled=false};
+        // Bridge and Together receive save events in different orders. Resetting a
+        // session must not release our persisted custom worker to Squad's follower
+        // AI between load and the next model turn.
+        if(StardewModdingAPI.Context.IsWorldReady&&!StardewModdingAPI.Context.IsMultiplayer)
+            foreach(var mate in Members.Where(m=>m.Npc.modData.ContainsKey("stardewagent.together/custom-partner"))) {
+                managed.Add(Id(mate));stay.Add(Id(mate));mod.FollowerManager.ClearMateTaskAndReset(mate);
+            }
     }
     public string PrepareLab() {
         if (Context.IsMultiplayer || Game1.player.Name != "AgentLab") throw new InvalidOperationException("lab_save_required");

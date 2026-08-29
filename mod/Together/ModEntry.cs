@@ -78,7 +78,7 @@ public sealed partial class ModEntry:Mod {
         helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{ResetAgentRuntime();playerExecutor.ClearWorld();generation++;pending=null;api?.Reset();Data=new();ResetKnowledge();};
         helper.Events.GameLoop.DayStarted+=(_,_)=>{
             foreach(var p in Data.People.Values) {p.NewDay(Game1.Date.TotalDays);if(p.Job?.Status=="paused" && p.Job.Origin=="autonomous")p.Job.Status="active";}
-            EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
+            EnsureBudget();EnsureCustomPartner();autoAt=DateTime.UtcNow.AddSeconds(30);
         };
         helper.Events.Input.ButtonPressed+=(_,e)=>{
             if(Context.IsWorldReady && e.Button==Settings.OpenKey && (Game1.activeClickableMenu==null || Game1.activeClickableMenu is CompanionMenu)) {
@@ -188,7 +188,7 @@ public sealed partial class ModEntry:Mod {
         // A paused promise must not fall through to unrelated autonomous Squad labor.
         try {
             foreach(var actor in World().GetProperty("actors").EnumerateArray())
-                if(Data.People.ContainsKey(actor.GetProperty("name").GetString()!))Request(actor.GetProperty("id").GetString()!,"follow");
+                if(actor.GetProperty("name").GetString()!=PartnerName&&Data.People.ContainsKey(actor.GetProperty("name").GetString()!))Request(actor.GetProperty("id").GetString()!,"follow");
         }catch{Notice="队伍尚未就绪；靠近队友后可重新邀请。";}
         EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
         Helper.GameContent.InvalidateCache("Data/Characters");EnsureCustomPartner(true);

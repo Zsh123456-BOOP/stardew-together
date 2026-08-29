@@ -81,8 +81,13 @@ public sealed partial class CompanionControl {
         // planting-area policy. Together filters protected zones before dispatch.
         // Only loose twigs/weeds qualify here, never trees, crops or machines.
         if(IsManaged(mate)&&mate.Npc.modData.ContainsKey("stardewagent.together/custom-partner")&&Pouch(mate).Count(i=>i!=null)<10)
-            foreach(var p in mate.Npc.currentLocation.objects.Pairs.Where(p=>p.Value.IsTwig()||p.Value.IsWeeds()).OrderBy(p=>Vector2.DistanceSquared(p.Key,mate.Npc.Tile)).Take(16)) {
-                var stand=StandingSpot(mate,p.Key.ToPoint());if(stand.HasValue)yield return new(TargetId(p.Value)+":gather","clear",p.Key.ToPoint(),new GatherLitter(p.Value),stand.Value);
+            foreach(var group in mate.Npc.currentLocation.objects.Pairs.Where(p=>p.Value.IsTwig()||p.Value.IsWeeds()).GroupBy(p=>p.Value.IsTwig())) {
+                int emitted=0;
+                foreach(var p in group.OrderBy(p=>Vector2.DistanceSquared(p.Key,mate.Npc.Tile))) {
+                    var stand=StandingSpot(mate,p.Key.ToPoint());if(!stand.HasValue)continue;
+                    yield return new(TargetId(p.Value)+":gather","clear",p.Key.ToPoint(),new GatherLitter(p.Value),stand.Value);
+                    if(++emitted>=6)break;
+                }
             }
         if(!farmPolicy.Enabled)yield break;
         var location=mate.Npc.currentLocation;

@@ -149,7 +149,7 @@ public sealed partial class ModEntry {
                         if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;hadToolError=true;}
                         if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
                     }
-                    bool allActorsHaveWork=agentKnownActors.All(actor=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&t.state is "queued" or "running"));
+                    bool allActorsHaveWork=agentKnownActors.All(AgentActorHasWork);
                     if(followup&&AgentPollingPolicy.Defer(allActorsHaveWork,hadToolError,turn.calls.Select(c=>c.tool)))followup=false;
                     if(followup)WakeAgent("tool_results");
                     agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
@@ -164,9 +164,10 @@ public sealed partial class ModEntry {
             }
         }
         if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
+        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(r=>r.StartsWith("actor_ready:")||r.StartsWith("idle_actors:")||r=="player_needs_next_plan")&&agentKnownActors.All(AgentActorHasWork))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
-            bool playerQueued=Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&t.state is "queued" or "running");
+            bool playerQueued=AgentActorHasWork("player");
             if(playerQueued && !playerExecutor.NeedsMenuChoice)return;
             WakeAgent("player_needs_next_plan");
         }

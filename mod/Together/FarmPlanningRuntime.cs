@@ -38,7 +38,7 @@ public sealed partial class ModEntry {
     }
     internal object PlanFarm(JsonElement args) {
         var l=Game1.currentLocation;
-        if(!l.IsFarm&&!l.IsGreenhouse)throw new InvalidOperationException("plan_on_farm_or_greenhouse");
+        if(!l.IsGreenhouse&&(!l.IsFarm||!l.IsOutdoors))throw new InvalidOperationException("plan_on_farm_or_greenhouse_first_travel_to_Farm");
         if(playerExecutor.Busy || WorkActorBusy("player"))throw new InvalidOperationException("wait_for_player_before_layout");
         string requested=AgentToolRegistry.Text(args,"seed");int max=Math.Clamp(AgentToolRegistry.Number(args,"count",24),1,96);
         string fertilizer=AgentToolRegistry.Text(args,"fertilizer");

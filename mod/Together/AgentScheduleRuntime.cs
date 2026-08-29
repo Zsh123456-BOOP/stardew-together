@@ -13,6 +13,7 @@ public sealed partial class ModEntry {
     private bool agentWasInDanger;
     private readonly HashSet<string> agentKnownActors=new(){"player"};
     private string agentIdleSignature="";
+    private bool AgentActorHasWork(string actor)=>WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&t.state is "queued" or "running");
     private void WakeAgent(string reason) {
         if(!agentWakeReasons.Contains(reason))agentWakeReasons.Add(reason);
         if(agentWakeReasons.Count>16)agentWakeReasons.RemoveAt(0);
@@ -104,6 +105,9 @@ public sealed partial class ModEntry {
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
+            // Maintenance and cargo-support jobs may own an actor outside this
+            // queue. Wait for the whole semantic job, not just its current swing.
+            if(WorkActorBusy(task.spec.actor))continue;
             bool purchasing=PlayerExecutor.AcceptsNativeMenu(task.spec.tool);
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
@@ -119,7 +123,7 @@ public sealed partial class ModEntry {
     }
     private void ObserveAgentEvents() {
         if(DateTime.UtcNow<agentObserveAt)return;agentObserveAt=DateTime.UtcNow.AddSeconds(1);
-        string idle=string.Join(",",agentKnownActors.OrderBy(x=>x).Where(actor=>!Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&!t.Terminal)));
+        string idle=string.Join(",",agentKnownActors.OrderBy(x=>x).Where(actor=>!AgentActorHasWork(actor)));
         if(idle!=agentIdleSignature){agentIdleSignature=idle;if(idle.Length>0)WakeAgent("idle_actors:"+idle);}
         bool danger=Game1.player.health<35;
         if(danger&&!agentWasInDanger)agentGeneration++; // Discard an in-flight plan based on a previously safe state.

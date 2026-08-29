@@ -86,7 +86,7 @@ public sealed partial class ModEntry {
         bool PlayerDoing(string goal)=>Data.Autoplay.Schedule.Tasks.Any(t=>!t.Terminal&&t.spec.actor=="player"&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")==goal);
         var farm=Game1.getFarm();
         if(!PlayerDoing("harvest")&&farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.readyForHarvest())&&Queue("harvest","Farm",0,"先收成熟作物，释放田地与原料"))return;
-        if(!PlayerDoing("water")&&farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.needsWatering()&&d.state.Value!=1)&&Queue("water","Farm",0,"完成真实缺水农务，让玩家处理采购与建设"))return;
+        if(!PlayerDoing("water")&&!PlayerDoing("plant")&&farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.needsWatering()&&d.state.Value!=1)&&Queue("water","Farm",0,"完成真实缺水农务，让玩家处理采购与建设"))return;
         foreach(var t in p.MaterialTargets) {
             string goal=t.Key switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber",_=>""};if(goal==""||PlayerDoing(goal))continue;
             int missing=OperatingMath.GatherDeficit(t.Value,AccessibleStock(t.Key),actors.Sum(a=>CargoItem(a,t.Key)));if(missing<=0)continue;

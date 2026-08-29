@@ -11,7 +11,7 @@ public sealed partial class CompanionControl {
             mate=mod.SquadMateFactory.Create(npc);mod.RecruitmentManager.Recruit(mate,Game1.player,isSilent:true);
             if(!Members.Contains(mate))return false;
             managed.Add(Id(mate));stay.Add(Id(mate));mod.FollowerManager.ClearMateTaskAndReset(mate);
-        }else managed.Add(Id(mate));
+        }else if(managed.Add(Id(mate)))stay.Add(Id(mate));
         return true;
     }
 }

@@ -9,6 +9,7 @@ public sealed class OperatingPlan {
     public int PartnerWaterLimit {get;set;}=24;
     public Dictionary<string,int> MaterialTargets {get;set;}=new();
     public Dictionary<string,int> RetryAfter {get;set;}=new();
+    public int AllocationDay {get;set;}=-1;
     public string PartnerTask {get;set;}="";
     public string PartnerReason {get;set;}="尚未分工";
 }

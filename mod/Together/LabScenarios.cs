@@ -58,6 +58,27 @@ public sealed partial class ModEntry {
                 foreach(var name in Data.People.Keys) {var pouch=Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{name}");pouch.Clear();foreach(string id in new[]{"388","390","771","378","380","382","384","386"})pouch.Add(ItemRegistry.Create("(O)"+id,3));}
                 break;
             }
+            case "inventory_timing_fixture": {
+                PauseAutoplay("lab_inventory_timing");Settings.Autonomy=false;Game1.exitActiveMenu();
+                Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.Autoplay.Routine=new();
+                for(int x=44;x<=53;x++)for(int y=26;y<=31;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                var box=new Chest(true){TileLocation=new(44,30)};box.modData[WorkChestRole]="output";farm.objects[new(44,30)]=box;
+                for(int i=5;i<Game1.player.Items.Count;i++)Game1.player.Items[i]=null;
+                string[] contents={"472","388","390","771","92","330"};
+                for(int i=0;i<contents.Length;i++)Game1.player.Items[i+5]=ItemRegistry.Create("(O)"+contents[i],15);
+                if(Num("full")==1)Game1.player.Items[11]=ItemRegistry.Create("(O)382",15);
+                for(int x=46;x<=49;x++)farm.objects[new(x,28)]=new StardewValley.Object("294",1){TileLocation=new(x,28),HasBeenInInventory=false};
+                farm.objects[new(51,28)]=new StardewValley.Object("16",1){TileLocation=new(51,28),IsSpawnedObject=true};
+                farm.terrainFeatures[new(50,29)]=new HoeDirt(0,farm);
+                Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
+                Game1.player.CurrentToolIndex=5;Game1.player.netItemStowed.Value=false;Game1.player.UpdateItemStow();
+                break;
+            }
+            case "inventory_timing_read":return JsonSerializer.Serialize(new{
+                free_slots=Game1.player.freeSpotsInInventory(),stowed=Game1.player.netItemStowed.Value,held=Game1.player.ActiveObject?.QualifiedItemId,
+                seeds=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)472").Sum(i=>i.Stack),
+                stored=(farm.objects.GetValueOrDefault(new(44,30)) as Chest)?.Items.Sum(i=>i?.Stack??0),
+                planted=(farm.terrainFeatures.GetValueOrDefault(new(50,29)) as HoeDirt)?.crop!=null});
             case "agent_pause_notice_fixture": {
                 Data.Autoplay.Status="running";PauseAutoplay("玩家按 F10 暂停接管");break;
             }

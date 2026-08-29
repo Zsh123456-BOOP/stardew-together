@@ -58,6 +58,15 @@ public sealed partial class ModEntry {
         StopSemanticWork(job,"insufficient_reachable_shared_stock");
     }
     private static bool OutputChest(Chest c)=>c.playerChest.Value&&c.modData.TryGetValue(WorkChestRole,out var role)&&role=="output";
+    private bool PlayerNeedsWorkStorage(SemanticJob job) {
+        bool output=job.goal is "cleanup" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
+        string item=job.Item.Length>0?job.Item:job.goal switch{"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771","hardwood"=>"(O)709",_=>""};
+        bool stacks=item.Length>0&&Game1.player.couldInventoryAcceptThisItem(ItemRegistry.Create(item));
+        // Unknown side drops are handled by the real pickup-capacity check, which
+        // retains their positions and resumes after unloading. Planting consumes
+        // seeds; it must not run off to store merely because one slot remains.
+        return StorageTiming.NeedsRoom(Game1.player.freeSpotsInInventory(),output,stacks);
+    }
     private int StoreCount(Item item) {
         if(semanticJobs.Values.Any(j=>j.status=="running"&&j.goal=="plant"&&farmPlantPlans.TryGetValue(j.PlanId,out var plan)&&plan.Fertilizer==item.QualifiedItemId))return 0;
         if(item is not StardewValley.Object o||o.bigCraftable.Value||o.questItem.Value||o.Category==-74)return 0;
@@ -68,7 +77,8 @@ public sealed partial class ModEntry {
         return Math.Max(0,item.Stack-keep);
     }
     private object InventoryPlanning()=>new{
-        player_free_slots=Game1.player.Items.Count(i=>i==null),target_free_slots=2,
+        player_free_slots=Game1.player.freeSpotsInInventory(),
+        storage_trigger="只在后续实际产物放不下、必要材料交接或收工整理时存箱；有可叠加空间就继续。不要因有可存物品或只剩一个空格而另派存箱。",
         keep_policy="工具、种子、设备、任务物品保留，食物每种至少2个。目标预留材料可存共享箱但不能被其他用途消耗；需要时由依赖任务取回。",
         storable=Game1.player.Items.Select((item,slot)=>new{item,slot}).Where(x=>x.item!=null&&StoreCount(x.item)>0).Select(x=>new{x.slot,id=x.item.QualifiedItemId,count=StoreCount(x.item)}),
         expansion_policy=Data.Storage,
@@ -126,7 +136,7 @@ public sealed partial class ModEntry {
                 WorkChild(j,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_move");return;
             }
             StorePlayerAt(tile,j);j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
-            if(j.goal!="store"&&Game1.player.Items.Count(i=>i==null)>=2){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
+            if(j.goal!="store"&&!PlayerNeedsWorkStorage(j)&&(!j.PickupPending||Game1.player.freeSpotsInInventory()>0)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
         }
         if(!Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)) {
             if(j.goal=="store"){StopSemanticWork(j,"stored_available_cargo",true);return;}

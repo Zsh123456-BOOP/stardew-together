@@ -53,6 +53,7 @@ public sealed partial class ModEntry {
             npc.Position=new Vector2(p.X,p.Y)*64;
         }
         npc.displayName=p.DisplayName;
+        if(!Game1.player.friendshipData.ContainsKey(PartnerName))Game1.player.friendshipData[PartnerName]=new Friendship(0);
         if(!api.AttachCustomCompanion(PartnerName))return;
         Person(PartnerName).DailyCompanion=true;Data.Selected=PartnerName;
         var actor=Actor(World(),PartnerName);if(actor.HasValue)agentKnownActors.Add(actor.Value.GetProperty("id").GetString()!);

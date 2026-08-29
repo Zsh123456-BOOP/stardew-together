@@ -55,6 +55,11 @@ public sealed partial class ModEntry {
         Data.FarmInvestment.Plots=Math.Clamp(Data.FarmInvestment.ManualWaterLimit,1,96);
         if(!present){p.PartnerReason="伙伴不可用，保留玩家独立经营";return;}
         string actor=partner.GetProperty("id").GetString()!;
+        if(p.AllocationDay!=Game1.Date.TotalDays){
+            p.AllocationDay=Game1.Date.TotalDays;
+            foreach(string key in new[]{"water","harvest","pet"})Data.Autoplay.Routine.Assignments[key]=actor;
+            foreach(var key in p.RetryAfter.Where(r=>r.Value<BusinessMinute).Select(r=>r.Key).ToArray())p.RetryAfter.Remove(key);
+        }
         if(Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&!t.Terminal)||WorkActorBusy(actor))return;
         if(p.PartnerTask.Length>0) {
             var ended=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==p.PartnerTask);
@@ -68,7 +73,9 @@ public sealed partial class ModEntry {
             Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){spec},Game1.Date.TotalDays);p.PartnerTask=id;p.PartnerReason=why;
             Data.Autoplay.Record("cooperative_dispatch",AgentJson.Encode(new{actor,goal,location,count,why}));return true;
         }
-        if(partner.GetProperty("storable_cargo").GetInt32()>0&&SharedStorage().Any()&&Queue("store","Farm",0,"先交接真实货物，供玩家制作或销售"))return;
+        bool closesGap=p.MaterialTargets.Any(t=>AccessibleStock(t.Key)<t.Value&&AccessibleStock(t.Key)+CargoItem(partner,t.Key)>=t.Value);
+        string delivery=StorageTiming.DeliveryReason(partner.GetProperty("storable_cargo").GetInt32(),partner.GetProperty("cargo_capacity").GetInt32()-CompanionCargoSlots(partner),closesGap,Game1.timeOfDay>=2030);
+        if(delivery.Length>0&&SharedStorage().Any()&&Queue("store","Farm",0,delivery))return;
         if(Game1.timeOfDay>=2100){p.PartnerReason="结束劳动，等待共同过夜";return;}
         if(partner.TryGetProperty("labor",out var labor)&&labor.GetProperty("remaining").GetInt32()<4){
             p.PartnerReason="伙伴今日劳动预算耗尽；剩余必要农务由玩家承担";

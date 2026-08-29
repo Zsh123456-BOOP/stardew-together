@@ -250,8 +250,7 @@ public sealed partial class ModEntry {
         if(j.goal=="storage_expand"){TickStorageSupport(j);return;}
         if(j.Storing||j.goal=="store"){TickWorkStorage(j);return;}
         if(j.goal=="withdraw"){TickWorkWithdraw(j);return;}
-        bool gathering=j.goal is "cleanup" or "plant" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
-        if(gathering && (j.actor=="player"?(Game1.player.Items.All(i=>i!=null)||Game1.player.Items.Count(i=>i==null)<2&&Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)):CompanionCargoSlots(WorkActor(j.actor))>=8)) {j.Storing=true;TickWorkStorage(j);return;}
+        if(j.actor=="player"&&PlayerNeedsWorkStorage(j)) {j.Storing=true;TickWorkStorage(j);return;}
         if(j.actor=="player"&&j.goal is "pet" or "feed" or "milk" or "shear" or "animal_collect") {
             if(j.goal is "milk" or "shear"&&Game1.player.Stamina<j.Reserve+4){if(TryWorkFood(j))return;StopSemanticWork(j,"animal_care_energy_reserve");return;}
             WorkChild(j,"player.care",new{mode=j.goal=="animal_collect"?"collect":j.goal,count=1},"care_batch");return;
@@ -302,7 +301,7 @@ public sealed partial class ModEntry {
         }
         string? constraint=null;
         foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
-            string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key)||MaintenanceProtects(l,c.Tile))continue;
+            string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key)||j.goal is "resource" or "stone" or "wood" or "fiber" or "hardwood" or "clear_dead"&&MaintenanceProtects(l,c.Tile))continue;
             if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)){constraint="targets_claimed_by_other_actor";continue;}
             if(c.Energy>0&&p.Stamina-c.Energy<j.Reserve){constraint="energy_reserve_reached";continue;}
             if(c.Item.Length>0&&!p.couldInventoryAcceptThisItem(ItemRegistry.Create(c.Item))){constraint="inventory_full";continue;}
@@ -356,11 +355,15 @@ public sealed partial class ModEntry {
         var actor=WorkActor(j.actor);string skill=j.goal is "stone" or "resource"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
         // NPCs have no native Farmer stamina bar. Do not invent one; bound by time,
         // actual available skills, cargo capacity and the adapter's safety checks.
-        if(j.Item.Length>0&&CompanionCargoSlots(actor)>=8){j.Storing=true;TickWorkStorage(j);return;}
+        int requiredSlots=skill switch{"mine"=>4,"harvest"=>3,"clear"=>3,"forage" or "collect" or "tend"=>1,_=>0};
+        if(requiredSlots>0&&actor.GetProperty("cargo_capacity").GetInt32()-CompanionCargoSlots(actor)<requiredSlots){
+            j.evidence.Add(new{kind="storage_required",reason="next_skill_output_capacity",skill,required_free_slots=requiredSlots,free_slots=actor.GetProperty("cargo_capacity").GetInt32()-CompanionCargoSlots(actor)});
+            j.Storing=true;TickWorkStorage(j);return;
+        }
         bool claimed=false;
         foreach(var c in actor.GetProperty("candidates").EnumerateArray().Where(c=>c.GetProperty("skill").GetString()==skill||j.goal=="forage"&&c.GetProperty("skill").GetString()=="harvest")) {
             var tile=c.GetProperty("tile");int x=tile[0].GetInt32(),y=tile[1].GetInt32();string key=$"{x},{y}";
-            if(j.Excluded.Contains(key)||MaintenanceProtects(l,new(x,y)))continue;
+            if(j.Excluded.Contains(key)||j.goal is "resource" or "stone" or "wood" or "fiber"&&MaintenanceProtects(l,new(x,y)))continue;
             l.objects.TryGetValue(new Vector2(x,y),out var o);
             string candidateSkill=c.GetProperty("skill").GetString()!;
             if(j.goal=="forage") {

@@ -41,6 +41,13 @@ internal static class BusinessChecks {
         check(OperatingMath.CashForSeeds(500,100,1000,200,250)==150,"seeds share delivered cash and approved development reserve");
         check(OperatingMath.GatherDeficit(50,20,15)==15&&OperatingMath.DeliveredDeficit(50,20)==30,"in-transit cargo reduces gathering but cannot be spent before delivery");
         check(OperatingMath.WaterCapacity(24,30,40,0)==0&&OperatingMath.WaterCapacity(24,270,40,24)==48,"farm scale follows available labor and falls back without a partner");
+        check(!StorageTiming.NeedsRoom(1,true,false),"one free slot does not trigger an emptying trip");
+        check(!StorageTiming.NeedsRoom(0,true,true),"full bag with stack capacity continues gathering");
+        check(!StorageTiming.NeedsRoom(0,false,false),"seed-consuming planting does not need an output slot");
+        check(StorageTiming.NeedsRoom(0,true,false),"full non-stackable output requires actual unloading");
+        check(StorageTiming.DeliveryReason(5,10,false,false)=="","small completed batches do not force companion delivery");
+        check(StorageTiming.DeliveryReason(50,10,true,false)!="","delivery is allowed before full when it unlocks approved production");
+        check(StorageTiming.DeliveryReason(5,0,false,false)!=""&&StorageTiming.DeliveryReason(5,10,false,true)!="","capacity and end-of-day delivery still run");
         var cheap=new BusinessOption("small","machine","a",100,100,100,0,1,"",Array.Empty<string>());
         var large=new BusinessOption("large","building","b",1000,3000,200,0,1,"",Array.Empty<string>());
         var unavailable=cheap with{Id="locked",Gaps=new[]{"missing_native_unlock"},DailyMargin=9999};

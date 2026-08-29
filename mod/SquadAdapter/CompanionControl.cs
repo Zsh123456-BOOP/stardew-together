@@ -89,7 +89,7 @@ public sealed partial class CompanionControl {
             if (dirt.readyForHarvest() && HasHarvestRoom(mate) && mate.CanPerformTask(TaskType.Harvesting)) entries.Add((pair.Key,dirt,"harvest"));
             else if (dirt.state.Value == HoeDirt.dry && mate.CanPerformTask(TaskType.Watering)) entries.Add((pair.Key,dirt,"water"));
         }
-        foreach (var entry in entries.OrderBy(p=>Vector2.DistanceSquared(p.Tile,mate.Npc.Tile)).Take(24)) {
+        foreach (var entry in entries.GroupBy(p=>p.Skill).SelectMany(g=>g.OrderBy(p=>Vector2.DistanceSquared(p.Tile,mate.Npc.Tile)).Take(8))) {
             var spot=StandingSpot(mate,entry.Tile.ToPoint());
             if (spot.HasValue) yield return new Candidate(TargetId(entry.Source)+(entry.Skill=="mine"?"":":"+entry.Skill),entry.Skill,entry.Tile.ToPoint(),entry.Source,spot.Value);
         }

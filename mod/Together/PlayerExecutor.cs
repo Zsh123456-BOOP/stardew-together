@@ -39,6 +39,8 @@ public sealed partial class PlayerExecutor {
     private PathFindController? ownedController;
     private Warp? edge;
     private bool boundaryDriving;
+    private bool stowedForWalk;
+    private int walkingItemSlot=-1,walkingNeutralSlot=-1;
     private Stack<Point>? approachPath;
     private Point approachStart,approachEnd;
     private GameLocation? approachLocation;
@@ -54,11 +56,11 @@ public sealed partial class PlayerExecutor {
     private string eatingItem="";
     private object? workBefore,actionTargetBefore;
     public bool ClaimsTile(string location,int x,int y)=>Busy && origin==location && (Current!.skill=="player.work"?workTiles.Skip(workIndex).Any(p=>p.X==x&&p.Y==y):Current.skill is "player.use_tool" or "player.place" or "player.interact" && target.X==x&&target.Y==y);
-    public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;}
+    public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;stowedForWalk=false;walkingItemSlot=walkingNeutralSlot=-1;}
     public void ClearStopped(){if(!Busy){Current=null;receipts.Clear();}}
     public object Poll(string id) {
         if(!receipts.TryGetValue(id,out var r))throw new InvalidOperationException("unknown_player_action");
-        if(r==Current&&Busy)r.navigation=new{target=new[]{target.X,target.Y},actual=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds,active_seconds=activeSeconds};
+        if(r==Current&&Busy)r.navigation=new{target=new[]{target.X,target.Y},actual=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,item_stowed=Game1.player.netItemStowed.Value,carrying_object=Game1.player.ActiveObject!=null,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds,active_seconds=activeSeconds};
         return r;
     }
     public object Cancel(string? id=null) {
@@ -236,6 +238,8 @@ public sealed partial class PlayerExecutor {
             if(Game1.player.controller==ownedController)Game1.player.controller=null;Game1.player.Halt();
         }
         ownedController=null;boundaryDriving=false;
+        if(stowedForWalk){Game1.player.netItemStowed.Value=false;Game1.player.UpdateItemStow();stowedForWalk=false;}
+        if(walkingItemSlot>=0){if(Game1.player.CurrentToolIndex==walkingNeutralSlot&&walkingItemSlot<Game1.player.Items.Count)Game1.player.CurrentToolIndex=walkingItemSlot;walkingItemSlot=walkingNeutralSlot=-1;}
     }
     private bool AtWalkTarget=>Game1.player.TilePoint==target&&(ownedController?.pathToEndPoint?.Count??0)==0;
     private Stack<Point>? MeasuredPath(Point p) {
@@ -249,6 +253,17 @@ public sealed partial class PlayerExecutor {
         approachPath=null;
         var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p);
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
+        // Native stow only during our walk. Restore before using the selected item,
+        // so planting, gifts and feeding retain their real slot and native action.
+        if(Game1.player.ActiveObject!=null&&!Game1.player.netItemStowed.Value&&!Game1.player.UsingTool&&!Game1.player.isEating){
+            if(Game1.options.allowStowing){Game1.player.netItemStowed.Value=true;Game1.player.UpdateItemStow();stowedForWalk=true;}
+            else {
+                // With stowing disabled the game clears that flag every frame.
+                // Select a real empty/tool slot without changing the user's option.
+                int neutral=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i]==null||Game1.player.Items[i] is Tool,-1);
+                if(neutral>=0){walkingItemSlot=Game1.player.CurrentToolIndex;walkingNeutralSlot=neutral;Game1.player.CurrentToolIndex=neutral;}
+            }
+        }
         ownedController=controller;Game1.player.controller=controller;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
     }
     private Point Approach(Point p,bool adjacentOnly=false) {

@@ -123,7 +123,6 @@ public sealed partial class ModEntry {
         try {
             Data.FarmInvestment.BudgetPerDay=Math.Max(Data.FarmInvestment.ReservedToday,b.DailyBudget-b.ReservedToday);
             Data.FarmInvestment.KeepGold=b.KeepGold;
-            if(Game1.player.freeSpotsInInventory()<2&&Game1.player.Items.Any(i=>i is StardewValley.Object))if(QueueBusiness("storage",new[]{("work.run",(object)new{goal="store"})},"生产前整理背包，保留工具和补给"))return;
             int animals=Game1.getFarm().getAllFarmAnimals().Count();
             if(animals>0) {
                 foreach(var tool in new[]{("(T)MilkPail",typeof(StardewValley.Tools.MilkPail)),("(T)Shears",typeof(StardewValley.Tools.Shears))}) {

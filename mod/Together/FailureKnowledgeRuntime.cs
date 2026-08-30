@@ -8,11 +8,11 @@ public sealed partial class ModEntry {
             // Detached scalar evidence only. Changes invalidate an old failure;
             // nothing from this record overrides a current native precondition.
             return FailureKnowledge.Hash(AgentJson.Encode(new {
-                day=Game1.Date.TotalDays,location=l.NameOrUniqueName,tile=origin.Tile,money=p.Money,health=p.health,stamina=(int)p.Stamina,
+                day=Game1.Date.TotalDays,location=l.NameOrUniqueName,tile=new[]{origin.Tile.X,origin.Tile.Y},money=p.Money,health=p.health,stamina=(int)p.Stamina,
                 menu=Game1.activeClickableMenu?.GetType().Name,
                 bag=p.Items.Select(i=>i==null?null:new{id=i.QualifiedItemId,count=i.Stack,quality=i.Quality,water=i is StardewValley.Tools.WateringCan w?w.WaterLeft:-1}),
                 objects=l.objects.Pairs.Select(o=>new{x=o.Key.X,y=o.Key.Y,item=o.Value.QualifiedItemId,ready=o.Value.readyForHarvest.Value,held=o.Value.heldObject.Value?.QualifiedItemId}),
-                characters=l.characters.Select(n=>new{n.Name,tile=n.TilePoint}),
+                characters=l.characters.Select(n=>new{n.Name,tile=new[]{n.TilePoint.X,n.TilePoint.Y}}),
                 quests=p.questLog.Select(q=>new{id=NativeQuestIdentity.Id(q),done=q.completed.Value}),
                 reservations=Data.Reservations.OrderBy(x=>x.Key)
             }));

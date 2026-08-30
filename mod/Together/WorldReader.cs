@@ -88,6 +88,7 @@ public static class WorldReader {
             }
             foreach(var entry in location.objects.Pairs) {
                 if(entry.Value is Chest chest) {
+                    if(chest.giftbox.Value)continue; // Unclaimed gifts are not spendable inventory.
                     string source=location.NameOrUniqueName+":"+entry.Key.X+","+entry.Key.Y;
                     Stock(chest.GetItemsForPlayer(p.UniqueMultiplayerID),source);
                     f.Containers.Add(new(){source=source,role=chest.modData.TryGetValue("stardewagent.together/chest-role",out var role)?role:"none"});

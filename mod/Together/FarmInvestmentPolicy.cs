@@ -12,6 +12,8 @@ public sealed class FarmInvestmentPolicy {
     public int ReservedToday {get;set;}
     public string CropLocation {get;set;}="Farm";
     public List<string> CompletedLocations {get;set;}=new();
+    public bool OwnedSeedsPassDone {get;set;}
+    public bool OwnedSeedsOnly {get;set;}
     public string Phase {get;set;}="idle";
     public string Error {get;set;}="";
     public string ServiceTask {get;set;}="";

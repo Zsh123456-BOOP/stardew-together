@@ -22,7 +22,8 @@ public sealed partial class ModEntry {
     private void TickFarmInvestment() {
         var p=Data.FarmInvestment;
         if(!AutoplayRunning||!p.Enabled||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null)return;
-        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
+        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
+        if(p.Phase=="done"&&p.OwnedSeedsOnly){p.OwnedSeedsOnly=false;p.Phase="idle";p.Tasks.Clear();}
         if(p.Phase=="done") {
             if(DateTime.UtcNow<nextCropExpansionCheck)return;nextCropExpansionCheck=DateTime.UtcNow.AddSeconds(10);
             if(!p.CompletedLocations.Contains(p.CropLocation))p.CompletedLocations.Add(p.CropLocation);
@@ -47,7 +48,7 @@ public sealed partial class ModEntry {
                     ObserveShop(JsonSerializer.SerializeToElement(new{}));if(!menu.readyToClose())return;menu.exitThisMenu();p.Phase="start_planning";
                 }
             }
-            if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.player.UsingTool||!Game1.player.CanMove||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
+            if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.player.UsingTool||!Game1.player.CanMove||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
             if(p.Phase=="planning") {
                 if(!economyJobs.TryGetValue(p.PlanId,out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("farm_investment_snapshot_lost_replan");
                 if(!job.Task.IsCompleted)return;
@@ -64,6 +65,9 @@ public sealed partial class ModEntry {
             }
             if(Game1.timeOfDay>=1500){p.Phase="done";p.Error="investment_window_closed_revisit_tomorrow";return;}
             if(p.Phase=="idle") {
+                bool ownedSeeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Any(i=>i?.Category==-74);
+                if(!p.OwnedSeedsPassDone&&ownedSeeds) {p.OwnedSeedsPassDone=true;p.OwnedSeedsOnly=true;p.Phase="start_planning";}
+                else {
                 if(Game1.timeOfDay<900)return;
                 if(p.BudgetPerDay>p.ReservedToday&&Game1.player.Money>p.KeepGold) {
                     if(Data.Autoplay.Schedule.Tasks.Count>180)Data.Autoplay.Schedule.Archive();
@@ -72,9 +76,10 @@ public sealed partial class ModEntry {
                     p.ServiceTask=id;p.Phase="observing_shop";return;
                 }
                 p.Phase="start_planning";
+                }
             }
             if(p.Phase=="start_planning") {
-                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.Error=="shop_unavailable_use_owned_seeds_only"?0:Data.Business.Enabled?OperatingMath.CashForSeeds(Game1.player.Money,Data.Business.KeepGold,Data.Business.DailyBudget,Data.Business.ReservedToday+p.ReservedToday,Data.Operating.DevelopmentCashHeld):Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold+(Data.Business.Enabled?Data.Operating.DevelopmentCashHeld:0),plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
+                var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.OwnedSeedsOnly||p.Error=="shop_unavailable_use_owned_seeds_only"?0:Data.Business.Enabled?OperatingMath.CashForSeeds(Game1.player.Money,Data.Business.KeepGold,Data.Business.DailyBudget,Data.Business.ReservedToday+p.ReservedToday,Data.Operating.DevelopmentCashHeld):Math.Max(0,p.BudgetPerDay-p.ReservedToday),keep_gold=p.KeepGold+(Data.Business.Enabled?Data.Operating.DevelopmentCashHeld:0),plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
                 p.PlanId=response.GetProperty("plan_id").GetString()!;p.Phase="planning";
             }
         }catch(Exception error){p.Phase="blocked";p.Error=error is InvalidOperationException?error.Message:error.GetType().Name;Data.Autoplay.Record("farm_investment_blocked",p.Error);WakeAgent("farm_investment_blocked");}

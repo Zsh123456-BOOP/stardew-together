@@ -14,6 +14,8 @@ public sealed partial class ModEntry {
     private readonly HashSet<string> agentKnownActors=new(){"player"};
     private string agentIdleSignature="";
     private bool AgentActorHasWork(string actor)=>WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&t.state is "queued" or "running");
+    private bool AgentPlayerCovered()=>AgentActorHasWork("player")||Data.FarmInvestment.Enabled&&Data.FarmInvestment.Phase=="planning";
+    private bool AgentWorkCovered()=>AgentPlayerCovered()&&agentKnownActors.Where(a=>a!="player").All(a=>AgentActorHasWork(a)||Data.Business.Enabled&&Data.Partner.Enabled&&a.EndsWith(":"+PartnerName));
     private void WakeAgent(string reason) {
         if(!agentWakeReasons.Contains(reason))agentWakeReasons.Add(reason);
         if(agentWakeReasons.Count>16)agentWakeReasons.RemoveAt(0);
@@ -126,9 +128,9 @@ public sealed partial class ModEntry {
         string idle=string.Join(",",agentKnownActors.OrderBy(x=>x).Where(actor=>!AgentActorHasWork(actor)));
         if(idle!=agentIdleSignature){agentIdleSignature=idle;if(idle.Length>0)WakeAgent("idle_actors:"+idle);}
         bool danger=Game1.player.health<35;
-        if(danger&&!agentWasInDanger)agentGeneration++; // Discard an in-flight plan based on a previously safe state.
+        if(danger&&!agentWasInDanger){agentGeneration++;WakeAgent("danger");} // Discard an in-flight plan based on a previously safe state.
         agentWasInDanger=danger;
-        string signature=$"{Game1.Date.TotalDays}:{Game1.timeOfDay>=2200}:{Game1.player.health<35}:{Game1.player.Stamina<20}:{Game1.activeClickableMenu?.GetType().Name}:{Game1.eventUp}:{Game1.currentMinigame?.GetType().Name}";
+        string signature=$"{Game1.Date.TotalDays}:{Game1.timeOfDay>=2200}:{Game1.player.health<35}:{Game1.player.Stamina<20}:{(playerExecutor.Busy?"owned":Game1.activeClickableMenu?.GetType().Name)}:{Game1.eventUp}:{Game1.currentMinigame?.GetType().Name}";
         if(signature!=agentEventSignature){agentEventSignature=signature;WakeAgent("environment_changed");}
         if(playerExecutor.NeedsMenuChoice)WakeAgent("night_menu_choice");
     }

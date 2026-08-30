@@ -34,6 +34,7 @@ public sealed class SemanticJob {
     internal Point? RefillTile,StorageTile,ExpansionTile;
     internal string StorageLocation="",StorageSupportId="",StorageSupportFor="";
     internal int StorageSupportAttempts;
+    internal int WaterAccessEnergy;
     internal bool Storing;
     internal bool PickupPending;
     internal List<Point> PickupTiles=new();
@@ -349,6 +350,7 @@ public sealed partial class ModEntry {
             var at=WorkStand(l,source);if(at==null)continue;j.RefillTile=source;
             WorkChild(j,"player.move",new{x=at.Value.X,y=at.Value.Y},"refill_move");return;
         }
+        if(ClearWaterAccess(j,l,sources))return;
         StopSemanticWork(j,"no_reachable_water_source");
     }
     private void SelectCompanionWork(SemanticJob j,GameLocation l) {

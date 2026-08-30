@@ -21,6 +21,9 @@ public sealed partial class ModEntry {
     private Task<ModelReply>? agentPending;
     private CancellationTokenSource? agentCancellation;
     private DateTime agentNext;
+    private DateTime agentModelNotBefore;
+    private int agentLastContextCharacters;
+    private readonly AgentDecisionPacing decisionPacing=new();
     private readonly Dictionary<string,(string Location,int X,int Y)> agentClaims=new();
     private int agentGeneration;
     private string agentSaveEpoch=Guid.NewGuid().ToString("N");
@@ -85,6 +88,7 @@ public sealed partial class ModEntry {
     private void ResetAgentRuntime() {
         maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
         Data.Maintenance.WasWorking=false;Data.Maintenance.LastMinute=-1;
+        agentModelNotBefore=DateTime.MinValue;decisionPacing.Reset();
         agentGeneration++;agentReplyFailures=0;agentLabProbe=false;agentFailures.Clear();agentRequestedWait=DateTime.MinValue;agentCancellation?.Cancel();agentCancellation?.Dispose();agentCancellation=null;agentPending=null;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running"&&t.spec.actor!="player"))try{if(task.command_id!=null)AgentReceipt(task.command_id,true);}catch{}
         ResetSemanticWork();Data.Autoplay.Schedule.Suspend();agentWakeReasons.Clear();agentNeedsDecision=true;agentEventSignature="";
@@ -113,7 +117,7 @@ public sealed partial class ModEntry {
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
         menu=Game1.activeClickableMenu?.GetType().Name,event_up=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,player_action=playerExecutor.Current is {} action?new{action.command_id,action.skill,action.status,action.phase,action.error,action.completed}:null};
     private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),work=semanticJobs.Values.TakeLast(12),decision_reasons=agentWakeReasons,
-        model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
+        model_context=new{last_characters=agentLastContextCharacters,core_tools=AgentToolDiscovery.CoreNames.Length,core_definitions_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,decisionPacing.QueriesWithoutProgress,not_before=agentModelNotBefore},model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek; no local planning fallback"};
     private void TickAutoplay() {
         long stage=Stopwatch.GetTimestamp();playerExecutor.Tick();FrameStage("player_executor",ref stage);TickSemanticWork();FrameStage("semantic",ref stage);
         if(!AutoplayRunning)return;
@@ -149,9 +153,12 @@ public sealed partial class ModEntry {
                         if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;hadToolError=true;}
                         if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
                     }
-                    bool allActorsHaveWork=agentKnownActors.All(AgentActorHasWork);
+                    bool allActorsHaveWork=AgentWorkCovered();
                     if(followup&&AgentPollingPolicy.Defer(allActorsHaveWork,hadToolError,turn.calls.Select(c=>c.tool)))followup=false;
                     if(followup)WakeAgent("tool_results");
+                    bool action=turn.calls.Any(c=>AgentSchedule.Queueable(c.tool)||c.tool=="plan.submit");
+                    int delay=decisionPacing.Observe(Data.Autoplay.VerifiedActions,action,hadToolError);
+                    agentModelNotBefore=DateTime.UtcNow.AddSeconds(delay);
                     agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
                     if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
                     TickAgentSchedule();
@@ -164,10 +171,11 @@ public sealed partial class ModEntry {
             }
         }
         if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
-        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(r=>r.StartsWith("actor_ready:")||r.StartsWith("idle_actors:")||r=="player_needs_next_plan")&&agentKnownActors.All(AgentActorHasWork))return;
+        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(AgentDecisionPacing.RoutineWake)&&AgentWorkCovered())return;
+        if(DateTime.UtcNow<agentModelNotBefore&&!playerExecutor.NeedsMenuChoice&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
-            bool playerQueued=AgentActorHasWork("player");
+            bool playerQueued=AgentPlayerCovered();
             if(playerQueued && !playerExecutor.NeedsMenuChoice)return;
             WakeAgent("player_needs_next_plan");
         }
@@ -178,9 +186,10 @@ public sealed partial class ModEntry {
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),day=AgentDay(),progression=AgentProgression(),business=new{policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(),recruitment=RecruitmentOptions(),ui,decision_reasons=agentWakeReasons.ToArray(),
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),inventory=AgentToolRegistry.Inventory(),day=AgentDay(true),progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
-        string serialized=ContextCompression.Pack(context);
+        string serialized=ContextCompression.Pack(context,18000);agentLastContextCharacters=serialized.Length;
+        WriteBusinessLog("model_request",AgentJson.Encode(new{context_characters=serialized.Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         agentPending=AutoplayModel.Ask(file,Settings.Model,serialized,agentCancellation.Token);
@@ -199,16 +208,16 @@ public sealed partial class ModEntry {
             .OrderBy(n=>n.location==Game1.currentLocation.NameOrUniqueName?0:1).Take(8),
         note="真实室外人物位置供邀请参考，不保证满足Squad好感/人数门槛。招募成功并出现在companions后才能派工；被锁门挡住就先做农务，按开放时间再访。"
     };
-    private object[] AgentCompanions() {
+    private object[] AgentCompanions(bool compact=false) {
         var world=World();
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
             var info=new Dictionary<string,object>();
-            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","cargo_storage","in_combat","relationship"})
-                if(a.TryGetProperty(key,out var value))info[key]=value.Clone();
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","cargo_storage","in_combat","relationship","labor"})
+                if((!compact||key is not ("reachable_locations" or "travel_options" or "resource_sites" or "cargo_storage"))&&a.TryGetProperty(key,out var value))info[key]=value.Clone();
             string id=a.GetProperty("id").GetString()!;
             info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();
-            if(a.TryGetProperty("candidates",out var candidates))info["candidates"]=candidates.EnumerateArray().Select(c=>{
+            if(!compact&&a.TryGetProperty("candidates",out var candidates))info["candidates"]=candidates.EnumerateArray().Select(c=>{
                 var tile=c.GetProperty("tile");string location=a.GetProperty("location").GetString()!;
                 bool claimed=playerExecutor.ClaimsTile(location,tile[0].GetInt32(),tile[1].GetInt32()) || AgentTileBusy(location,tile[0].GetInt32(),tile[1].GetInt32());
                 return new{target=c.Clone(),claimed};

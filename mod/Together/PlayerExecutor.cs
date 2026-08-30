@@ -31,7 +31,7 @@ public sealed partial class PlayerExecutor {
     public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu or LevelUpMenu {isProfessionChooser:false});
     private Point target,lastTile;
     private string origin="",destination="";
-    private DateTime started,lastProgress,nextInteraction;
+    private DateTime started,lastProgress,nextInteraction,nextTravelInteraction;
     private double activeSeconds;
     private DateTime lastActiveTick;
     private int startDay,retries;
@@ -81,7 +81,7 @@ public sealed partial class PlayerExecutor {
             throw new InvalidOperationException("player_not_free_read_menu");
         Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
         foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
-        started=lastProgress=nextInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
+        started=lastProgress=nextInteraction=nextTravelInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
         ResetPickup();
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
@@ -485,11 +485,11 @@ public sealed partial class PlayerExecutor {
         var l=Game1.currentLocation;
         if(origin!=l.NameOrUniqueName || edge==null) {
             origin=l.NameOrUniqueName;edge=NextExit(l,destination)??throw new InvalidOperationException("no_known_route");
-            Walk(Approach(new(edge.X,edge.Y)));nextInteraction=DateTime.UtcNow;retries=0;
+            Walk(Approach(new(edge.X,edge.Y)));nextTravelInteraction=DateTime.UtcNow;retries=0;
         }
         var at=new Point(edge.X,edge.Y);float distance=Vector2.Distance(Game1.player.Tile,at.ToVector2());
-        if(distance<=1.1f && DateTime.UtcNow>=nextInteraction && Game1.activeClickableMenu==null) {
-            nextInteraction=DateTime.UtcNow.AddSeconds(2);StopWalk();
+        if(distance<=1.1f && DateTime.UtcNow>=nextTravelInteraction && Game1.activeClickableMenu==null) {
+            nextTravelInteraction=DateTime.UtcNow.AddSeconds(2);StopWalk();
             // Doors execute the native action; boundary warps are reached by walking, never by arbitrary teleport.
             if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player)) {
                 if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} denied) {

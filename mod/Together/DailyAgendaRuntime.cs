@@ -16,7 +16,7 @@ public sealed partial class ModEntry {
         return new {
             day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,
             policy="正常时间；农务完成后选择有价值的下一批工作，不能只因种完就睡。程序估算时间与体力，模型决定优先级和分工。",
-            budget=new{stamina=Game1.player.Stamina,energy_reserve=15,work_minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),return_reserve_minutes=ReturnReserve(),return_by=2300,home,estimate_note="路线格数来自当前地图原生寻路；耗时按移动速度加动作余量估算，跨图返家预留为保守预算，非到达保证"},
+            budget=new{stamina=Game1.player.Stamina,energy_reserve=DailyBudget.EnergyReserve,work_minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),return_reserve_minutes=ReturnReserve(),return_by=2300,home,estimate_note="路线格数来自当前地图原生寻路；耗时按移动速度加动作余量估算，跨图返家预留为保守预算，非到达保证"},
             chores=new{Facts.DryCrops,Facts.RipeCrops,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.MachinesReady},
             routine=Data.Autoplay.Routine,farm_investment=Data.FarmInvestment,priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),
             shared_goals=GoalContext(),quests=Facts.Quests.Take(8),
@@ -53,13 +53,13 @@ public sealed partial class ModEntry {
         foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt dirt && dirt.crop!=null) {
             if(dirt.crop.dead.Value){if(scythe>=0)candidates.Add((pair.Key.ToPoint(),"clear_dead",scythe,"","清理枯苗，腾出可用耕地",0));continue;}
             if(dirt.readyForHarvest())candidates.Add((pair.Key.ToPoint(),"harvest",-1,"(O)"+dirt.crop.indexOfHarvest.Value,"收获成熟作物",0));
-            else if(dirt.state.Value!=1 && can>=0 && ((WateringCan)p.Items[can]).WaterLeft>0)candidates.Add((pair.Key.ToPoint(),"water",can,"","今日照料",2));
+            else if(dirt.state.Value!=1 && can>=0 && ((WateringCan)p.Items[can]).WaterLeft>0)candidates.Add((pair.Key.ToPoint(),"water",can,"","今日照料",4));
         }
         foreach(var pair in l.objects.Pairs) {
             var o=pair.Value;var tile=pair.Key.ToPoint();
             if(o.IsWeeds() && scythe>=0)candidates.Add((tile,"clear",scythe,"(O)771","清理杂草，回收纤维并整理农场空间",0));
             else if(o.IsTwig() && axe>=0)candidates.Add((tile,"clear",axe,"(O)388","收集木材用于建设与制作",4));
-            else if(o.BaseName=="Stone" && pick>=0)candidates.Add((tile,"clear",pick,"(O)390","收集石料；产物以实际掉落为准",Math.Max(2,o.MinutesUntilReady*2)));
+            else if(o.BaseName=="Stone" && pick>=0)candidates.Add((tile,"clear",pick,"(O)390","收集石料；产物以实际掉落为准",Math.Max(4,o.MinutesUntilReady*2+2)));
             else if(o.isForage() && !o.bigCraftable.Value)candidates.Add((tile,"forage",-1,o.QualifiedItemId,"拾取季节采集物，留用/补给/出货",0));
         }
         bool Useful(string skill,string item) {
@@ -72,7 +72,7 @@ public sealed partial class ModEntry {
         var result=new List<DayOption>();
         bool inventoryRoom=p.Items.Any(i=>i==null);
         foreach(var c in candidates.OrderBy(c=>c.Skill is "water" or "harvest"?0:Useful(c.Skill,c.Item)?1:2).ThenBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile)).Take(24)) {
-            if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y))continue;
+            if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)||c.Skill=="clear"&&MaintenanceProtects(l,c.Tile))continue;
             Point? stand=null;int count=0;
             foreach(var at in new[]{new Point(c.Tile.X,c.Tile.Y+1),new Point(c.Tile.X-1,c.Tile.Y),new Point(c.Tile.X+1,c.Tile.Y),new Point(c.Tile.X,c.Tile.Y-1)}.OrderBy(x=>Vector2.DistanceSquared(x.ToVector2(),p.Tile))) {
                 if(!PlayerExecutor.Passable(l,at))continue;
@@ -97,11 +97,11 @@ public sealed partial class ModEntry {
     }
     internal void CheckAgentSleep(JsonElement args) {
         if(!AutoplayRunning)return; // Direct lab executor tests do not pretend to be model planning.
-        var options=DayOptions();RefreshFacts(true);
+        RefreshFacts(true);var options=DayOptions();
         var block=DailyBudget.SleepBlock(Game1.timeOfDay,Game1.player.Stamina,options.Any(o=>o.fits&&o.useful&&o.estimated_energy==0),options.Any(o=>o.fits&&o.useful),Facts.DryCrops+Facts.RipeCrops>0,dayReviewed==Game1.Date.TotalDays,AgentToolRegistry.Text(args,"reason"));
         if(block!=null)throw new InvalidOperationException(block);
         // An empty local list is not evidence that the whole day is exhausted.
-        if(Game1.timeOfDay<2200 && Game1.player.Stamina>15 && !args.TryGetProperty("review",out _))throw new InvalidOperationException("sleep_requires_review_of_alternatives");
-        if(Game1.timeOfDay<2200 && Game1.player.Stamina>15 && AgentToolRegistry.Text(args,"review").Length<20)throw new InvalidOperationException("sleep_requires_review_of_alternatives");
+        if(Game1.timeOfDay<2200 && Game1.player.Stamina>DailyBudget.EnergyReserve && !args.TryGetProperty("review",out _))throw new InvalidOperationException("sleep_requires_review_of_alternatives");
+        if(Game1.timeOfDay<2200 && Game1.player.Stamina>DailyBudget.EnergyReserve && AgentToolRegistry.Text(args,"review").Length<20)throw new InvalidOperationException("sleep_requires_review_of_alternatives");
     }
 }

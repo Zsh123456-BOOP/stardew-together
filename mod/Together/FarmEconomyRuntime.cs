@@ -52,14 +52,14 @@ public sealed partial class ModEntry {
             }
             string output=ItemRegistry.QualifyItemId(data.HarvestItemId)!;int owned=Facts.Stock.Where(s=>s.Item==output).Sum(s=>s.Count);
             int reserved=AllReservations().Where(r=>r.Item==output).Sum(r=>r.Count);
-            int bundleMissing=Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Where(n=>n.Item==output).Sum(n=>n.Count);
+            int bundleMissing=Data.Autoplay.Campaign.Enabled?Facts.Bundles.Where(b=>!b.Complete).SelectMany(b=>b.Missing).Where(n=>n.Item==output).Sum(n=>n.Count):0;
             int reserve=Math.Max(0,Math.Max(reserved,bundleMissing)-owned);
             int price=ItemRegistry.Create<StardewValley.Object>(output).sellToStorePrice();
             seeds.Add(new(id,Math.Max(0,stock.GetValueOrDefault(id)-Data.Reservations.GetValueOrDefault(id)),quotes.GetValueOrDefault(id),price,data.RegrowDays>0?data.RegrowDays:-1,CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,data.Seasons.Select(x=>(int)x).ToHashSet(),l.SeedsIgnoreSeasonsHere()),data.IsRaised,reserve,!p.basicShipped.ContainsKey(data.HarvestItemId)?1:0,growth,data.IsPaddyCrop?paddy:new()));
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
         var processing=CropProcessingLanes(seeds,crops);
-        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){Processing=processing};
+        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
         string jobId=Guid.NewGuid().ToString("N");economyJobs[jobId]=new(agentSaveEpoch,l.NameOrUniqueName,snapshot,Task.Run(()=>CropPortfolio.Plan(snapshot)));
         foreach(var old in economyJobs.Where(j=>j.Key!=jobId&&j.Value.Task.IsCompleted).Take(Math.Max(0,economyJobs.Count-8)).Select(j=>j.Key).ToArray())economyJobs.Remove(old);
         return new{status="planning",plan_id=jobId,existing_manual_water=existingManual,new_manual_limit=snapshot.ManualLimit,observed_seed_quotes=quotes.Count,next="farm.economy_status 查询；纯快照后台计算，不阻塞角色行动，不购买或播种。"};
@@ -87,11 +87,20 @@ public sealed partial class ModEntry {
     private EconomyJob FindEconomyJob(JsonElement args) {
         if(!economyJobs.TryGetValue(AgentToolRegistry.Text(args,"plan_id"),out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("economy_plan_expired_recalculate");return job;
     }
+    private static SeedCarryBudget SeedCapacity(IEnumerable<string> ids) {
+        var room=new Dictionary<string,int>();var sizes=new Dictionary<string,int>();
+        foreach(var id in ids.Distinct()) {
+            var prototype=ItemRegistry.Create(id);sizes[id]=prototype.maximumStackSize();
+            room[id]=Game1.player.Items.Where(i=>i!=null&&i.canStackWith(prototype)).Sum(i=>Math.Max(0,i.maximumStackSize()-i.Stack));
+        }
+        return new(Game1.player.freeSpotsInInventory(),room,sizes);
+    }
     internal object ExecuteFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)throw new InvalidOperationException("economy_plan_still_computing");var result=job.Task.GetAwaiter().GetResult();
         if(job.Submitted)return new{status="already_submitted"};
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("close_observed_menu_before_submitting_farm_plan");
         if(Game1.player.Money-result.Spent<job.Snapshot.KeepGold)throw new InvalidOperationException("farm_budget_changed_recalculate");
+        if(!SeedCapacity(result.Purchases.Select(b=>b.Seed)).Fits(result.Purchases.ToDictionary(b=>b.Seed,b=>b.Count)))throw new InvalidOperationException("seed_manifest_capacity_changed_recalculate");
         string planId=AgentToolRegistry.Text(args,"plan_id");if(Data.Autoplay.Schedule.Submissions.ContainsKey("farm-"+planId))return new{status="already_submitted"};
         var tasks=new List<AgentTaskSpec>();void Add(string tool,object a,string purpose)=>tasks.Add(new(){id="farm-"+Guid.NewGuid().ToString("N"),tool=tool,args=JsonSerializer.SerializeToElement(a),purpose=purpose,day=job.Snapshot.Day,deadline=2200});
         foreach(var buy in result.Purchases) {

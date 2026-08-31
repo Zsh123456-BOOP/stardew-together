@@ -75,6 +75,10 @@ public static class AutonomyDevelopmentChecks {
         var economy=new EconomySnapshot(1,1,100,30,80,5,2,"income",new(0,0),cells.ToList(),new(){new(4,0)},new(){economySeed});
         var portfolio=CropPortfolio.Plan(economy);
         check(portfolio.Spent<=20&&portfolio.Manual<=2&&portfolio.Plants.Count<=2,"economic planting respects wallet reserve, purchase budget and daily care capacity");
+        var constrained=CropPortfolio.Plan(economy with{Carry=new SeedCarryBudget(0,new(),new())});
+        check(constrained.Purchases.Count==0,"portfolio does not approve purchases without actual carry capacity");
+        var stackOnly=CropPortfolio.Plan(economy with{Carry=new SeedCarryBudget(0,new(){{"seed",1}},new())});
+        check(stackOnly.Purchases.Sum(p=>p.Count)==1,"portfolio fills only the remaining native seed stack when no slots are free");
         var freePortfolio=CropPortfolio.Plan(economy with{Budget=0,Seeds=new(){economySeed with{Quote=seedQuote with{Price=0}}}});
         check(freePortfolio.Plants.Count>0&&freePortfolio.Spent==0,"free observed seeds remain feasible with zero purchase budget");
         var paddyPortfolio=CropPortfolio.Plan(new(1,1,500,0,100,15,0,"income",new(0,0),bedGrid,new(),new(){bedSeed with{Irrigated=bedGrid.Where(c=>c.Plantable).Select(c=>c.Tile).ToHashSet()}}));

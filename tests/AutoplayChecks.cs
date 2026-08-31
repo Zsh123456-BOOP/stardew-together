@@ -3,6 +3,13 @@ using Together;
 public static class AutoplayChecks {
     public static void Run(Action<bool,string> check) {
         AgentScheduleChecks.Run(check);
+        var receipts=new ReceiptHistory<object>(96);bool retained=true;
+        for(int n=0;n<600;n++) {var receipt=new object();receipts.Add(n.ToString(),receipt);retained &= receipts.TryGetValue(n.ToString(),out var latest)&&ReferenceEquals(latest,receipt);if(n>=95)retained &= receipts.TryGetValue((n-95).ToString(),out _);}
+        check(retained&&receipts.Count==96&&!receipts.TryGetValue("503",out _),"600 native receipt insertions preserve the complete latest window after dictionary slot reuse");
+        var carry=new SeedCarryBudget(1,new(){{"seed-a",10}},new(){{"seed-a",999},{"seed-b",999},{"seed-c",999}});
+        check(carry.Fits(new Dictionary<string,int>{{"seed-a",10},{"seed-b",5}})&&!carry.Fits(new Dictionary<string,int>{{"seed-b",1},{"seed-c",1}}),"whole seed manifest shares finite free slots while existing stacks remain usable");
+        check(!carry.Fits(new Dictionary<string,int>{{"seed-a",11},{"seed-b",1}}),"overflow of an existing seed stack also needs a slot");
+        check(!DailyBudget.Fits(1400,18,45,10,4)&&DailyBudget.Fits(1400,18,45,10,0),"low energy options use the execution reserve but keep free labor feasible");
         var access=new[]{new WaterAccessCell(new(0,0),true,0),new WaterAccessCell(new(1,0),false,4),new WaterAccessCell(new(2,0),true,0)};
         var banks=new HashSet<FarmCell>{new(2,0)};
         check(WaterAccessPlan.Find(access,new(0,0),banks,4).Count==2,"water access includes a clearable blocker when labor fits the budget");

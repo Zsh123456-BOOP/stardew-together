@@ -33,6 +33,7 @@ public sealed class SemanticJob {
     internal HashSet<string> Excluded=new();
     internal Point? RefillTile,StorageTile,ExpansionTile;
     internal string StorageLocation="",StorageSupportId="",StorageSupportFor="";
+    internal string CargoActor="";
     internal int StorageSupportAttempts;
     internal int WaterAccessEnergy;
     internal bool Storing;
@@ -59,7 +60,7 @@ public sealed class SemanticJob {
 
 public sealed partial class ModEntry {
     private readonly Dictionary<string,SemanticJob> semanticJobs=new();
-    internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>j.actor==actor&&j.status=="running");
+    internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>(j.actor==actor||j.CargoActor==actor)&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
         if(goal is not ("cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
@@ -68,7 +69,7 @@ public sealed partial class ModEntry {
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
-        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",20),until=AgentToolRegistry.Number(args,"until",2200);
+        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",DailyBudget.EnergyReserve),until=AgentToolRegistry.Number(args,"until",2200);
         if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>2300||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");

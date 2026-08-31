@@ -3,7 +3,7 @@ using StardewCropCalculatorLibrary;
 namespace Together;
 public sealed record SeedQuote(string Seed,string Shop,string Location,int Day,int Price,int Stock,int Units);
 public sealed record EconomySeed(string Seed,int Owned,SeedQuote? Quote,int SalePrice,int Regrow,int LastDay,bool Trellis,int ReserveYield,int NeedForCollection,Dictionary<FarmCell,int> Growth,HashSet<FarmCell> Irrigated);
-public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds) { public List<ProcessingLane> Processing {get;init;}=new(); }
+public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds) { public List<ProcessingLane> Processing {get;init;}=new(); public SeedCarryBudget? Carry {get;init;} }
 public sealed record EconomyPlant(string Seed,FarmCell Tile,int Growth,bool Manual,int PurchaseCost);
 public sealed record EconomyPurchase(string Seed,string Shop,string Location,int Count,int UnitPrice);
 public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null) { public ProcessingEstimate? Processing {get;init;} }
@@ -38,6 +38,10 @@ public static class CropPortfolio {
                 if(used.Count>=5&&!used.ContainsKey(seed.Seed))continue;
                 int n=used.GetValueOrDefault(seed.Seed);bool buy=n>=seed.Owned;
                 if(buy&&(seed.Quote==null||seed.Quote.Units!=1||purchased.GetValueOrDefault(seed.Seed)>=seed.Quote.Stock))continue;
+                if(buy&&s.Carry!=null) {
+                    var manifest=new Dictionary<string,int>(purchased){[seed.Seed]=purchased.GetValueOrDefault(seed.Seed)+1};
+                    if(!s.Carry.Fits(manifest))continue;
+                }
                 int price=buy?seed.Quote!.Price:0;if(price<0||price>s.Budget-spent||price>s.Money-s.KeepGold-spent)continue;
                 var candidates=grid.Select(c=>c with{Plantable=c.Plantable&&seed.Growth.TryGetValue(c.Tile,out int days)&&s.Date+days<=seed.LastDay,Irrigated=c.Irrigated||seed.Irrigated.Contains(c.Tile)}).ToList();
                 var layout=FarmLayout.ChooseWithinBed(candidates,s.Start,anchors,1,seed.Trellis,s.ManualLimit-manual);if(layout.Tiles.Count==0)continue;

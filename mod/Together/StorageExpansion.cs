@@ -37,8 +37,9 @@ public sealed partial class ModEntry {
         else {
             int stored=SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer()).Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack);
             if(stored>0)args=new{goal="withdraw",item="(O)388",count=Math.Min(missing,stored),until=2200};
+            else if(job.actor.EndsWith(":"+PartnerName)&&CargoItem(WorkActor(job.actor),"(O)388") is >0 and var carried)args=new{goal="withdraw",item="(O)388",count=Math.Min(missing,carried),until=2200};
             else {
-                if(Game1.player.Items.Count(i=>i==null)<2){StopSemanticWork(job,"storage_support_needs_player_pickup_space_or_existing_wood");return true;}
+                if(!Game1.player.couldInventoryAcceptThisItem(ItemRegistry.Create("(O)388"))){StopSemanticWork(job,"storage_support_needs_player_pickup_space_or_existing_wood");return true;}
                 args=new{goal="wood",location="Farm",count=missing,include_trees=true,until=2200};
             }
         }
@@ -53,10 +54,13 @@ public sealed partial class ModEntry {
         if(chest<0) {
             if(policy.BudgetDay!=Game1.Date.TotalDays){policy.BudgetDay=Game1.Date.TotalDays;policy.WoodReserved=0;}
             var recipe=Game1.player.craftingRecipes.ContainsKey("Chest")?new CraftingRecipe("Chest",false):null;
-            if(recipe==null||recipe.recipeList.Count!=1||!recipe.recipeList.TryGetValue("388",out int woodCost)||woodCost<=0||!recipe.doesFarmerHaveIngredientsInInventory())return false;
+            if(recipe==null||recipe.recipeList.Count!=1||!recipe.recipeList.TryGetValue("388",out int woodCost)||woodCost<=0)return false;
             if(policy.WoodReserved+woodCost>Math.Clamp(policy.WoodBudgetPerDay,0,999))return false;
+            int missing=Math.Max(0,woodCost-Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack));
+            if(missing>0&&ReceivePartnerCargo(job,"(O)388",missing))return true;
+            if(!recipe.doesFarmerHaveIngredientsInInventory())return false;
             CompactPlayerStacks();
-            if(!Game1.player.Items.Any(i=>i==null))throw new InvalidOperationException("storage_expansion_requires_one_crafting_slot_keep_two_free");
+            if(!Game1.player.Items.Any(i=>i==null))throw new InvalidOperationException("storage_expansion_requires_one_crafting_slot");
             // Conservative budget reservation survives interrupted crafting. Native
             // production still checks all shared-goal material reservations.
             policy.WoodReserved+=woodCost;WorkChild(job,"player.craft",new{recipe="Chest",count=1},"storage_expansion_craft");return true;

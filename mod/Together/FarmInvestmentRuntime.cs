@@ -22,7 +22,7 @@ public sealed partial class ModEntry {
     private void TickFarmInvestment() {
         var p=Data.FarmInvestment;
         if(!AutoplayRunning||!p.Enabled||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null)return;
-        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
+        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.PurchaseRecoveryUsed=false;p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
         if(p.Phase=="done"&&p.OwnedSeedsOnly){p.OwnedSeedsOnly=false;p.Phase="idle";p.Tasks.Clear();}
         if(p.Phase=="done") {
             if(DateTime.UtcNow<nextCropExpansionCheck)return;nextCropExpansionCheck=DateTime.UtcNow.AddSeconds(10);
@@ -34,6 +34,15 @@ public sealed partial class ModEntry {
         try {
             if(p.Phase=="executing") {
                 var tasks=p.Tasks.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).ToArray();
+                if(!p.PurchaseRecoveryUsed&&tasks.Any(t=>t?.state=="failed"&&t.spec.tool=="player.buy")&&!tasks.Any(t=>t?.state=="running")&&!playerExecutor.Busy&&!WorkActorBusy("player")) {
+                    if(Game1.activeClickableMenu is ShopMenu shop) {if(shop.heldItem!=null||!shop.readyToClose())throw new InvalidOperationException("purchase_recovery_requires_receiving_held_item");shop.exitThisMenu();}
+                    if(Game1.activeClickableMenu!=null)return;
+                    Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t!=null&&!t.Terminal).Select(t=>t!.spec.id));
+                    p.PurchaseRecoveryUsed=true;p.OwnedSeedsOnly=true;p.OwnedSeedsPassDone=true;p.Phase="start_planning";p.Tasks.Clear();
+                    // Keep the original spending reservation. Replan only goods
+                    // already delivered, without re-buying the failed manifest.
+                    Data.Autoplay.Record("farm_purchase_partial_recovery","现场采购部分失败；保留原预算预留，按真实已到货种子重新规划。");return;
+                }
                 if(tasks.Any(t=>t==null||t.state is "failed" or "blocked" or "cancelled" or "needs_review"))throw new InvalidOperationException("farm_investment_task_interrupted_read_plan_before_retry");
                 if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
             }

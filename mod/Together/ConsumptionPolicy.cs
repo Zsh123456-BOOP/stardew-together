@@ -6,7 +6,12 @@ public sealed partial class ModEntry {
         var projects=Data.Projects.Where(p=>p.Status=="active"&&p.Kind!=progressOwner).ToArray();
         var needs=projects.SelectMany(p=>p.Needs).Concat(Data.SharedGoals.Where(g=>g.Status=="active"&&g!=owner).SelectMany(g=>g.Reserved)).ToList();
         if(protectProgress) {
-            needs.AddRange(Facts.Bundles.Where(b=>!b.Complete&&"bundle:"+b.Id!=progressOwner&&!projects.Any(p=>p.Kind=="bundle:"+b.Id)).SelectMany(b=>b.Missing));
+            // Encyclopedia visibility is not a resource commitment. In farm
+            // management mode, unselected bundles must not reserve every log
+            // before the first chest. Explicit projects are protected above;
+            // enabling the progression campaign retains its wider protection.
+            if(Data.Autoplay.Campaign.Enabled)
+                needs.AddRange(Facts.Bundles.Where(b=>!b.Complete&&"bundle:"+b.Id!=progressOwner&&!projects.Any(p=>p.Kind=="bundle:"+b.Id)).SelectMany(b=>b.Missing));
             needs.AddRange(Facts.Goals.Where(g=>!g.Complete&&g.Id!=progressOwner&&g.Kind!="craft"&&!projects.Any(p=>p.Kind==g.Id)).SelectMany(g=>g.Needs));
         }
         return needs;

@@ -38,6 +38,20 @@ public sealed partial class ModEntry {
                 agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }
+            case "business_recovery_fixture": {
+                PauseAutoplay("lab_business_recovery_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
+                Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.Autoplay.Routine=new();Data.SharedGoals.Clear();Data.Reservations.Clear();
+                foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);
+                for(int x=44;x<=54;x++)for(int y=25;y<=32;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                for(int i=5;i<Game1.player.Items.Count;i++)Game1.player.Items[i]=null;
+                Game1.player.Items[5]=ItemRegistry.Create("(O)388",5);Game1.player.craftingRecipes.TryAdd("Chest",0);
+                Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
+                EnsureCustomPartner();var npc=FindCharacter(PartnerName)??throw new InvalidOperationException("fixture_partner_missing");
+                npc.currentLocation?.characters.Remove(npc);farm.characters.Add(npc);npc.currentLocation=farm;npc.Position=new Vector2(50,27)*64;
+                var pouch=Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{PartnerName}");pouch.Clear();pouch.Add(ItemRegistry.Create("(O)388",45));
+                Data.Storage=new();break;
+            }
+            case "business_recovery_read":return JsonSerializer.Serialize(new{wood=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388"),boxes=SharedStorage().Count(),free_slots=Game1.player.freeSpotsInInventory()});
             case "agent_semantic_fixture": {
                 PauseAutoplay("lab_semantic_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Game1.warpFarmer("Farm",62,17,false);
                 Game1.player.Stamina=90;Game1.player.health=100;

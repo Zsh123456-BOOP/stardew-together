@@ -55,7 +55,8 @@ public sealed partial class ModEntry {
             var stand=WorkStand(storage.Location,storage.Tile.ToPoint());if(!stand.HasValue)continue;
             job.StorageTile=storage.Tile.ToPoint();WorkChild(job,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"withdraw_move");return;
         }
-        StopSemanticWork(job,"insufficient_reachable_shared_stock");
+        if(ReceivePartnerCargo(job,job.Item,job.requested-job.gained,true))return;
+        StopSemanticWork(job,"insufficient_reachable_shared_stock_or_idle_partner_cargo");
     }
     private static bool OutputChest(Chest c)=>c.playerChest.Value&&c.modData.TryGetValue(WorkChestRole,out var role)&&role=="output";
     private bool PlayerNeedsWorkStorage(SemanticJob job) {

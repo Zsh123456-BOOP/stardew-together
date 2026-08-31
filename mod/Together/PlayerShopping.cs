@@ -41,7 +41,10 @@ public sealed partial class PlayerExecutor {
         }else if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("unknown_shop_held_item");
         if(purchaseRemaining==0){purchaseMenu.exitThisMenu();purchaseMenu=null;Finish("succeeded");return;}
         var item=purchaseMenu.itemPriceAndStock.Keys.FirstOrDefault(i=>i.QualifiedItemId==purchaseId&&(!purchaseRecipe.HasValue||i.IsRecipe==purchaseRecipe.Value))??throw new InvalidOperationException("shop_item_unavailable");
-        if(!purchaseMenu.itemPriceAndStock.TryGetValue(item,out var offer)||offer.Stock<1||!item.IsRecipe&&!item.CanBuyItem(Game1.player))throw new InvalidOperationException("shop_stock_or_condition_changed");
+        if(!purchaseMenu.itemPriceAndStock.TryGetValue(item,out var offer)||offer.Stock<1)throw new InvalidOperationException("shop_stock_or_condition_changed");
+        // CanBuyItem also rejects a full bag; expose that recoverable cause first.
+        if(!item.IsRecipe&&item is Item product&&purchaseMenu.ShopId!="ClintUpgrade"&&!Game1.player.couldInventoryAcceptThisItem(product))throw new InvalidOperationException("purchase_inventory_space_required");
+        if(!item.IsRecipe&&!item.CanBuyItem(Game1.player))throw new InvalidOperationException("shop_purchase_condition_changed");
         int currency=ShopMenu.getPlayerCurrencyAmount(Game1.player,purchaseCurrency);
         if(offer.Price<0||offer.Price>purchasePriceLimit||offer.Price>purchaseBudget-purchaseSpent||offer.Price>currency-purchaseKeepGold)throw new InvalidOperationException("purchase_budget_or_price_changed");
         if(offer.ActionsOnPurchase?.Count>0)throw new InvalidOperationException("custom_purchase_actions_require_specific_verifier");

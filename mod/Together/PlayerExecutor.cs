@@ -21,7 +21,7 @@ public sealed class PlayerAction {
     public object? navigation {get;set;}
 }
 public sealed partial class PlayerExecutor {
-    private readonly Dictionary<string,PlayerAction> receipts=new();
+    private readonly ReceiptHistory<PlayerAction> receipts=new(96);
     public PlayerAction? Current {get;private set;}
     public Func<LevelUpMenu,bool>? ApplyProfession {get;set;}
     public Func<bool>? ApplyNightPolicy {get;set;}
@@ -79,8 +79,7 @@ public sealed partial class PlayerExecutor {
         bool buying=AcceptsNativeMenu(skill);
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
-        Current=new(){skill=skill,before=Snapshot()};receipts[Current.command_id]=Current;
-        foreach(string id in receipts.Keys.Take(Math.Max(0,receipts.Count-96)).ToArray())receipts.Remove(id);
+        Current=new(){skill=skill,before=Snapshot()};receipts.Add(Current.command_id,Current);
         started=lastProgress=nextInteraction=nextTravelInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
         ResetPickup();

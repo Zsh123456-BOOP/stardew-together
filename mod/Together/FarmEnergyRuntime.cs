@@ -1,0 +1,31 @@
+using StardewValley;
+using StardewValley.TerrainFeatures;
+
+namespace Together;
+public sealed partial class ModEntry {
+    private static int DryFarmEnergy()=>Game1.getFarm().terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value&&d.state.Value!=1&&!d.readyForHarvest())*4;
+    private static int AvailablePlantingEnergy()=>Math.Max(0,(int)Game1.player.Stamina-DailyBudget.EnergyReserve-DryFarmEnergy());
+    // Optional gathering may use only energy left after existing care and queued
+    // planting. Before today's shop quote, hold a bounded expansion allowance;
+    // it is released when investment finishes or becomes unavailable.
+    private int PendingFarmEnergy() {
+        int care=DryFarmEnergy();var plans=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant")
+            .Select(t=>farmPlantPlans.GetValueOrDefault(AgentToolRegistry.Text(t.spec.args,"plan_id")))
+            .Where(p=>p!=null&&p.Day==Game1.Date.TotalDays&&p.Epoch==agentSaveEpoch&&p.Location=="Farm").ToArray();
+        var farm=Game1.getFarm();
+        var preparation=plans.SelectMany(p=>p!.PreparationTiles.Count>0?p.PreparationTiles:p.Tiles).Distinct();
+        int pending=preparation.Sum(t=>PlotClearCost(farm,new(t.X,t.Y)));
+        foreach(var t in plans.SelectMany(p=>p!.Tiles).Distinct()) {
+            var dirt=farm.terrainFeatures.GetValueOrDefault(new(t.X,t.Y)) as HoeDirt;
+            if(dirt==null)pending+=4;
+            if(dirt?.crop==null&&dirt?.state.Value!=1)pending+=4;
+        }
+        var investment=Data.FarmInvestment;
+        if(plans.Length==0&&investment.Enabled&&investment.Phase is "idle" or "observing_shop" or "start_planning" or "planning"&&Game1.timeOfDay<1500&&Game1.player.Money>investment.KeepGold&&investment.BudgetPerDay>investment.ReservedToday) {
+            int existing=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
+            int room=Math.Max(0,Math.Min(investment.Plots,investment.ManualWaterLimit-existing));
+            pending=Math.Min((int)(Game1.player.MaxStamina*.4f),room*8);
+        }
+        return care+pending;
+    }
+}

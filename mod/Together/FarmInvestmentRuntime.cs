@@ -62,6 +62,7 @@ public sealed partial class ModEntry {
                 if(!economyJobs.TryGetValue(p.PlanId,out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("farm_investment_snapshot_lost_replan");
                 if(!job.Task.IsCompleted)return;
                 var result=job.Task.GetAwaiter().GetResult();if(result.Plants.Count==0){p.Phase="done";p.Error=result.StopReason;return;}
+                if(result.FirstDayEnergy>AvailablePlantingEnergy()){p.Phase="start_planning";p.PlanId="";return;}
                 if(result.Spent>p.BudgetPerDay-p.ReservedToday)throw new InvalidOperationException("farm_investment_budget_changed");
                 if(Data.Autoplay.Schedule.Tasks.Count+24>180)Data.Autoplay.Schedule.Archive();
                 // Reserve before queueing. Failed/interrupted purchases cannot reset

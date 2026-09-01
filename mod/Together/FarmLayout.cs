@@ -5,6 +5,7 @@ public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool 
 public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
 
 public static class FarmLayout {
+    public static HashSet<FarmCell> ReachableAfter(IReadOnlyList<LayoutCell> source,FarmCell start,IEnumerable<FarmCell> occupied)=>Distances(source.ToDictionary(c=>c.Tile),start,occupied.ToHashSet()).Keys.ToHashSet();
     public static bool KeepsAccess(IReadOnlyList<LayoutCell> source,FarmCell start,IEnumerable<FarmCell> anchors,IEnumerable<FarmCell> occupied,IEnumerable<FarmCell> newAccess) {
         var cells=source.ToDictionary(c=>c.Tile);var blocked=occupied.ToHashSet();
         if(blocked.Contains(start))return false;
@@ -26,7 +27,7 @@ public static class FarmLayout {
     }
     // Input is a detached grid. Every accepted trellis placement is checked against
     // the FUTURE collision map, preserving access to earlier crops and anchor tiles.
-    public static LayoutResult Choose(IReadOnlyList<LayoutCell> source,FarmCell start,IReadOnlyList<FarmCell> anchors,int count,bool trellis,int manualLimit,bool requireProtection=false) {
+    public static LayoutResult Choose(IReadOnlyList<LayoutCell> source,FarmCell start,IReadOnlyList<FarmCell> anchors,int count,bool trellis,int manualLimit,bool requireProtection=false,int energyBudget=int.MaxValue) {
         // Select a whole bed before selecting individual plants. Passable includes
         // removable debris; entry must be reachable WITHOUT clearing unrelated land.
         var cells=source.ToDictionary(c=>c.Tile);
@@ -47,7 +48,7 @@ public static class FarmLayout {
                     if(legal.TryGetValue(at,out var cell))bed.Add(cell);
                     else if(!cells.TryGetValue(at,out var equipment)||!equipment.Equipment||reserved.Contains(at)){valid=false;break;}
                 }
-                if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);if(manual>manualLimit)continue;
+                if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);if(manual>manualLimit||bed.Sum(c=>c.ClearCost+(c.Tilled?0:4)+(c.Watered?0:4))>energyBudget)continue;
                 int entry=bed.SelectMany(c=>Neighbours(c.Tile).Append(c.Tile)).Where(reached.ContainsKey).Select(p=>reached[p]).DefaultIfEmpty(int.MaxValue).Min();
                 if(entry==int.MaxValue)continue;
                 double score=entry*2+Math.Abs(shape.W-shape.H)*3+bed.Sum(c=>c.ClearCost*3+(c.Irrigated?0:25)+(c.Protected?0:8)+(c.Tilled?0:6)+Math.Min(100,c.DistanceToWater)*.2);

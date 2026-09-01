@@ -59,7 +59,7 @@ public sealed partial class ModEntry {
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
         var processing=CropProcessingLanes(seeds,crops);
-        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
+        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){EnergyBudget=AvailablePlantingEnergy(),Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
         string jobId=Guid.NewGuid().ToString("N");economyJobs[jobId]=new(agentSaveEpoch,l.NameOrUniqueName,snapshot,Task.Run(()=>CropPortfolio.Plan(snapshot)));
         foreach(var old in economyJobs.Where(j=>j.Key!=jobId&&j.Value.Task.IsCompleted).Take(Math.Max(0,economyJobs.Count-8)).Select(j=>j.Key).ToArray())economyJobs.Remove(old);
         return new{status="planning",plan_id=jobId,existing_manual_water=existingManual,new_manual_limit=snapshot.ManualLimit,observed_seed_quotes=quotes.Count,next="farm.economy_status 查询；纯快照后台计算，不阻塞角色行动，不购买或播种。"};
@@ -98,6 +98,7 @@ public sealed partial class ModEntry {
     internal object ExecuteFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)throw new InvalidOperationException("economy_plan_still_computing");var result=job.Task.GetAwaiter().GetResult();
         if(job.Submitted)return new{status="already_submitted"};
+        if(result.FirstDayEnergy>AvailablePlantingEnergy())throw new InvalidOperationException("farm_labor_budget_changed_recalculate");
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("close_observed_menu_before_submitting_farm_plan");
         if(Game1.player.Money-result.Spent<job.Snapshot.KeepGold)throw new InvalidOperationException("farm_budget_changed_recalculate");
         if(!SeedCapacity(result.Purchases.Select(b=>b.Seed)).Fits(result.Purchases.ToDictionary(b=>b.Seed,b=>b.Count)))throw new InvalidOperationException("seed_manifest_capacity_changed_recalculate");
@@ -111,7 +112,7 @@ public sealed partial class ModEntry {
             var seed=job.Snapshot.Seeds.First(s=>s.Seed==group.Key);int purchased=result.Purchases.Where(b=>b.Seed==group.Key).Sum(b=>b.Count);
             int bag=Game1.player.Items.Where(i=>i?.QualifiedItemId==group.Key).Sum(i=>i.Stack),withdraw=Math.Max(0,group.Count()-bag-purchased);
             if(withdraw>0)Add("work.run",new{goal="withdraw",item=group.Key,count=withdraw},"取回已拥有的种子");
-            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=job.Snapshot.Day,Location=job.Location,Seed=group.Key,PreparationTiles=result.Plants.Select(p=>p.Tile).ToList(),Tiles=group.Select(p=>p.Tile).ToList(),GrowthByTile=group.ToDictionary(p=>p.Tile,p=>p.Growth),LastGrowingDay=seed.LastDay,SalePrice=seed.SalePrice,RegrowDays=seed.Regrow,ManualWatering=group.Count(p=>p.Manual),GrowDays=group.Max(p=>p.Growth)};
+            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=job.Snapshot.Day,Location=job.Location,Seed=group.Key,AccessOrigin=job.Snapshot.Start,RaisedTiles=result.Plants.Where(p=>job.Snapshot.Seeds.Any(s=>s.Seed==p.Seed&&s.Trellis)).Select(p=>p.Tile).ToList(),PreparationTiles=result.PreparationTiles,CultivationTiles=result.Plants.Select(p=>p.Tile).ToList(),Tiles=group.Select(p=>p.Tile).ToList(),GrowthByTile=group.ToDictionary(p=>p.Tile,p=>p.Growth),LastGrowingDay=seed.LastDay,SalePrice=seed.SalePrice,RegrowDays=seed.Regrow,ManualWatering=group.Count(p=>p.Manual),GrowDays=group.Max(p=>p.Growth)};
             farmPlantPlans[plan.Id]=plan;Add("work.run",new{goal="plant",plan_id=plan.Id},"按预算组合与通道布局播种照料");
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};

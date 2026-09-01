@@ -14,6 +14,9 @@ public sealed class FarmPlantPlan {
     public string Fertilizer {get;set;}="";
     public List<FarmCell> Tiles {get;set;}=new();
     public List<FarmCell> PreparationTiles {get;set;}=new();
+    public List<FarmCell> CultivationTiles {get;set;}=new();
+    public List<FarmCell> RaisedTiles {get;set;}=new();
+    public FarmCell AccessOrigin {get;set;}
     public int GrowDays {get;set;}
     public int Harvests {get;set;}
     public int ManualWatering {get;set;}
@@ -93,10 +96,10 @@ public sealed partial class ModEntry {
                 growth[c.Tile]=CropGrowth.Stages(data.DaysInPhase,speed,p.professions.Contains(5),paddy).Sum();
                 return c with{Irrigated=c.Irrigated||paddy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
             }).ToList();
-            var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),data.IsRaised,manual,protectedOnly);
+            var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),data.IsRaised,manual,protectedOnly,energyBudget:AvailablePlantingEnergy());
             if(chosen.Tiles.Count==0)continue;
             int harvests=calc.NumHarvests(Game1.dayOfMonth,horizon);
-            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,Tiles=chosen.Tiles,GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};
+            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,Tiles=chosen.Tiles,AccessOrigin=new(p.TilePoint.X,p.TilePoint.Y),RaisedTiles=data.IsRaised?chosen.Tiles:new(),GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};
             plan.Fertilizer=fertilizer;farmPlantPlans[plan.Id]=plan;
             double gross=plan.GrowthByTile.Values.Sum(d=>new StardewCropCalculatorLibrary.Crop(seed.Key,d,calc.yieldRate,0,calc.sellPrice).NumHarvests(Game1.dayOfMonth,horizon)*calc.sellPrice);
             bool missing=!p.basicShipped.ContainsKey(data.HarvestItemId)||Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(n=>n.Item=="(O)"+data.HarvestItemId));
@@ -148,7 +151,8 @@ public sealed partial class ModEntry {
             StopSemanticWork(j,"plot_clearance_no_reachable_frontier");return;
         }
         foreach(var tile in preparation)if(l.terrainFeatures.TryGetValue(new(tile.X,tile.Y),out var feature)&&feature is not HoeDirt){StopSemanticWork(j,"planned_plot_terrain_changed");return;}
-        var untilled=preparation.Where(t=>!l.terrainFeatures.ContainsKey(new(t.X,t.Y))).ToList();
+        var cultivation=plan.CultivationTiles.Count>0?plan.CultivationTiles:plan.Tiles;
+        var untilled=cultivation.Where(t=>!l.terrainFeatures.ContainsKey(new(t.X,t.Y))).ToList();
         if(untilled.Count>0){PlantBatch(j,"till",WorkSlot(i=>i is Hoe),untilled,"plant_till",4);return;}
         foreach(var tile in plan.Tiles) {
             var dirt=(HoeDirt)l.terrainFeatures[new(tile.X,tile.Y)];
@@ -185,7 +189,23 @@ public sealed partial class ModEntry {
         if(energy>0)count=Math.Min(count,Math.Max(0,(int)(Game1.player.Stamina-j.Reserve)/energy));
         else count=Math.Min(count,Game1.player.Items[slot].Stack);
         if(count<=0){if(TryWorkFood(j))return;StopSemanticWork(j,"energy_reserve_reached");return;}
-        WorkChild(j,"player.work",new{skill,slot,tiles=tiles.Take(count).Select(t=>new{x=t.X,y=t.Y}).ToArray()},phase);
+        var batch=tiles.Take(count).ToArray();
+        if(skill=="plant"&&farmPlantPlans.TryGetValue(j.PlanId,out var plan)&&plan.RaisedTiles.Count>0) {
+            // Stand on the permanently connected aisle, not on a soon-to-be
+            // enclosed pocket beside a trellis. Use the same final collision map.
+            var location=Game1.currentLocation;var grid=new List<LayoutCell>();
+            for(int y=0;y<location.Map.Layers[0].LayerHeight;y++)for(int x=0;x<location.Map.Layers[0].LayerWidth;x++)grid.Add(new(new(x,y),false,PlayerExecutor.Passable(location,new(x,y)),false,false,false,false,0));
+            var reachable=FarmLayout.ReachableAfter(grid,plan.AccessOrigin,plan.RaisedTiles);
+            var stands=new List<Point>();
+            foreach(var t in batch) {
+                var candidates=new[]{new Point(t.X-1,t.Y),new Point(t.X+1,t.Y),new Point(t.X,t.Y-1),new Point(t.X,t.Y+1)}
+                    .Where(p=>reachable.Contains(new(p.X,p.Y))).OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile));
+                Point? stand=candidates.Cast<Point?>().FirstOrDefault(p=>p!.Value==Game1.player.TilePoint||PlayerExecutor.PreviewPath(location,p.Value)?.Count>0);
+                if(stand==null){StopSemanticWork(j,"trellis_safe_aisle_unreachable_replan");return;}stands.Add(stand.Value);
+            }
+            WorkChild(j,"player.work",new{skill,slot,tiles=batch.Select(t=>new{x=t.X,y=t.Y}).ToArray(),stands=stands.Select(p=>new{x=p.X,y=p.Y}).ToArray()},phase);return;
+        }
+        WorkChild(j,"player.work",new{skill,slot,tiles=batch.Select(t=>new{x=t.X,y=t.Y}).ToArray()},phase);
     }
     private static int PlotClearCost(GameLocation location,Point tile) {
         var v=tile.ToVector2();

@@ -160,6 +160,13 @@ public sealed partial class PlayerExecutor {
                         }
                         (workSkill,workSlot)=workSteps[0];
                     }
+                    if(args.TryGetProperty("stands",out var stands)) {
+                        if(workSkill!="plant"||workSteps.Count>0||stands.ValueKind!=JsonValueKind.Array||stands.GetArrayLength()!=workTiles.Count)throw new InvalidOperationException("invalid_plant_work_stands");
+                        foreach(var raw in stands.EnumerateArray()) {
+                            var stand=Tile(raw);var at=workTiles[workStands.Count];
+                            if(Math.Abs(stand.X-at.X)+Math.Abs(stand.Y-at.Y)!=1)throw new InvalidOperationException("plant_stand_must_be_adjacent");workStands.Add(stand);
+                        }
+                    }
                     if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
                     if(workSkill=="water" && Game1.player.CurrentTool is not StardewValley.Tools.WateringCan || workSkill=="till" && Game1.player.CurrentTool is not StardewValley.Tools.Hoe)throw new InvalidOperationException("wrong_tool_for_work");
                     Current.phase="work_next";break;
@@ -455,7 +462,8 @@ public sealed partial class PlayerExecutor {
             if(already){Current.effects.Add(new{tile=workBefore,status="already_satisfied"});workIndex++;return;}
             if(workSkill=="water"&&dirt?.crop==null || workSkill=="plant"&&(dirt==null||dirt.crop!=null) || workSkill=="harvest"&&dirt?.readyForHarvest()!=true)
                 throw new InvalidOperationException("work_target_not_eligible");
-            Walk(workStands.Count>workIndex&&workStands[workIndex] is {} stand&&Passable(Game1.currentLocation,stand)?stand:Approach(tile,true));Current.phase="work_walk";
+            if(workStands.Count>workIndex&&workStands[workIndex] is {} planned&&!Passable(Game1.currentLocation,planned))throw new InvalidOperationException("planned_work_stand_changed");
+            Walk(workStands.Count>workIndex&&workStands[workIndex] is {} stand?stand:Approach(tile,true));Current.phase="work_walk";
         }
         if(Current.phase=="work_walk") {
             if(!AtWalkTarget){MonitorWalk();return;}

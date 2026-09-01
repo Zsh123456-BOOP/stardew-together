@@ -301,11 +301,12 @@ public sealed partial class ModEntry {
             foreach(var at in new[]{clump.Tile.ToPoint(),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y),new Point((int)clump.Tile.X,(int)clump.Tile.Y+clump.height.Value-1),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y+clump.height.Value-1)}.Distinct())
                 candidates.Add((at,"break_clump",clumpSlot,energy,j.Item));
         }
+        int energyReserve=j.Reserve+(j.goal is "wood" or "stone" or "resource" or "hardwood"?PendingFarmEnergy():0);
         string? constraint=null;
         foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
             string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key)||j.goal is "resource" or "stone" or "wood" or "fiber" or "hardwood" or "clear_dead"&&MaintenanceProtects(l,c.Tile))continue;
             if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)){constraint="targets_claimed_by_other_actor";continue;}
-            if(c.Energy>0&&p.Stamina-c.Energy<j.Reserve){constraint="energy_reserve_reached";continue;}
+            if(c.Energy>0&&p.Stamina-c.Energy<energyReserve){constraint="energy_reserve_reached";continue;}
             if(c.Item.Length>0&&!p.couldInventoryAcceptThisItem(ItemRegistry.Create(c.Item))){constraint="inventory_full";continue;}
             if(WorkStand(l,c.Tile)==null){j.Excluded.Add(key);j.skipped++;continue;}
             var batch=new List<Point>{c.Tile};float cost=c.Energy;
@@ -313,7 +314,7 @@ public sealed partial class ModEntry {
             // between them picks up drops naturally; one final debris sweep follows.
             if(c.Skill=="clear")foreach(var next in candidates.Where(n=>n.Tile!=c.Tile&&n.Skill==c.Skill&&n.Slot==c.Slot).OrderBy(n=>Vector2.DistanceSquared(n.Tile.ToVector2(),c.Tile.ToVector2()))) {
                 if(batch.Count>=Math.Min(3,Math.Max(1,j.requested-j.gained)))break;
-                if(Vector2.DistanceSquared(next.Tile.ToVector2(),c.Tile.ToVector2())>36||p.Stamina-cost-next.Energy<j.Reserve||j.Excluded.Contains($"{next.Tile.X},{next.Tile.Y}")||MaintenanceProtects(l,next.Tile)||AgentTileBusy(l.NameOrUniqueName,next.Tile.X,next.Tile.Y)||WorkStand(l,next.Tile)==null)continue;
+                if(Vector2.DistanceSquared(next.Tile.ToVector2(),c.Tile.ToVector2())>36||p.Stamina-cost-next.Energy<energyReserve||j.Excluded.Contains($"{next.Tile.X},{next.Tile.Y}")||MaintenanceProtects(l,next.Tile)||AgentTileBusy(l.NameOrUniqueName,next.Tile.X,next.Tile.Y)||WorkStand(l,next.Tile)==null)continue;
                 batch.Add(next.Tile);cost+=next.Energy;
             }
             WorkChild(j,"player.work",new{skill=c.Skill,slot=c.Slot,tiles=batch.Select(p=>new{x=p.X,y=p.Y})},"labor",key);return;

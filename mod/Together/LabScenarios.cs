@@ -6,6 +6,7 @@ using StardewValley.Buildings;
 using StardewValley.Locations;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
+using StardewValley.Tools;
 
 namespace Together;
 public sealed class TogetherLabApi {
@@ -52,6 +53,20 @@ public sealed partial class ModEntry {
                 Data.Storage=new();break;
             }
             case "business_recovery_read":return JsonSerializer.Serialize(new{wood=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388"),boxes=SharedStorage().Count(),free_slots=Game1.player.freeSpotsInInventory()});
+            case "farm_energy_fixture": {
+                PauseAutoplay("lab_farm_energy");Settings.Autonomy=false;Game1.exitActiveMenu();Data.FarmPolicy=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.Maintenance=new(){Enabled=false};
+                foreach(var dirt in farm.terrainFeatures.Values.OfType<HoeDirt>())dirt.state.Value=1;
+                for(int x=44;x<=58;x++)for(int y=25;y<=34;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                Data.Maintenance.Zones=new(){new(){X=0,Y=0,Width=200,Height=27},new(){X=0,Y=31,Width=200,Height=200},new(){X=0,Y=27,Width=47,Height=4},new(){X=55,Y=27,Width=200,Height=4}};
+                for(int x=47;x<=54;x++)for(int y=27;y<=30;y++)farm.objects[new(x,y)]=new StardewValley.Object("313",1){TileLocation=new(x,y),HasBeenInInventory=false};
+                for(int i=5;i<Game1.player.Items.Count;i++)Game1.player.Items[i]=null;
+                Game1.player.Items[5]=ItemRegistry.Create("(O)473",6);Game1.player.Items[6]=ItemRegistry.Create("(O)472",2);
+                if(Game1.player.Items.OfType<WateringCan>().FirstOrDefault() is {} can)can.WaterLeft=can.waterCanMax;
+                Game1.warpFarmer("Farm",46,28,false);Game1.timeOfDay=1000;Game1.player.Stamina=Num("stamina",270);
+                if(Num("hold")==1){Data.FarmInvestment=new(){Enabled=true,BudgetPerDay=400,KeepGold=0,Plots=24,ManualWaterLimit=48,Day=Game1.Date.TotalDays};farm.objects[new(47,27)]=new StardewValley.Object("294",1){TileLocation=new(47,27),HasBeenInInventory=false};}
+                break;
+            }
+            case "farm_energy_read":return JsonSerializer.Serialize(new{stamina=Game1.player.Stamina,pending=PendingFarmEnergy(),available=AvailablePlantingEnergy(),crops=farm.terrainFeatures.Pairs.Where(p=>p.Key.X>=47&&p.Key.X<=54&&p.Key.Y>=27&&p.Key.Y<=30&&p.Value is HoeDirt {crop:not null}).Select(p=>new{x=p.Key.X,y=p.Key.Y,watered=((HoeDirt)p.Value).state.Value==1}),objects=farm.objects.Pairs.Where(p=>p.Key.X>=47&&p.Key.X<=54&&p.Key.Y>=27&&p.Key.Y<=30).Select(p=>new{x=p.Key.X,y=p.Key.Y})});
             case "door_interaction_fixture": {
                 PauseAutoplay("lab_door_interaction");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.Autoplay.Routine=new();
                 var town=Game1.getLocationFromName("Town");var door=PlayerExecutor.Exits(town).First(e=>e.TargetName=="SeedShop");Game1.warpFarmer("Town",door.X,door.Y+1,false);Game1.timeOfDay=Num("time",1000);

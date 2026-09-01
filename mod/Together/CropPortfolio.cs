@@ -3,10 +3,10 @@ using StardewCropCalculatorLibrary;
 namespace Together;
 public sealed record SeedQuote(string Seed,string Shop,string Location,int Day,int Price,int Stock,int Units);
 public sealed record EconomySeed(string Seed,int Owned,SeedQuote? Quote,int SalePrice,int Regrow,int LastDay,bool Trellis,int ReserveYield,int NeedForCollection,Dictionary<FarmCell,int> Growth,HashSet<FarmCell> Irrigated);
-public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds) { public List<ProcessingLane> Processing {get;init;}=new(); public SeedCarryBudget? Carry {get;init;} }
+public sealed record EconomySnapshot(int Day,int Date,int Money,int Budget,int KeepGold,int Limit,int ManualLimit,string Priority,FarmCell Start,List<LayoutCell> Grid,List<FarmCell> Anchors,List<EconomySeed> Seeds) { public int EnergyBudget {get;init;}=int.MaxValue; public List<ProcessingLane> Processing {get;init;}=new(); public SeedCarryBudget? Carry {get;init;} }
 public sealed record EconomyPlant(string Seed,FarmCell Tile,int Growth,bool Manual,int PurchaseCost);
 public sealed record EconomyPurchase(string Seed,string Shop,string Location,int Count,int UnitPrice);
-public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null) { public ProcessingEstimate? Processing {get;init;} }
+public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchase> Purchases,int Spent,int Manual,object Calendar,string StopReason,SeasonProjection? Reinvestment=null) { public List<FarmCell> PreparationTiles {get;init;}=new(); public int FirstDayEnergy {get;init;} public ProcessingEstimate? Processing {get;init;} }
 
 // A bounded, greedy portfolio over detached native facts. It prioritizes feasible
 // work and reserves rather than claiming a globally optimal farming strategy.
@@ -27,7 +27,7 @@ public static class CropPortfolio {
         var watch=System.Diagnostics.Stopwatch.StartNew();var grid=s.Grid.ToList();var anchors=s.Anchors.ToList();
         int available=Math.Min(s.Limit,s.Seeds.Sum(seed=>seed.Owned+(seed.Quote is {} q?Math.Min(q.Stock,q.Price==0?q.Stock:Math.Min(s.Budget,Math.Max(0,s.Money-s.KeepGold))/Math.Max(1,q.Price)):0)));
         var footprint=grid.Select(c=>c with{Plantable=c.Plantable&&s.Seeds.Any(seed=>seed.Growth.TryGetValue(c.Tile,out int days)&&s.Date+days<=seed.LastDay),Irrigated=c.Irrigated||s.Seeds.Any(seed=>seed.Irrigated.Contains(c.Tile))}).ToList();
-        var bed=FarmLayout.Choose(footprint,s.Start,anchors,available,s.Seeds.All(seed=>seed.Trellis),s.ManualLimit).Tiles.ToHashSet();
+        var bed=FarmLayout.Choose(footprint,s.Start,anchors,available,s.Seeds.All(seed=>seed.Trellis),s.ManualLimit,energyBudget:s.EnergyBudget).Tiles.ToHashSet();
         grid=grid.Select(c=>c with{Plantable=c.Plantable&&bed.Contains(c.Tile),Passable=c.Passable&&(c.ClearCost==0||bed.Contains(c.Tile))}).ToList();
         var plants=new List<EconomyPlant>();var used=new Dictionary<string,int>();var purchased=new Dictionary<string,int>();
         int spent=0,manual=0;string stop="requested_land_limit";
@@ -77,6 +77,6 @@ public static class CropPortfolio {
                 if(keep--<=0)break;for(int day=harvest+1;day<=end+1;day++)calendar.GameStates[day].Wallet-=seed.SalePrice;
             }
         }
-        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop,SeasonCashForecast.Plan(s,plants,spent,cancellation));
+        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop,SeasonCashForecast.Plan(s,plants,spent,cancellation)){PreparationTiles=plants.Count==0?new():bed.ToList(),FirstDayEnergy=plants.Count==0?0:s.Grid.Where(c=>bed.Contains(c.Tile)).Sum(c=>c.ClearCost)+s.Grid.Where(c=>plants.Any(p=>p.Tile==c.Tile)).Sum(c=>(c.Tilled?0:4)+(c.Watered?0:4))};
     }
 }

@@ -35,7 +35,7 @@ public sealed partial class PlayerExecutor {
     private double activeSeconds;
     private DateTime lastActiveTick;
     private int startDay,retries;
-    private bool saved,sleepConfirmed,startedUsing;
+    private bool saved,sleepConfirmed,startedUsing,routeAccessDenied;
     private PathFindController? ownedController;
     private Warp? edge;
     private bool boundaryDriving;
@@ -83,7 +83,7 @@ public sealed partial class PlayerExecutor {
         started=lastProgress=nextInteraction=nextTravelInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
         ResetPickup();
-        actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;edge=null;
+        actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;routeAccessDenied=false;edge=null;
         try {
             switch(skill) {
                 case "player.collect_drops":StartPickup(args);break;
@@ -300,6 +300,17 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.arcade"){TickArcade();return;}
             if(Current.skill=="player.island_upgrade"){TickIslandUpgrade();return;}
             if(Current.skill is "player.transport" or "player.repair_boat"){TickTransit();return;}
+            if(routeAccessDenied) {
+                // A newly opened DialogueBox ignores its first click during its
+                // transition. Keep ownership until native dismissal restores movement.
+                if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} notice) {
+                    if(DateTime.UtcNow>=nextTravelInteraction){nextTravelInteraction=DateTime.UtcNow.AddMilliseconds(400);notice.finishTyping();notice.receiveLeftClick(notice.xPositionOnScreen+16,notice.yPositionOnScreen+16);}
+                    return;
+                }
+                if(Game1.activeClickableMenu!=null){Finish("failed","travel_menu_requires_choice");return;}
+                if(!Game1.player.CanMove)return;
+                Finish("failed","route_access_denied_check_opening_hours_or_friendship");return;
+            }
             ObserveNativeTransition();
             // Events often set CanMove=false. Report the interruption before the
             // movement gate, otherwise a travel task waits forever behind dialogue.
@@ -486,15 +497,21 @@ public sealed partial class PlayerExecutor {
             origin=l.NameOrUniqueName;edge=NextExit(l,destination)??throw new InvalidOperationException("no_known_route");
             Walk(Approach(new(edge.X,edge.Y)));nextTravelInteraction=DateTime.UtcNow;retries=0;
         }
-        var at=new Point(edge.X,edge.Y);float distance=Vector2.Distance(Game1.player.Tile,at.ToVector2());
-        if(distance<=1.1f && DateTime.UtcNow>=nextTravelInteraction && Game1.activeClickableMenu==null) {
+        var at=new Point(edge.X,edge.Y);var standing=Game1.player.TilePoint;
+        if(Math.Abs(standing.X-at.X)+Math.Abs(standing.Y-at.Y)<=1 && DateTime.UtcNow>=nextTravelInteraction && Game1.activeClickableMenu==null) {
             nextTravelInteraction=DateTime.UtcNow.AddSeconds(2);StopWalk();
             // Doors execute the native action; boundary warps are reached by walking, never by arbitrary teleport.
-            if(at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight && Game1.tryToCheckAt(at.ToVector2(),Game1.player)) {
+            var doorAction=at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight?l.GetTilePropertySplitBySpaces("Action","Buildings",at.X,at.Y):Array.Empty<string>();
+            bool observedDoor=doorAction.Length>=4&&doorAction[0] is "Warp" or "LockedDoorWarp"&&NormalizeWarpTarget(doorAction[3])==edge.TargetName;
+            // A generic click gives nearby villagers priority (e.g. Gus standing
+            // at Pierre's door). Target the observed door's native action; its
+            // own opening-hour/friendship checks still apply.
+            bool interacted=at.X>=0&&at.Y>=0&&at.X<l.Map.Layers[0].LayerWidth&&at.Y<l.Map.Layers[0].LayerHeight
+                &&(observedDoor?l.performAction(doorAction,Game1.player,new xTile.Dimensions.Location(at.X,at.Y)):Game1.tryToCheckAt(at.ToVector2(),Game1.player));
+            if(interacted) {
                 if(Game1.activeClickableMenu is DialogueBox {isQuestion:false} denied) {
                     Current!.effects.Add(new{kind="route_access_notice",location=l.NameOrUniqueName,destination,text=denied.getCurrentString()});
-                    denied.finishTyping();denied.receiveLeftClick(denied.xPositionOnScreen+16,denied.yPositionOnScreen+16);
-                    throw new InvalidOperationException("route_access_denied_check_opening_hours_or_friendship");
+                    routeAccessDenied=true;Current.phase="route_access_notice";nextTravelInteraction=DateTime.UtcNow.AddMilliseconds(400);
                 }
                 return;
             }

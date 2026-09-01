@@ -52,6 +52,13 @@ public sealed partial class ModEntry {
                 Data.Storage=new();break;
             }
             case "business_recovery_read":return JsonSerializer.Serialize(new{wood=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388"),boxes=SharedStorage().Count(),free_slots=Game1.player.freeSpotsInInventory()});
+            case "door_interaction_fixture": {
+                PauseAutoplay("lab_door_interaction");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.Autoplay.Routine=new();
+                var town=Game1.getLocationFromName("Town");var door=PlayerExecutor.Exits(town).First(e=>e.TargetName=="SeedShop");Game1.warpFarmer("Town",door.X,door.Y+1,false);Game1.timeOfDay=Num("time",1000);
+                var npc=Game1.getCharacterFromName("Gus");npc.currentLocation?.characters.Remove(npc);town.characters.Add(npc);npc.currentLocation=town;npc.controller=null;npc.Halt();npc.Position=new Vector2(door.X,door.Y)*64;
+                break;
+            }
+            case "loose_drop_read":return JsonSerializer.Serialize(PlayerExecutor.LooseDrops(Game1.currentLocation).Select(d=>new{item=d.Item.QualifiedItemId,position=new[]{d.Pixel.X,d.Pixel.Y},group=d.Source.GetHashCode(),native_owner=d.Source.player.Value?.UniqueMultiplayerID}).ToArray());
             case "agent_semantic_fixture": {
                 PauseAutoplay("lab_semantic_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Game1.warpFarmer("Farm",62,17,false);
                 Game1.player.Stamina=90;Game1.player.health=100;

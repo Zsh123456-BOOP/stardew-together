@@ -20,11 +20,11 @@ public sealed partial class ModEntry {
     }
     private void CheckKnownFailure(ScheduledAgentTask task) {
         string conditions=FailureConditions(task.spec.actor);if(conditions=="unavailable")return;
-        var old=Data.Autoplay.Failures.Block(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText()),conditions,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay));
+        var old=Data.Autoplay.Failures.Block(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location),conditions,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay));
         if(old!=null)throw new InvalidOperationException("known_failure_conditions_unchanged:"+old.Reason+":evidence="+old.TaskEvidence);
     }
     private void LearnActionResult(ScheduledAgentTask task,string state,string? error) {
-        string key=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText());
+        string key=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         if(state=="succeeded"){Data.Autoplay.Failures.Success(key);return;}
         if(state!="failed"||string.IsNullOrEmpty(error)||error.StartsWith("known_failure_conditions_unchanged"))return;
         string conditions=FailureConditions(task.spec.actor);if(conditions=="unavailable")return;

@@ -10,6 +10,9 @@ public sealed partial class PlayerExecutor {
     private DateTime pickupProgressAt;
     private int pickupLastCount=-1,pickupWalks;
     private bool pickupWalking;
+    private int pickupRepositions;
+    private readonly Dictionary<Debris,float> pickupBestDistance=new();
+    private readonly HashSet<Point> pickupVisited=new();
     private List<Point> pickupTiles=new();
     private readonly HashSet<Debris> pickupTracked=new();
     private readonly HashSet<Debris> pickupBaseline=new();
@@ -29,7 +32,7 @@ public sealed partial class PlayerExecutor {
             foreach(var chunk in debris.Chunks)yield return new(debris,chunk.position.Value+new Vector2(32),item);
         }
     }
-    private void ResetPickup() {pickupTarget=null;pickupWalking=false;pickupLastCount=-1;pickupWalks=0;pickupTracked.Clear();pickupBaseline.Clear();if(Game1.currentLocation!=null)foreach(var d in Game1.currentLocation.debris)pickupBaseline.Add(d);pickupProgressAt=DateTime.UtcNow;}
+    private void ResetPickup() {pickupTarget=null;pickupWalking=false;pickupLastCount=-1;pickupWalks=0;pickupRepositions=0;pickupBestDistance.Clear();pickupVisited.Clear();pickupTracked.Clear();pickupBaseline.Clear();if(Game1.currentLocation!=null)foreach(var d in Game1.currentLocation.debris)pickupBaseline.Add(d);pickupProgressAt=DateTime.UtcNow;}
     private void StartPickup(JsonElement args) {
         if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >128)throw new InvalidOperationException("pickup_centers_required");
         pickupTiles=tiles.EnumerateArray().Select(Tile).Distinct().ToList();ResetPickup();Current!.phase="pickup_scan";
@@ -44,7 +47,7 @@ public sealed partial class PlayerExecutor {
         if(drops.Length==0) {
             StopWalk();Current!.effects.Add(new{kind="pickup_verified",remaining=0,walks=pickupWalks});return false;
         }
-        if(drops.Length!=pickupLastCount){pickupLastCount=drops.Length;pickupProgressAt=DateTime.UtcNow;}
+        if(drops.Length!=pickupLastCount){pickupLastCount=drops.Length;pickupProgressAt=DateTime.UtcNow;pickupBestDistance.Clear();pickupVisited.Clear();pickupRepositions=0;}
         // Native magnetism assigns a farmer using the centre of an entire Debris
         // group, not the nearest individual chunk of a felled tree.
         var available=drops.Where(d=>Game1.player.couldInventoryAcceptThisItem(d.Item)).GroupBy(d=>d.Source)
@@ -56,22 +59,37 @@ public sealed partial class PlayerExecutor {
             else {StopWalk();pickupWalking=false;pickupProgressAt=DateTime.UtcNow;}
         }
         var player=Game1.player.StandingPixel.ToVector2();int radius=Game1.player.GetAppliedMagneticRadius();
+        foreach(var group in drops.GroupBy(d=>d.Source)) {
+            float distance=group.Average(d=>Vector2.Distance(d.Pixel,player));
+            if(!pickupBestDistance.TryGetValue(group.Key,out var best)||distance<best-8){pickupBestDistance[group.Key]=distance;pickupProgressAt=DateTime.UtcNow;}
+        }
         // Native debris bounces, then accelerates towards the player. Wait only
         // while actual collectable items are in range, never after every hit.
-        if(available.Any(d=>Math.Abs(d.Pixel.X-player.X)<=radius&&Math.Abs(d.Pixel.Y-player.Y)<=radius)) {
+        bool stalled=(DateTime.UtcNow-pickupProgressAt).TotalSeconds>1.5;
+        if(!stalled&&available.Any(d=>Math.Abs(d.Pixel.X-player.X)<=radius&&Math.Abs(d.Pixel.Y-player.Y)<=radius)) {
             Current!.phase="pickup_native_attraction";
-            if((DateTime.UtcNow-pickupProgressAt).TotalSeconds>5)throw new InvalidOperationException("pickup_not_progressing");
             return true;
         }
+        if(stalled&&++pickupRepositions>6) {
+            Current!.effects.Add(new{kind="pickup_stalled_evidence",player=new[]{player.X,player.Y},radius,remaining=drops.Length,groups=available.Select(d=>new{item=d.Item.QualifiedItemId,at=new[]{d.Pixel.X,d.Pixel.Y},native_owner=d.Source.player.Value?.UniqueMultiplayerID,chunks=d.Source.Chunks.Count})});
+            throw new InvalidOperationException("pickup_not_progressing_after_reposition");
+        }
+        // Use the Farmer's actual standing offset; tile centre is not necessarily
+        // the native attraction point. A stalled group gets a closer reachable
+        // approach, instead of waiting at the edge of the magnetic radius.
+        var offset=player-Game1.player.TilePoint.ToVector2()*64;
+        int approachRadius=stalled?Math.Min(radius,64):radius;
         foreach(var drop in available.OrderBy(d=>Vector2.DistanceSquared(d.Pixel,player))) {
             var at=(drop.Pixel/64).ToPoint();
             var stands=(from y in Enumerable.Range(at.Y-1,3) from x in Enumerable.Range(at.X-1,3) select new Point(x,y))
-                .Where(p=>p!=Game1.player.TilePoint&&Passable(Game1.currentLocation,p)&&Math.Abs(p.X*64+32-drop.Pixel.X)<=radius&&Math.Abs(p.Y*64+32-drop.Pixel.Y)<=radius)
-                .OrderBy(p=>Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y));
+                .Where(p=>p!=Game1.player.TilePoint&&(!stalled||!pickupVisited.Contains(p))&&Passable(Game1.currentLocation,p)&&Math.Abs(p.X*64+offset.X-drop.Pixel.X)<=approachRadius&&Math.Abs(p.Y*64+offset.Y-drop.Pixel.Y)<=approachRadius)
+                .OrderBy(p=>stalled?Vector2.DistanceSquared(p.ToVector2()*64+offset,drop.Pixel):Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y));
             foreach(var stand in stands) {
                 var path=MeasuredPath(stand);if(path==null||path.Count==0)continue;
                 approachPath=path;approachLocation=Game1.currentLocation;approachStart=Game1.player.TilePoint;approachEnd=stand;
-                Walk(stand);pickupTarget=drop.Source;pickupWalking=true;pickupWalks++;pickupProgressAt=DateTime.UtcNow;Current!.phase="pickup_walk";return true;
+                pickupVisited.Add(Game1.player.TilePoint);pickupVisited.Add(stand);
+                if(stalled)Current!.effects.Add(new{kind="pickup_reposition",item=drop.Item.QualifiedItemId,target=new[]{stand.X,stand.Y},remaining=drops.Length});
+                Walk(stand);pickupTarget=drop.Source;pickupWalking=true;pickupWalks++;pickupBestDistance.Clear();pickupProgressAt=DateTime.UtcNow;Current!.phase="pickup_walk";return true;
             }
         }
         throw new InvalidOperationException("pickup_unreachable");

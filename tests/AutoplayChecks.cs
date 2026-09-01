@@ -28,6 +28,7 @@ public static class AutoplayChecks {
         var lookup=JsonSerializer.Serialize(AgentToolDiscovery.Lookup(catalog,JsonSerializer.SerializeToElement(new{names=new[]{"player.build"}})));
         check(lookup.Contains("blueprint,budget,keep_gold"),"on-demand tool discovery preserves full parameter contract");
         var failureState=new FailureKnowledge();var failureKey=FailureKnowledge.Key("player","interact","{}");
+        check(FailureKnowledge.Key("player","move","{}","Farm")!=FailureKnowledge.Key("player","move","{}","Town"),"correcting a task map precondition does not inherit its old validation failure");
         string at1=FailureKnowledge.Hash(JsonSerializer.Serialize(new{tile=new[]{3,11}})),at2=FailureKnowledge.Hash(JsonSerializer.Serialize(new{tile=new[]{3,8}}));
         failureState.Record(failureKey,"player","interact","adjacent",at1,"attempt",0,360);
         check(failureState.Block(failureKey,at1,0,361)!=null&&failureState.Block(failureKey,at2,0,361)==null,"explicit coordinate evidence invalidates a spatial failure after movement");

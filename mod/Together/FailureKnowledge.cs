@@ -16,7 +16,7 @@ public sealed class FailureExperience {
 public sealed class FailureKnowledge {
     public List<FailureExperience> Entries {get;set;}=new();
     public static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-    public static string Key(string actor,string tool,string args)=>Hash(actor+"\n"+tool+"\n"+args);
+    public static string Key(string actor,string tool,string args,string locationPrecondition="")=>Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
     public FailureExperience? Block(string key,string conditions,int day,int minute)=>Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day&&minute<e.RetryAfterMinute);
     public void Record(string key,string actor,string tool,string reason,string conditions,string task,int day,int minute) {
         var last=Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day);

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace Together;
 public sealed class FailureExperience {
@@ -16,7 +17,20 @@ public sealed class FailureExperience {
 public sealed class FailureKnowledge {
     public List<FailureExperience> Entries {get;set;}=new();
     public static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-    public static string Key(string actor,string tool,string args,string locationPrecondition="")=>Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
+    public static string Key(string actor,string tool,string args,string locationPrecondition="") {
+        // Rephrasing the bedtime justification does not create a new action.
+        if(tool=="player.sleep")args="{}";
+        else try {
+            using var document=JsonDocument.Parse(args);
+            object? Canonical(JsonElement v)=>v.ValueKind switch {
+                JsonValueKind.Object=>v.EnumerateObject().OrderBy(p=>p.Name,StringComparer.Ordinal).ToDictionary(p=>p.Name,p=>Canonical(p.Value)),
+                JsonValueKind.Array=>v.EnumerateArray().Select(Canonical).ToArray(),
+                _=>v.Clone()
+            };
+            args=JsonSerializer.Serialize(Canonical(document.RootElement));
+        }catch(JsonException){}
+        return Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
+    }
     public FailureExperience? Block(string key,string conditions,int day,int minute)=>Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day&&minute<e.RetryAfterMinute);
     public void Record(string key,string actor,string tool,string reason,string conditions,string task,int day,int minute) {
         var last=Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day);

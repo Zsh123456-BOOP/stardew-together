@@ -1,10 +1,11 @@
 namespace Together;
 
 public readonly record struct FarmCell(int X,int Y);
-public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool Watered,bool Irrigated,bool Protected,bool Tilled,int DistanceToWater,int ClearCost=0,bool Equipment=false);
+public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool Watered,bool Irrigated,bool Protected,bool Tilled,int DistanceToWater,int ClearCost=0,bool Equipment=false,int PlanningPenalty=0);
 public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
 
 public static class FarmLayout {
+    public static Dictionary<FarmCell,int> WalkDistances(IReadOnlyList<LayoutCell> source,FarmCell start)=>Distances(source.ToDictionary(c=>c.Tile),start,new());
     public static HashSet<FarmCell> ReachableAfter(IReadOnlyList<LayoutCell> source,FarmCell start,IEnumerable<FarmCell> occupied)=>Distances(source.ToDictionary(c=>c.Tile),start,occupied.ToHashSet()).Keys.ToHashSet();
     public static bool KeepsAccess(IReadOnlyList<LayoutCell> source,FarmCell start,IEnumerable<FarmCell> anchors,IEnumerable<FarmCell> occupied,IEnumerable<FarmCell> newAccess) {
         var cells=source.ToDictionary(c=>c.Tile);var blocked=occupied.ToHashSet();
@@ -51,7 +52,7 @@ public static class FarmLayout {
                 if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);if(manual>manualLimit||bed.Sum(c=>c.ClearCost+(c.Tilled?0:4)+(c.Watered?0:4))>energyBudget)continue;
                 int entry=bed.SelectMany(c=>Neighbours(c.Tile).Append(c.Tile)).Where(reached.ContainsKey).Select(p=>reached[p]).DefaultIfEmpty(int.MaxValue).Min();
                 if(entry==int.MaxValue)continue;
-                double score=entry*2+Math.Abs(shape.W-shape.H)*3+bed.Sum(c=>c.ClearCost*3+(c.Irrigated?0:25)+(c.Protected?0:8)+(c.Tilled?0:6)+Math.Min(100,c.DistanceToWater)*.2);
+                double score=entry*2+Math.Abs(shape.W-shape.H)*3+bed.Sum(c=>c.PlanningPenalty+c.ClearCost*3+(c.Irrigated?0:25)+(c.Protected?0:8)+(c.Tilled?0:6)+Math.Min(100,c.DistanceToWater)*.2);
                 if(best!=null&&bed.Count==best.Count&&score>=bestScore)continue;
                 var tiles=bed.Select(c=>c.Tile).ToHashSet();
                 if(trellis) {

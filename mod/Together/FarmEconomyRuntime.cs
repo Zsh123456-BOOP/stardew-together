@@ -22,7 +22,7 @@ public sealed partial class ModEntry {
         if(!(l.IsFarm||l.IsGreenhouse)||l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)throw new InvalidOperationException("reachable_farm_or_greenhouse_required");
         int budget=AgentToolRegistry.Number(args,"budget",0),keep=AgentToolRegistry.Number(args,"keep_gold",500),limit=AgentToolRegistry.Number(args,"plots",24),dailyManual=AgentToolRegistry.Number(args,"max_daily_manual_water",24);
         string priority=AgentToolRegistry.Text(args,"priority","income");
-        if(budget is <0 or >10000000||keep<0||limit is <1 or >96||dailyManual is <0 or >96||priority is not ("income" or "collection" or "low_labor"))throw new InvalidOperationException("invalid_economy_limits");
+        if(budget is <0 or >10000000||keep<0||limit is <1 or >96||dailyManual is <0 or >96||priority is not ("income" or "cashflow" or "collection" or "low_labor"))throw new InvalidOperationException("invalid_economy_limits");
         if(economyJobs.Values.Any(j=>!j.Task.IsCompleted))throw new InvalidOperationException("farm_economy_calculation_already_running");
         var irrigation=l.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).Where(v=>l.doesTileHaveProperty((int)v.X,(int)v.Y,"NoSprinklers","Back")!="T").ToHashSet();
         var scares=l.objects.Pairs.Where(o=>o.Value.IsScarecrow()).ToArray();var grid=new List<LayoutCell>();var water=new List<FarmCell>();
@@ -36,7 +36,7 @@ public sealed partial class ModEntry {
             bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
             grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
         }
-        ApplyFarmZoning(l,grid,anchors);
+        ApplyFarmZoning(l,grid,anchors);grid=DistrictGrid(l,grid);
         var distances=FarmLayout.WaterDistances(grid,water);grid=grid.Select(c=>c with{DistanceToWater=distances.GetValueOrDefault(c.Tile,10000)}).ToList();
         var home=l.buildings.FirstOrDefault(b=>b.buildingType.Value=="Farmhouse");
         var start=Game1.currentLocation==l?new FarmCell(p.TilePoint.X,p.TilePoint.Y):home!=null?new(home.tileX.Value+home.humanDoor.Value.X,home.tileY.Value+home.humanDoor.Value.Y+1):anchors.FirstOrDefault(a=>grid.Any(c=>c.Tile==a&&c.Passable));
@@ -59,6 +59,7 @@ public sealed partial class ModEntry {
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
         var processing=CropProcessingLanes(seeds,crops);
+        if(Data.Business.Enabled&&priority=="income"&&(Data.Operating.Direction=="cashflow"||p.Money<keep+1000))priority="cashflow";
         var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){EnergyBudget=AvailablePlantingEnergy(),Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
         string jobId=Guid.NewGuid().ToString("N");economyJobs[jobId]=new(agentSaveEpoch,l.NameOrUniqueName,snapshot,Task.Run(()=>CropPortfolio.Plan(snapshot)));
         foreach(var old in economyJobs.Where(j=>j.Key!=jobId&&j.Value.Task.IsCompleted).Take(Math.Max(0,economyJobs.Count-8)).Select(j=>j.Key).ToArray())economyJobs.Remove(old);
@@ -117,6 +118,7 @@ public sealed partial class ModEntry {
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};
         Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays);job.Submitted=true;
+        if(!PlayerExecutor.LoadedLocation(job.Location)!.IsGreenhouse)District(PlayerExecutor.LoadedLocation(job.Location)!).Commit(result.PreparationTiles);
         return new{status="queued",tasks=tasks.Select(t=>t.id),result.Spent,note="采购/播种以各阶段原生回执为准。"};
     }
 }

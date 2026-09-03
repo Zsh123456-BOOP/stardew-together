@@ -11,7 +11,7 @@ public sealed partial class ModEntry {
         if(player is <0 or >96||partner is <0 or >96)throw new InvalidOperationException("invalid_water_capacity");
         p.Direction=direction;p.PlayerWaterLimit=player;p.PartnerWaterLimit=partner;
         p.Reason=AgentToolRegistry.Text(args,"reason",p.Reason);if(p.Reason.Length>500)p.Reason=p.Reason[..500];
-        Data.FarmInvestment.Priority=direction=="low_labor"?"low_labor":"income";
+        Data.FarmInvestment.Priority=direction=="low_labor"?"low_labor":direction=="cashflow"?"cashflow":"income";
         return ReadOperatingLedger();
     }
     private int AccessibleStock(string item)=>Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.QualifiedItemId==item).Sum(i=>i.Stack);
@@ -69,12 +69,12 @@ public sealed partial class ModEntry {
         bool Queue(string goal,string location,int count,string why) {
             if(p.RetryAfter.GetValueOrDefault(goal+":"+location)>BusinessMinute)return false;
             string id="cooperate-"+Guid.NewGuid().ToString("N");
-            var spec=new AgentTaskSpec{id=id,actor=actor,tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id=actor,goal,location,count,until=2100}),purpose=why,day=Game1.Date.TotalDays,deadline=2100};
+            var spec=new AgentTaskSpec{id=id,actor=actor,tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id=actor,goal,location,count,stock_target=goal is "wood" or "stone" or "fiber"?count+TeamStock(goal=="wood"?"(O)388":goal=="stone"?"(O)390":"(O)771"):0,until=2100}),purpose=why,day=Game1.Date.TotalDays,deadline=2100};
             Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){spec},Game1.Date.TotalDays);p.PartnerTask=id;p.PartnerReason=why;
             Data.Autoplay.Record("cooperative_dispatch",AgentJson.Encode(new{actor,goal,location,count,why}));return true;
         }
         bool closesGap=p.MaterialTargets.Any(t=>AccessibleStock(t.Key)<t.Value&&AccessibleStock(t.Key)+CargoItem(partner,t.Key)>=t.Value);
-        string delivery=StorageTiming.DeliveryReason(partner.GetProperty("storable_cargo").GetInt32(),partner.GetProperty("cargo_capacity").GetInt32()-CompanionCargoSlots(partner),closesGap,Game1.timeOfDay>=2030);
+        string delivery=StorageTiming.DeliveryReason(partner.GetProperty("storable_cargo").GetInt32(),partner.GetProperty("cargo_capacity").GetInt32()-CompanionCargoSlots(partner),closesGap,Game1.timeOfDay>=2030||partner.TryGetProperty("labor",out var exhausted)&&exhausted.GetProperty("remaining").GetInt32()<4);
         if(delivery.Length>0&&SharedStorage().Any()&&Queue("store","Farm",0,delivery))return;
         if(Game1.timeOfDay>=2100){p.PartnerReason="结束劳动，等待共同过夜";return;}
         if(partner.TryGetProperty("labor",out var labor)&&labor.GetProperty("remaining").GetInt32()<4){
@@ -90,6 +90,9 @@ public sealed partial class ModEntry {
         foreach(var t in p.MaterialTargets) {
             string goal=t.Key switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber",_=>""};if(goal==""||PlayerDoing(goal))continue;
             int missing=OperatingMath.GatherDeficit(t.Value,AccessibleStock(t.Key),actors.Sum(a=>CargoItem(a,t.Key)));if(missing<=0)continue;
+            int remaining=partner.TryGetProperty("labor",out var capacity)?capacity.GetProperty("remaining").GetInt32():0;
+            int allowance=Together.Shared.CompanionLabor.OptionalAllowance(remaining,Facts.DryCrops,Facts.RipeCrops,Game1.timeOfDay);
+            missing=Math.Min(missing,allowance/4);if(missing<=0){p.PartnerReason="预留后续农务劳动额度，等待已知生产需求";continue;}
             bool exists=farm.objects.Values.Any(o=>goal=="wood"?o.IsTwig():goal=="stone"?o.BaseName=="Stone":o.IsWeeds());
             if(exists&&Queue(goal,"Farm",Math.Min(30,missing),"为已批准经营目标补齐材料："+t.Key))return;
         }

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Together;
 
+OperatingRevisionChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 BusinessChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 AutonomyDevelopmentChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

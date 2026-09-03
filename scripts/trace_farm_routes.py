@@ -21,7 +21,7 @@ try:
   if now-context_at>=2:
    d=b.request('GET','/lab/together')['autoplay'];context_at=now;contexts={}
    for t in d['state']['Schedule']['Tasks']:
-    if t['state']=='running':contexts.setdefault(t['spec']['actor'],[]).append(dict(task_id=t['spec']['id'],tool=t['spec']['tool'],purpose=t['spec']['purpose']))
+    if t['state']=='running':contexts.setdefault(t['spec']['actor'],[]).append(dict(task_id=t['spec']['id'],tool=t['spec']['tool'],goal=t['spec'].get('args',{}).get('goal'),purpose=t['spec']['purpose']))
   actors=[dict(id='player',tile=state['player']['tile'],location=state['location'],cargo=state['player']['inventory'])]
   actors += [dict(id=x['id'],tile=x['tile'],location=x['location'],cargo=x.get('cargo',{}),moving=x.get('moving'),labor=x.get('labor'),native_task=x.get('task')) for x in state['actors']]
   for actor in actors:

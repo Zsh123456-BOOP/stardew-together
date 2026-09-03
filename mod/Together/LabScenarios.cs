@@ -40,7 +40,7 @@ public sealed partial class ModEntry {
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }
             case "business_recovery_fixture": {
-                PauseAutoplay("lab_business_recovery_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();
+                PauseAutoplay("lab_business_recovery_fixture");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Operating=new();Data.FarmPolicy=new();
                 Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.Autoplay.Routine=new();Data.SharedGoals.Clear();Data.Reservations.Clear();
                 foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);
                 for(int x=44;x<=54;x++)for(int y=25;y<=32;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
@@ -53,9 +53,24 @@ public sealed partial class ModEntry {
                 Data.Storage=new();break;
             }
             case "business_recovery_read":return JsonSerializer.Serialize(new{wood=Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388"),boxes=SharedStorage().Count(),free_slots=Game1.player.freeSpotsInInventory()});
+            case "operating_next_batch": {
+                PauseAutoplay("lab_next_batch");Game1.exitActiveMenu();
+                Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)472",4));Game1.player.Stamina=270;Game1.timeOfDay=1100;
+                break;
+            }
+            case "operating_read":return JsonSerializer.Serialize(new{districts=Data.Operating.Districts,home=FarmHome(farm),stock=TeamStock("(O)388"),boxes=SharedStorage().Select(s=>new{tile=new[]{(int)s.Tile.X,(int)s.Tile.Y}}),labor=World().GetProperty("actors").EnumerateArray().Select(a=>new{id=a.GetProperty("id"),labor=a.GetProperty("labor")})});
+            case "bedtime_review_fixture": {
+                PauseAutoplay("lab_bedtime");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Business=new();Data.FarmInvestment=new();Data.Maintenance=new(){Enabled=false};Data.FarmPolicy=new();Data.Autoplay.Routine=new();
+                foreach(var location in Game1.locations)foreach(var dirt in location.terrainFeatures.Values.OfType<HoeDirt>())dirt.crop=null;
+                for(int x=44;x<=48;x++)for(int y=26;y<=30;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                farm.objects[new(47,28)]=new StardewValley.Object("313",1){TileLocation=new(47,28),HasBeenInInventory=false};
+                for(int i=5;i<Game1.player.Items.Count;i++)Game1.player.Items[i]=null;
+                Game1.warpFarmer("Farm",45,28,false);Game1.timeOfDay=1710;Game1.player.Stamina=23.3f;
+                break;
+            }
             case "farm_energy_fixture": {
-                PauseAutoplay("lab_farm_energy");Settings.Autonomy=false;Game1.exitActiveMenu();Data.FarmPolicy=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.Maintenance=new(){Enabled=false};
-                foreach(var dirt in farm.terrainFeatures.Values.OfType<HoeDirt>())dirt.state.Value=1;
+                PauseAutoplay("lab_farm_energy");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Operating=new();Data.FarmPolicy=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.Maintenance=new(){Enabled=false};
+                foreach(var dirt in farm.terrainFeatures.Values.OfType<HoeDirt>()){dirt.state.Value=1;dirt.crop=null;}
                 for(int x=44;x<=58;x++)for(int y=25;y<=34;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
                 Data.Maintenance.Zones=new(){new(){X=0,Y=0,Width=200,Height=27},new(){X=0,Y=31,Width=200,Height=200},new(){X=0,Y=27,Width=47,Height=4},new(){X=55,Y=27,Width=200,Height=4}};
                 for(int x=47;x<=54;x++)for(int y=27;y<=30;y++)farm.objects[new(x,y)]=new StardewValley.Object("313",1){TileLocation=new(x,y),HasBeenInInventory=false};

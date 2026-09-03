@@ -16,7 +16,7 @@ public sealed partial class CompanionControl {
     }
 }
 public sealed partial class CompanionControl {
-    private static int WorkCost(string skill)=>skill switch {"water" or "pet"=>1,"harvest" or "forage"=>2,"mine" or "clear"=>4,"fish"=>12,"plant" or "till" or "feed" or "tend" or "collect" or "refill"=>2,_=>0};
+    private static int WorkCost(string skill)=>Together.Shared.CompanionLabor.Cost(skill);
     private static int LaborUsed(NPC npc) {
         if(!npc.modData.TryGetValue("stardewagent.together/labor",out var raw))return 0;
         var parts=raw.Split(':');return parts.Length==2&&int.TryParse(parts[0],out int day)&&day==Game1.Date.TotalDays&&int.TryParse(parts[1],out int used)?Math.Max(0,used):0;

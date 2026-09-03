@@ -13,14 +13,22 @@ public sealed record EconomyResult(List<EconomyPlant> Plants,List<EconomyPurchas
 public static class CropPortfolio {
     public static EconomyResult Plan(EconomySnapshot s,CancellationToken cancellation=default) {
         var clock=System.Diagnostics.Stopwatch.StartNew();var results=new List<EconomyResult>();
-        foreach(int variant in new[]{0,1,2}) {cancellation.ThrowIfCancellationRequested();if(results.Count>0&&clock.ElapsedMilliseconds>5000)break;var planned=PlanVariant(s,variant,cancellation);results.Add(planned with{Processing=ProcessingForecast.Evaluate(s,planned.Plants)});}
+        foreach(int variant in s.Priority=="cashflow"?new[]{3,1,0}:new[]{0,1,2}) {cancellation.ThrowIfCancellationRequested();if(results.Count>0&&clock.ElapsedMilliseconds>5000)break;var planned=PlanVariant(s,variant,cancellation);results.Add(planned with{Processing=ProcessingForecast.Evaluate(s,planned.Plants)});}
         int Reserved(EconomyResult r)=>s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));
         int Collection(EconomyResult r)=>s.Priority=="collection"?s.Seeds.Count(seed=>seed.NeedForCollection>0&&r.Plants.Any(p=>p.Seed==seed.Seed)):0;
         // Partial forecasts are useful diagnostics, but not comparable to a full
         // season. Keep their candidate's conservative first-planting value.
         bool comparable=results.All(r=>r.Reinvestment is {StopReason:"season_scenario_complete"});
         double Value(EconomyResult r)=>comparable&&r.Reinvestment is {} forecast?forecast.Gold:s.Money-r.Spent+r.Plants.Sum(p=>{var seed=s.Seeds.First(x=>x.Seed==p.Seed);return new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)*seed.SalePrice;})-s.Seeds.Sum(seed=>Math.Min(seed.ReserveYield,r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay)))*seed.SalePrice);
-        double IntegratedValue(EconomyResult r)=>Value(r)+(r.Processing?.AdditionalMargin??0);
+        double CashSoon(EconomyResult r) {
+            int end=s.Date+7;double value=s.Money-r.Spent;
+            foreach(var seed in s.Seeds) {
+                int harvested=r.Plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).HarvestDays(s.Date,Math.Min(seed.LastDay,end-1)).Count());
+                value+=Math.Max(0,harvested-seed.ReserveYield)*seed.SalePrice;
+            }
+            return value;
+        }
+        double IntegratedValue(EconomyResult r)=>s.Priority=="cashflow"?CashSoon(r):Value(r)+(r.Processing?.AdditionalMargin??0);
         return results.OrderByDescending(Reserved).ThenByDescending(Collection).ThenByDescending(r=>s.Priority=="low_labor"?(IntegratedValue(r)-s.Money)/Math.Max(1,r.Manual):IntegratedValue(r)).ThenBy(r=>r.Spent).First();
     }
     private static EconomyResult PlanVariant(EconomySnapshot s,int variant,CancellationToken cancellation) {
@@ -49,7 +57,7 @@ public static class CropPortfolio {
                 var crop=new Crop(seed.Seed,growth,seed.Regrow,price,seed.SalePrice);int yields=crop.NumHarvests(s.Date,seed.LastDay);
                 int reserved=Math.Min(yields,Math.Max(0,seed.ReserveYield-plants.Where(p=>p.Seed==seed.Seed).Sum(p=>new Crop(seed.Seed,p.Growth,seed.Regrow,0,seed.SalePrice).NumHarvests(s.Date,seed.LastDay))));
                 double profit=(yields-reserved)*seed.SalePrice-price;
-                double investment=variant==1?profit/Math.Max(1,growth+1):variant==2?profit/Math.Max(1,price):profit;
+                double investment=variant==3?((Math.Max(0,crop.NumHarvests(s.Date,Math.Min(seed.LastDay,s.Date+6))-reserved)*seed.SalePrice-price)/Math.Max(1,growth+1)):variant==1?profit/Math.Max(1,growth+1):variant==2?profit/Math.Max(1,price):profit;
                 double score=s.Priority=="collection"&&n<seed.NeedForCollection?100000+investment:s.Priority=="low_labor"?investment/Math.Max(1,water?seed.LastDay-s.Date:1):investment;
                 if(reserved>0)score+=10000;
                 if(score<=0&&seed.NeedForCollection<=n)continue;

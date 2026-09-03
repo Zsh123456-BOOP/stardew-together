@@ -64,7 +64,7 @@ public sealed partial class ModEntry {
         }
         bool Useful(string skill,string item) {
             if(skill!="clear")return true;
-            int owned=Facts.Stock.Where(s=>s.Item==item).Sum(s=>s.Count);
+            int owned=TeamStock(item);
             if(Data.Autoplay.Agenda.Resources.Any(r=>r.Item==item && r.Count>owned))return true;
             if(Data.SharedGoals.Any(g=>g.Status=="active" && g.Nodes.Any(n=>n.Item==item&&n.ToPrepare>0)))return true;
             return owned<(item=="(O)388"?50:item=="(O)390"?25:item=="(O)771"?20:0);
@@ -99,6 +99,7 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning)return; // Direct lab executor tests do not pretend to be model planning.
         RefreshFacts(true);var options=DayOptions();
         var block=DailyBudget.SleepBlock(Game1.timeOfDay,Game1.player.Stamina,options.Any(o=>o.fits&&o.useful&&o.estimated_energy==0),options.Any(o=>o.fits&&o.useful),Facts.DryCrops+Facts.RipeCrops>0,dayReviewed==Game1.Date.TotalDays,AgentToolRegistry.Text(args,"reason"));
+        Data.Autoplay.Record("sleep_review",AgentJson.Encode(new{Game1.timeOfDay,stamina=Game1.player.Stamina,Facts.DryCrops,Facts.RipeCrops,blocking_rule=block,optional_candidates=options.Where(o=>o.fits&&o.useful).Take(6),reason=AgentToolRegistry.Text(args,"reason"),review=AgentToolRegistry.Text(args,"review")}));
         if(block!=null)throw new InvalidOperationException(block);
         // An empty local list is not evidence that the whole day is exhausted.
         if(Game1.timeOfDay<2200 && Game1.player.Stamina>DailyBudget.EnergyReserve && !args.TryGetProperty("review",out _))throw new InvalidOperationException("sleep_requires_review_of_alternatives");

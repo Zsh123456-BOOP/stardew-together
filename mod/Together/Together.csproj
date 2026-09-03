@@ -10,4 +10,5 @@
   <ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" ExcludeAssets="runtime" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/ResourceFlow.cs" Link="Shared/ResourceFlow.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/ForageCropRules.cs" Link="Shared/ForageCropRules.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/CompanionLabor.cs" Link="Shared/CompanionLabor.cs" /></ItemGroup>
 </Project>

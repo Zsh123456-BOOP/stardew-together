@@ -74,7 +74,7 @@ public sealed partial class ModEntry {
             bool irrigation=irrigated.Contains(v)&&l.doesTileHaveProperty(x,y,"NoSprinklers","Back")!="T";
             grid.Add(new(new(x,y),plantable,passable,dirt?.state.Value==1,irrigation,l.IsGreenhouse||scares.Any(s=>Vector2.Distance(s.Key,v)<s.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
         }
-        var zoning=ApplyFarmZoning(l,grid,anchors);
+        var zoning=ApplyFarmZoning(l,grid,anchors);grid=DistrictGrid(l,grid);
         var waterDistance=FarmLayout.WaterDistances(grid,water.Select(w=>new FarmCell(w.X,w.Y)));
         grid=grid.Select(c=>c with{DistanceToWater=waterDistance.GetValueOrDefault(c.Tile,10000)}).ToList();
         var paddyTiles=water.SelectMany(w=>Enumerable.Range(-3,7).SelectMany(dx=>Enumerable.Range(-3,7).Select(dy=>new FarmCell(w.X+dx,w.Y+dy)))).ToHashSet();
@@ -116,7 +116,10 @@ public sealed partial class ModEntry {
         var home=buildings.FirstOrDefault(b=>b.Home);
         if(home==null)return new();
         var start=grid.Where(c=>c.Passable&&c.Tile.Y>=home.Y+home.Height).OrderBy(c=>Math.Abs(c.Tile.X-(home.X+home.Width/2))+Math.Abs(c.Tile.Y-(home.Y+home.Height))).Select(c=>c.Tile).FirstOrDefault();
-        var zones=FarmZoning.Reserve(grid,buildings,start,anchors);
+        // Crop approach tiles vary with the player and must not redraw permanent roads.
+        var structural=PlayerExecutor.Exits(l).Select(e=>new FarmCell(e.X,e.Y)).ToList();
+        foreach(var b in l.buildings)if(b.humanDoor.Value.X>=0)structural.Add(new(b.tileX.Value+b.humanDoor.Value.X,b.tileY.Value+b.humanDoor.Value.Y+1));
+        var zones=FarmZoning.Reserve(grid,buildings,start,structural);
         for(int i=0;i<grid.Count;i++)if(zones.ContainsKey(grid[i].Tile)||Data.Maintenance.Zones.Any(z=>z.Contains(grid[i].Tile)&&z.Kind is "production" or "woodland" or "pasture" or "reserve"))grid[i]=grid[i] with{Plantable=false,Equipment=false};
         return zones;
     }

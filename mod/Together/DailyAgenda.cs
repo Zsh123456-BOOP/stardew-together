@@ -29,6 +29,9 @@ public static class DailyBudget {
         if(time>=2200)return null;
         if(!reviewed)return "review_day_before_sleep";
         if(stamina<=EnergyReserve && !freeWork)return null;
+        // Optional forage or baseline reserves must not veto a reviewed evening
+        // close indefinitely. Actual outstanding farm care still takes priority.
+        if(!chores&&(time>=2000||time>=1600&&stamina<=EnergyReserve+20))return null;
         if(chores || usefulWork || freeWork)return "useful_daylight_remaining_read_day_and_replan";
         return null;
     }

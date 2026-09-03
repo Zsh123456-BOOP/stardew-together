@@ -238,11 +238,12 @@ public sealed partial class CompanionControl {
             mod.FollowerManager.ClearMateTaskAndReset(mate);
             Finish(record, "succeeded"); // Result is switching mode, not an assertion of arrival.
         }
-        ChargeLabor(mate.Npc,skill);records[id] = record;
+        records[id] = record;
         return Json(Result(record));
     }
     private void Finish(Record r, string status, string? error = null) {
         if (ReferenceEquals(r.Mate.Task, r.Assigned)) mod.FollowerManager.ClearMateTaskAndReset(r.Mate);
+        if(!r.LaborCharged&&r.EffectByActor){ChargeLabor(r.Mate.Npc,r.Skill);r.LaborCharged=true;}
         r.Status = status; r.Error = error;reservationTick=-1;
         r.CargoAfter=Counts(Pouch(r.Mate));
         r.AfterTile = Tile(r.Mate.Npc.TilePoint);
@@ -405,7 +406,7 @@ public sealed partial class CompanionControl {
         public string? Error; public ISquadMate Mate = null!; public GameLocation Location = null!;
         public object? Source; public StardewValley.Object? Rock; public SquadTask? Assigned; public Point Target;
         public int[] BeforeTile = Array.Empty<int>(); public int[]? AfterTile; public bool? TargetRemaining;
-        public DateTime Started; public bool MinedByActor, EffectByActor, Cancel, CombatPaused; public int Resumes;
+        public DateTime Started; public bool MinedByActor, EffectByActor, Cancel, CombatPaused, LaborCharged; public int Resumes;
         public long LastTick=-1; public float ActiveSeconds,FishingSeconds,LastCatch; public int Duration=30;
         public Point LastPosition;public float StallSeconds;
         public List<string> Catches=new();

@@ -48,6 +48,9 @@ internal static class BusinessChecks {
         check(StorageTiming.DeliveryReason(5,10,false,false)=="","small completed batches do not force companion delivery");
         check(StorageTiming.DeliveryReason(50,10,true,false)!="","delivery is allowed before full when it unlocks approved production");
         check(StorageTiming.DeliveryReason(5,0,false,false)!=""&&StorageTiming.DeliveryReason(5,10,false,true)!="","capacity and end-of-day delivery still run");
+        check(AgentNumbers.Read(JsonSerializer.SerializeToElement(new{count="40"}),"count")==40,"integer strings are normalized without changing item identifiers");
+        bool badNumber=false;try{AgentNumbers.Read(JsonSerializer.SerializeToElement(new{count="4.5"}),"count");}catch(InvalidOperationException e){badNumber=e.Message=="parameter_requires_integer:count";}
+        check(badNumber,"fractional or invalid counts report the exact parameter instead of defaulting");
         var cheap=new BusinessOption("small","machine","a",100,100,100,0,1,"",Array.Empty<string>());
         var large=new BusinessOption("large","building","b",1000,3000,200,0,1,"",Array.Empty<string>());
         var unavailable=cheap with{Id="locked",Gaps=new[]{"missing_native_unlock"},DailyMargin=9999};

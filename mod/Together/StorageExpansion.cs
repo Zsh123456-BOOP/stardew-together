@@ -71,11 +71,20 @@ public sealed partial class ModEntry {
         foreach(var area in Data.FarmPolicy.Areas.Where(a=>a.Enabled&&a.Location=="Farm"))for(int y=area.Y;y<area.Y+area.Height;y++)for(int x=area.X;x<area.X+area.Width;x++)anchors.Add(new(x,y));
         for(int y=0;y<farm.Map.Layers[0].LayerHeight;y++)for(int x=0;x<farm.Map.Layers[0].LayerWidth;x++)grid.Add(new(new(x,y),false,PlayerExecutor.Passable(farm,new(x,y)),false,false,false,false,0));
         var start=new FarmCell(Game1.player.TilePoint.X,Game1.player.TilePoint.Y);
-        foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start).OrderBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y))) {
+        var district=District(farm);var home=FarmHome(farm);var fromHome=FarmLayout.WalkDistances(grid,home);
+        var fromPlayer=FarmLayout.WalkDistances(grid,start);
+        var field=district.Field.OrderBy(t=>FarmDistrict.Distance(t,home)).FirstOrDefault(home);
+        var fromField=FarmLayout.WalkDistances(grid,field);
+        int Route(Dictionary<FarmCell,int> costs,FarmCell tile)=>new[]{new FarmCell(tile.X+1,tile.Y),new(tile.X-1,tile.Y),new(tile.X,tile.Y+1),new(tile.X,tile.Y-1)}.Select(t=>costs.GetValueOrDefault(t,10000)).Min();
+        var candidates=grid.Where(c=>c.Passable&&c.Tile!=start&&FarmDistrict.Distance(c.Tile,home)>2&&!district.Field.Contains(c.Tile)&&Route(fromHome,c.Tile)<=24&&Route(fromPlayer,c.Tile)<10000)
+            .OrderBy(c=>Route(fromHome,c.Tile)*3+Route(fromField,c.Tile)*2+Route(fromPlayer,c.Tile)*.1).ToArray();
+        foreach(var cell in candidates) {
             var p=new Point(cell.Tile.X,cell.Tile.Y);var v=p.ToVector2();
             if(IsPlacementProtected("Farm",p)||farm.objects.ContainsKey(v)||farm.terrainFeatures.ContainsKey(v)||farm.doesTileHaveProperty(p.X,p.Y,"Action","Buildings")!=null||farm.doesTileHaveProperty(p.X,p.Y,"TouchAction","Back")!=null||anchors.Contains(cell.Tile))continue;
             if(!Game1.player.Items[chest].canBePlacedHere(farm,v))continue;
             var stand=WorkStand(farm,p);if(!stand.HasValue||!FarmLayout.KeepsAccess(grid,start,anchors,new[]{cell.Tile},new[]{new FarmCell(stand.Value.X,stand.Value.Y)}))continue;
+            district.Warehouse=cell.Tile;
+            Data.Autoplay.Record("warehouse_site",AgentJson.Encode(new{tile=cell.Tile,home_route=Route(fromHome,cell.Tile),field_route=Route(fromField,cell.Tile),player_route=Route(fromPlayer,cell.Tile)}));
             job.ExpansionTile=p;WorkChild(job,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_expansion_move");return true;
         }
         throw new InvalidOperationException("storage_no_clear_site_with_preserved_access");

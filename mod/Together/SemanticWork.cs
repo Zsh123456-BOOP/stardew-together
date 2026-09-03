@@ -40,6 +40,7 @@ public sealed class SemanticJob {
     internal bool PickupPending;
     internal List<Point> PickupTiles=new();
     internal bool IncludeTrees;
+    internal int StockTarget;
     internal string PlanId="";
     internal string CleanupId="";
     internal int MinimumQuality;
@@ -134,6 +135,7 @@ public sealed partial class ModEntry {
             job.PlanId=AgentToolRegistry.Text(args,"plan_id");
             if(!farmPlantPlans.TryGetValue(job.PlanId,out var plan)||plan.Epoch!=agentSaveEpoch||plan.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("read_farm_plan_first");
             job.location=plan.Location;job.requested=0;
+            if(PlayerExecutor.LoadedLocation(plan.Location) is {} field&&!field.IsGreenhouse)District(field).Commit(plan.PreparationTiles.Count>0?plan.PreparationTiles:plan.Tiles);
         }
         job.MaxFood=Math.Clamp(AgentToolRegistry.Number(args,"max_food",3),0,10);
         semanticJobs.Add(job.command_id,job);
@@ -242,6 +244,7 @@ public sealed partial class ModEntry {
         }
         if(j.OrderObjective!=null&&j.goal!="mine_trip"&&j.OrderObjective.GetCount()>=j.OrderObjective.GetMaxCount()){StopSemanticWork(j,"native_order_objective_reached",true);return;}
         if(j.NativeQuest!=null&&j.goal!="mine_trip"&&(j.NativeQuest.completed.Value||NativeQuestIdentity.Count(j.NativeQuest).Current>=NativeQuestIdentity.Count(j.NativeQuest).Required)){StopSemanticWork(j,"native_quest_objective_reached",true);return;}
+        if(j.StockTarget>0&&TeamStock(j.Item)>=j.StockTarget){StopSemanticWork(j,"shared_stock_target_reached",true);return;}
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
         if(j.goal=="fish"){TickFishingTrip(j);return;}
         if(j.goal=="mine_trip"){TickMineTrip(j);return;}
@@ -303,7 +306,10 @@ public sealed partial class ModEntry {
         }
         int energyReserve=j.Reserve+(j.goal is "wood" or "stone" or "resource" or "hardwood"?PendingFarmEnergy():0);
         string? constraint=null;
-        foreach(var c in candidates.OrderBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile))) {
+        var eligible=candidates.Where(c=>!j.Excluded.Contains($"{c.Tile.X},{c.Tile.Y}")&&!AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)&&!(j.goal is "resource" or "stone" or "wood" or "fiber" or "hardwood" or "clear_dead"&&MaintenanceProtects(l,c.Tile))).ToArray();
+        var route=CleanupRouting.Plan(new(p.TilePoint.X,p.TilePoint.Y),eligible.Select(c=>new CleanupSite(new(c.Tile.X,c.Tile.Y),(int)Math.Ceiling(c.Energy))),t=>PlayerExecutor.Passable(l,new(t.X,t.Y)),Math.Max(0,(int)p.Stamina-energyReserve),1);
+        if(route.Count==0&&eligible.Any(c=>c.Energy>p.Stamina-energyReserve))constraint="energy_reserve_reached";
+        foreach(var step in route)foreach(var c in eligible.Where(c=>c.Tile.X==step.Site.Tile.X&&c.Tile.Y==step.Site.Tile.Y).Take(1)) {
             string key=$"{c.Tile.X},{c.Tile.Y}";if(j.Excluded.Contains(key)||j.goal is "resource" or "stone" or "wood" or "fiber" or "hardwood" or "clear_dead"&&MaintenanceProtects(l,c.Tile))continue;
             if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)){constraint="targets_claimed_by_other_actor";continue;}
             if(c.Energy>0&&p.Stamina-c.Energy<energyReserve){constraint="energy_reserve_reached";continue;}
@@ -314,7 +320,7 @@ public sealed partial class ModEntry {
             // between them picks up drops naturally; one final debris sweep follows.
             if(c.Skill=="clear")foreach(var next in candidates.Where(n=>n.Tile!=c.Tile&&n.Skill==c.Skill&&n.Slot==c.Slot).OrderBy(n=>Vector2.DistanceSquared(n.Tile.ToVector2(),c.Tile.ToVector2()))) {
                 if(batch.Count>=Math.Min(3,Math.Max(1,j.requested-j.gained)))break;
-                if(Vector2.DistanceSquared(next.Tile.ToVector2(),c.Tile.ToVector2())>36||p.Stamina-cost-next.Energy<energyReserve||j.Excluded.Contains($"{next.Tile.X},{next.Tile.Y}")||MaintenanceProtects(l,next.Tile)||AgentTileBusy(l.NameOrUniqueName,next.Tile.X,next.Tile.Y)||WorkStand(l,next.Tile)==null)continue;
+                if(Vector2.DistanceSquared(next.Tile.ToVector2(),batch.Last().ToVector2())>2||p.Stamina-cost-next.Energy<energyReserve||j.Excluded.Contains($"{next.Tile.X},{next.Tile.Y}")||MaintenanceProtects(l,next.Tile)||AgentTileBusy(l.NameOrUniqueName,next.Tile.X,next.Tile.Y)||WorkStand(l,next.Tile)==null)continue;
                 batch.Add(next.Tile);cost+=next.Energy;
             }
             WorkChild(j,"player.work",new{skill=c.Skill,slot=c.Slot,tiles=batch.Select(p=>new{x=p.X,y=p.Y})},"labor",key);return;
@@ -357,6 +363,8 @@ public sealed partial class ModEntry {
     }
     private void SelectCompanionWork(SemanticJob j,GameLocation l) {
         var actor=WorkActor(j.actor);string skill=j.goal is "stone" or "resource"?"mine":j.goal=="process"?"refill":j.goal is "wood" or "fiber"?"clear":j.goal;
+        int laborCost=Together.Shared.CompanionLabor.Cost(skill);
+        if(laborCost>0&&actor.TryGetProperty("labor",out var labor)&&labor.GetProperty("remaining").GetInt32()<laborCost){StopSemanticWork(j,"partner_labor_insufficient_before_dispatch");return;}
         // NPCs have no native Farmer stamina bar. Do not invent one; bound by time,
         // actual available skills, cargo capacity and the adapter's safety checks.
         int requiredSlots=skill switch{"mine"=>4,"harvest"=>3,"clear"=>3,"forage" or "collect" or "tend"=>1,_=>0};

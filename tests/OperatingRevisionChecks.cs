@@ -2,6 +2,20 @@ using System.Text.Json;
 using Together;
 static class OperatingRevisionChecks {
     public static void Run(Action<bool,string> check) {
+        check(BusinessRetention.Sellable(12,12,40,0)==0&&BusinessRetention.Sellable(60,60,40,0)==20,"sale floors retain sap and allow only actual excess");
+        check(BusinessRetention.Sellable(60,5,40,0)==5&&BusinessRetention.Sellable(60,60,40,55)==5,"sales honor both project reservations and current machine inputs");
+        var allocation=ProductionAllocation.Split(60,20,15,30);
+        check(allocation.Free==25&&allocation.Committed==20&&allocation.Operations==15,"independent project commitments and machine operations consume separate quantities");
+        check(ProductionAllocation.Split(60,20,15,50).Free==10,"stock target is a total, not duplicated on top of commitments");
+        check(ProductionAllocation.Split(10,20,15,0).Missing==25&&ProductionAllocation.Split(10,20,15,0).Free==0,"shortage never creates fictional sale stock");
+        var saved=JsonSerializer.Deserialize<ProductionPolicy>(JsonSerializer.Serialize(new ProductionPolicy{Selected="machine:x",Reason="缓解原料积压",SaleItems=new(){"(O)92"},SurplusDay=2}))!;
+        check(saved.Selected=="machine:x"&&saved.SaleItems.Contains("(O)92"),"investment intent and scoped surplus policy survive saving without storing stale inventory");
+        var schedule=new AgentSchedule();
+        schedule.Submit("day",0,new(){new(){id="sleep",tool="player.sleep",day=0},new(){id="partner",actor="npc",tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id="npc",goal="water"}),day=0}},0);
+        var sleep=schedule.Tasks[0];schedule.InsertBefore(sleep,new(){new(){id="withdraw",tool="work.run",day=0},new(){id="ship",tool="player.ship_items",day=0}});
+        check(schedule.Ready(0,1800).Select(t=>t.spec.id).SequenceEqual(new[]{"withdraw","partner"}),"closing shipment precedes sleep without blocking the other actor");
+        schedule.Finish(schedule.Tasks[0],"succeeded",null,"{}");check(schedule.Ready(0,1800).Any(t=>t.spec.id=="ship")&&!schedule.Ready(0,1800).Contains(sleep),"shipping waits for withdrawal and sleep waits for shipping");
+        schedule.Finish(schedule.Tasks[1],"failed","missing_item","{}");schedule.Ready(0,1800);check(sleep.state=="blocked","failed closing shipment blocks false successful sleep completion");
         var district=new FarmDistrict();district.Commit(new[]{new FarmCell(10,10),new FarmCell(11,10)});district.Warehouse=new(5,5);
         var restored=JsonSerializer.Deserialize<FarmDistrict>(JsonSerializer.Serialize(district))!;
         var cells=new[]{new LayoutCell(new(12,10),true,true,false,false,false,false,0),new LayoutCell(new(25,25),true,true,false,false,false,false,0),new LayoutCell(new(5,5),true,true,false,false,false,false,0)};

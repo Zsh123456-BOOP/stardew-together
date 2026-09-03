@@ -27,6 +27,7 @@ public sealed class AgentToolRegistry {
         ["farm.maintenance"]="{enabled?:bool,scope?:string}: 农场整理摘要（分类计数、体力估算、保留物、剩余订单），省略scope不返回坐标；enabled调整经营中的每日自动整理。scope返回最多32个详细目标。",
         ["farm.zones"]="{zones?:[{id:string,kind:crop|production|woodland|pasture|reserve,x:int,y:int,width:int,height:int,allow_trees?:bool}]}: 查询或原子替换农场分区列表，不重叠；先map.read观察。林区/牧草/保留区不清理；只有crop/production可授权树木整理。修改时玩家须空闲。",
         ["farm.cleanup"]="{request_id:string,mode?:run|pause,scopes?:[roads|courtyard|fields|general|all|zone:分区ID],reserve_stamina?:15..270,until?:HHMM<=2200,daily_limit?:1..120,remove_trees?:bool}: 保存持久清理目标，自动分批选目标、工具、寻路、存货续做；默认清杂草/树枝/小石头，树木须分区allow_trees且remove_trees。默认每日30目标、18点停止；30为安全底线，另预留未完浇水/播种和20%最大体力生产余量。所有整理订单共享35%最大体力成本与180游戏分钟日上限，额度用完不代表该睡觉。余量次日继续。相同request_id必须同参数，不重复创建；pause保留进度。AI暂停时不执行。当前执行角色为玩家，伙伴仍可独立承担已有农务/资源任务。",
+        ["farm.production"]="{action?:read|uses|select|make|surplus,item?:QID,offset?:int,id?:候选id,recipe?:配方id,count?:int,request_id?:string,allow?:bool,reason?:string}: read查统一生产/预留；uses查材料用途与解锁(每页12)；select选择一项投资或maintain不扩建；make按已知配方建立持续依赖目标；surplus明确授权今日材料余量出货，预留不解除。决策需reason。",
         ["farm.operating"]="{direction?:balanced|cashflow|low_labor,player_water_limit?:0..96,partner_water_limit?:0..96,reason?:string}: 设置统一经营方向和劳动容量，返回可用现金与实际/在途材料缺口",
         ["companion.configure"]="{enabled?:bool,name?:string,appearance?:Leah|Alex|Sam|Maru|Sebastian|Abigail}: 创建/配置自定义伙伴；外观仅素材引用，不招募村民",
         ["farm.business"]="{enabled?:bool,expand?:bool,budget_per_day?:int,keep_gold?:int,max_animals?:0..96,max_machines?:0..200,feed_days?:2..28}: 持续经营政策，日常双角色照料、种植投资、饲料补给、机器投料收货、余量销售、按供给扩建畜舍与加工产能；预算共享，正常时间，不追逐成就",
@@ -75,7 +76,7 @@ public sealed class AgentToolRegistry {
         ["player.place_facility"]="{item:设备物品ID,location?:Farm,goal_id?:string}: 自动为携带的设备选合法空位，保护农田/已有物件/门口和设施通路，走近原生放置并核验",
         ["order_donations.read"]="{}: 读取原生特殊订单投递箱、当前接受的背包物品、实际计数/期限",
         ["player.order_donate"]="{order:实际订单ID,dropbox:实际投递箱ID}: 自动跨图走到原生投递箱，按原生条件投递背包合格非预留物品，核验守恒并确认；回执不把单次投递伪称整项订单完成",
-        ["player.ship_items"]="{items:[{item:物品ID,count:1..999,quality?:最低品质}]}: 自动回农场出货箱，原生菜单按清单数量出货并保留其他数量/预留物资；核验箱子和背包，次日才入账",
+        ["player.ship_items"]="{items:[{item:物品ID,count:1..999,quality?:最低品质}]}: 经营模式通常留到晚间/收工统一出货，白天有空位的零碎请求会延后；基础材料受经营储备保护。自动回农场出货箱，原生菜单按清单数量出货并保留其他数量/预留物资；核验箱子和背包，次日才入账",
         ["player.attach"]="{tool_slot:int,slot?:int,mode?:attach|detach}: 原生背包给鱼竿/弹弓装配饵料、浮标或弹药，detach卸下原生顺序第一个附件；旧附件回包并核验守恒，不改变耐久或物品数量",
         ["equipment.read"]="{}: 读取当前戒指/鞋帽服装/精通饰品、工具附件与背包",
         ["player.equip"]="{target:left_ring|right_ring|boots|hat|shirt|pants|trinket,mode?:equip|remove,slot?:int}: 原生背包装备更换，旧装备归包并核验；卸下需要空位",
@@ -166,6 +167,7 @@ public sealed class AgentToolRegistry {
         if(tool=="player.sleep")mod.CheckAgentSleep(args);
         return tool switch {
             "farm.cleanup"=>mod.ConfigureCleanup(args),"farm.zones"=>mod.ConfigureFarmZones(args),"farm.maintenance"=>mod.ConfigureFarmMaintenance(args),
+            "farm.production"=>mod.ProductionTool(args),
             "farm.operating"=>mod.ConfigureOperating(args),
             "companion.configure"=>mod.ConfigurePartner(args),
             "farm.business"=>mod.ConfigureBusiness(args),"farm.business_status"=>mod.ReadBusiness(args),

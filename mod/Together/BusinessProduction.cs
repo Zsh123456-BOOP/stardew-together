@@ -60,21 +60,38 @@ public sealed partial class ModEntry {
             // One batch per machine, shared across alternative raw materials.
             foreach(var choice in group.OrderByDescending(c=>c.Margin/Math.Max(1,c.Minutes))) {
                 int batches=Math.Min(capacity,Math.Max(0,choice.Available-reserve.GetValueOrDefault(choice.Input))/choice.Count);
-                if(batches<=0)continue;reserve[choice.Input]=reserve.GetValueOrDefault(choice.Input)+batches*choice.Count;capacity-=batches;if(capacity==0)break;
+                if(batches<=0)continue;reserve[choice.Input]=reserve.GetValueOrDefault(choice.Input)+batches*choice.Count;foreach(var fuel in choice.Fuel)reserve[fuel.Key]=reserve.GetValueOrDefault(fuel.Key)+batches*fuel.Value;capacity-=batches;if(capacity==0)break;
             }
         }
         return reserve;
     }
-    private bool RunBusinessShipping() {
-        var reserves=BusinessRawReserves();var cropOutputs=Game1.cropData.Values.Select(c=>ItemRegistry.QualifyItemId(c.HarvestItemId)).ToHashSet();
+    private List<(string Tool,object Args)> BusinessShipment() {
+        UpdateOperatingTargets();var reserves=BusinessRawReserves();var cropOutputs=Game1.cropData.Values.Select(c=>ItemRegistry.QualifyItemId(c.HarvestItemId)).ToHashSet();
         var stock=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>()
-            .Where(o=>!o.bigCraftable.Value&&!o.questItem.Value&&!o.specialItem&&o.canBeShipped()&&o.sellToStorePrice()>0&&(cropOutputs.Contains(o.QualifiedItemId)||o.Category is -5 or -6 or -18 or -26 or -4 or -81))
-            .GroupBy(o=>o.QualifiedItemId).Select(g=>new{Item=g.Key,Count=Math.Min(999,Math.Max(0,Math.Min(g.Sum(i=>i.Stack),DisposableStock(g.Key))-reserves.GetValueOrDefault(g.Key)-2)),Price=g.Max(o=>o.sellToStorePrice())}).Where(x=>x.Count>0).OrderByDescending(x=>(long)x.Count*x.Price);
-        foreach(var item in stock.Take(4)) {
-            var actions=new List<(string Tool,object Args)>();if(!BusinessMaterials(new(){[item.Item]=item.Count},actions,false))continue;
-            actions.Add(("player.ship_items",new{items=new[]{new{item=item.Item,count=item.Count}}}));
-            if(QueueBusiness("ship:"+item.Item,actions,"保留进度物资、补给和一轮加工原料后出售；现金等待正常过夜结算"))return true;
+            .Where(o=>!o.bigCraftable.Value&&!o.questItem.Value&&!o.specialItem&&ApprovedMaterialSale(o.QualifiedItemId)&&o.canBeShipped()&&o.sellToStorePrice()>0&&(BusinessRetention.Materials.Contains(o.QualifiedItemId)||cropOutputs.Contains(o.QualifiedItemId)||o.Category is -5 or -6 or -18 or -26 or -4 or -81))
+            .GroupBy(o=>o.QualifiedItemId).Select(g=>new{item=g.Key,count=Math.Min(999,BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2)),price=g.Max(o=>o.sellToStorePrice())}).Where(x=>x.count>0).OrderByDescending(x=>(long)x.count*x.price).Take(12).ToArray();
+        int free=Game1.player.freeSpotsInInventory();
+        stock=stock.Where(i=>Game1.player.Items.Any(b=>b?.QualifiedItemId==i.item)||free-->0).ToArray();
+        var actions=new List<(string Tool,object Args)>();
+        foreach(var item in stock) {
+            int bag=Game1.player.Items.Where(i=>i?.QualifiedItemId==item.item).Sum(i=>i.Stack);
+            if(bag<item.count)actions.Add(("work.run",new{goal="withdraw",item=item.item,count=item.count-bag}));
         }
-        return false;
+        if(stock.Length>0)actions.Add(("player.ship_items",new{items=stock.Select(i=>new{i.item,i.count}).ToArray()}));
+        return actions;
+    }
+    private bool RunBusinessShipping() {
+        // The bin pays only overnight. Small drops should not each cause a trip.
+        if(Game1.timeOfDay<1700&&Game1.player.freeSpotsInInventory()>0)return false;
+        var actions=BusinessShipment();
+        return actions.Count>0&&QueueBusiness("shipping-batch",actions,"集中交付当天可售产品，保留经营材料；只记原生次日收入");
+    }
+    private bool QueueClosingShipment(ScheduledAgentTask sleep) {
+        if(!Data.Business.Enabled||Game1.timeOfDay>=2200)return false;
+        CheckAgentSleep(sleep.spec.args);
+        var actions=BusinessShipment();if(actions.Count==0)return false;
+        var tasks=actions.Select(a=>new AgentTaskSpec{id="closing-"+Guid.NewGuid().ToString("N"),tool=a.Tool,args=JsonSerializer.SerializeToElement(a.Args),day=Game1.Date.TotalDays,deadline=2300,purpose="睡前集中交付真实可售产品；不卖基础材料"}).ToList();
+        Data.Autoplay.Schedule.InsertBefore(sleep,tasks);
+        Data.Autoplay.Record("closing_shipment",AgentJson.Encode(new{sleep=sleep.spec.id,tasks}));return true;
     }
 }

@@ -18,6 +18,16 @@ public sealed partial class PlayerExecutor {
         if(!args.TryGetProperty("items",out var raw))throw new InvalidOperationException("shipment_items_required");
         shipment=JsonSerializer.Deserialize<List<ShipmentLine>>(raw.GetRawText())??new();
         if(shipment.Count is <1 or >24||shipment.Any(i=>i.count is <1 or >999||i.quality is not (0 or 1 or 2 or 4)||ItemRegistry.GetData(i.item)==null))throw new InvalidOperationException("invalid_shipment_manifest");
+        var spending=new Dictionary<Item,int>();
+        foreach(var line in shipment) {
+            int remaining=line.count;
+            foreach(var item in Game1.player.Items.Where(i=>i?.QualifiedItemId==line.item&&i.Quality>=line.quality)) {
+                int take=Math.Min(remaining,item.Stack-spending.GetValueOrDefault(item));if(take<=0)continue;
+                spending[item]=spending.GetValueOrDefault(item)+take;remaining-=take;if(remaining==0)break;
+            }
+            if(remaining>0)throw new InvalidOperationException("shipment_missing_carried_unreserved_item");
+        }
+        ValidateConsumption?.Invoke(spending,"","shipping");
         shipmentBin=null;destination="Farm";Current!.phase="shipping_travel";
     }
     private void TickShipping() {
@@ -30,7 +40,7 @@ public sealed partial class PlayerExecutor {
             int slot=Enumerable.Range(0,Game1.player.Items.Count).Where(i=>Game1.player.Items[i] is StardewValley.Object o&&o.QualifiedItemId==line.item&&o.Quality>=line.quality&&o.canBeShipped()&&!o.questItem.Value).OrderBy(i=>Game1.player.Items[i].Quality).FirstOrDefault(-1);
             if(slot<0)throw new InvalidOperationException("shipment_missing_carried_unreserved_item");
             var item=Game1.player.Items[slot];int count=item.Stack<=line.count?item.Stack:1,quality=item.Quality;string id=item.QualifiedItemId;
-            ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,count}},"","");
+            ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,count}},"","shipping");
             var farm=Game1.getFarm();int beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==id&&i.Quality==quality).Sum(i=>i.Stack),beforeBin=farm.getShippingBin(Game1.player).Where(i=>i?.QualifiedItemId==id&&i.Quality==quality).Sum(i=>i.Stack);
             var bounds=menu.inventory.inventory[slot].bounds;var keyboard=Game1.oldKBState;
             try{Game1.oldKBState=default;if(count==item.Stack)menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);else menu.receiveRightClick(bounds.Center.X,bounds.Center.Y);}finally{Game1.oldKBState=keyboard;}

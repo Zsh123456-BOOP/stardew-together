@@ -192,7 +192,7 @@ public sealed partial class PlayerExecutor {
                     SelectSlot(args,true);
                     if(Game1.currentLocation is not Farm shippingFarm)throw new InvalidOperationException("shipping_requires_farm");
                     if(Game1.player.ActiveObject is not {} cargo || !cargo.canBeShipped())throw new InvalidOperationException("item_not_shippable");
-                    ValidateConsumption?.Invoke(new Dictionary<Item,int>{{cargo,cargo.Stack}},"","");
+                    ValidateConsumption?.Invoke(new Dictionary<Item,int>{{cargo,cargo.Stack}},"","shipping");
                     bool atBin=shippingFarm.buildings.Any(b=>b.buildingType.Value=="Shipping Bin" && new Rectangle(b.tileX.Value*64-64,b.tileY.Value*64-64,(b.tilesWide.Value+2)*64,(b.tilesHigh.Value+2)*64).Intersects(Game1.player.GetBoundingBox()));
                     if(!atBin)throw new InvalidOperationException("move_next_to_shipping_bin_first");
                     shippingFarm.shipItem(cargo,Game1.player);

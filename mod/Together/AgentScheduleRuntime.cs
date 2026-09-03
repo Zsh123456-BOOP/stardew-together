@@ -80,8 +80,9 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
         Data.Autoplay.Record("task_finished",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,state,error}));
         if(state=="succeeded") {
-            agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");
-            Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;
+            bool emptyWork=result.TryGetProperty("deferred",out var deferred)&&deferred.ValueKind==JsonValueKind.True || task.spec.tool=="work.run"&&new[]{"completed","gained","deposited","refills"}.All(k=>!result.TryGetProperty(k,out var n)||n.GetInt32()==0);
+            if(!emptyWork){agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;}
+            else Data.Autoplay.Record("no_effect_action",AgentJson.Encode(new{task.spec.id,task.spec.tool,note="请求已处理，但未增加实际劳动进展"}));
             var cleanup=task.spec.tool=="work.run"&&AgentToolRegistry.Text(task.spec.args,"goal")=="cleanup"
                 ?Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==AgentToolRegistry.Text(task.spec.args,"cleanup_id")):null;
             bool cleanupContinues=cleanup is {Status:"active"}&&Game1.timeOfDay<cleanup.Until&&FarmCleanupRules.RemainingBudget(cleanup)>0&&CleanupAllowanceFor(cleanup).Available>=4&&CleanupTargets().Any(t=>CleanupMatches(cleanup,t));
@@ -115,6 +116,10 @@ public sealed partial class ModEntry {
             try {
                 if(task.spec.actor=="player"&&ToolLocationContract.RequiresObservedLocation(task.spec.tool)&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
                 if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player"))throw new InvalidOperationException("finish_or_cancel_companion_work_before_sleep");
+                if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
+                if(Data.Business.Enabled&&task.spec.tool is "player.ship" or "player.ship_items"&&!task.spec.id.StartsWith("closing-")&&Game1.timeOfDay<1700&&Game1.player.freeSpotsInInventory()>0) {
+                    CompleteScheduled(task,JsonSerializer.SerializeToElement(new{status="succeeded",deferred=true,note="未出货、未移动；可售物品留到晚间或收工统一交付，不重复请求"}));continue;
+                }
                 CheckKnownFailure(task);
                 var result=JsonSerializer.SerializeToElement(agentTools.Execute(task.spec.tool,task.spec.args),AgentJson.Options);
                 Data.Autoplay.Record("task_started",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,tool=task.spec.tool,result}));

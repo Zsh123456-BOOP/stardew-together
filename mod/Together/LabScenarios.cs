@@ -68,6 +68,16 @@ public sealed partial class ModEntry {
                 Game1.warpFarmer("Farm",45,28,false);Game1.timeOfDay=1710;Game1.player.Stamina=23.3f;
                 break;
             }
+            case "shipping_retention_fixture": {
+                RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new(){Enabled=true,Expand=false};Data.Partner.Enabled=false;
+                foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);
+                farm.getShippingBin(Game1.player).Clear();
+                string[] ids={"(O)92","(O)771","(O)24","(O)192","(O)388"};int[] counts={12,25,10,10,5};
+                for(int i=0;i<ids.Length;i++)Game1.player.Items[5+i]=ItemRegistry.Create(ids[i],counts[i]);
+                Game1.player.craftingRecipes.TryAdd("Torch",0);Game1.timeOfDay=1610;businessAt=DateTime.UtcNow.AddMinutes(6);cooperationAt=DateTime.UtcNow.AddMinutes(6);
+                break;
+            }
+            case "shipping_retention_read":return JsonSerializer.Serialize(new{day=Game1.Date.TotalDays,money=Game1.player.Money,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},bag=Game1.player.Items.Where(i=>i!=null).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack)),bin=farm.getShippingBin(Game1.player).Where(i=>i!=null).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack))});
             case "farm_energy_fixture": {
                 PauseAutoplay("lab_farm_energy");Settings.Autonomy=false;Game1.exitActiveMenu();Data.Operating=new();Data.FarmPolicy=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new();Data.FarmInvestment=new();Data.Autoplay.Routine=new();Data.Maintenance=new(){Enabled=false};
                 foreach(var dirt in farm.terrainFeatures.Values.OfType<HoeDirt>()){dirt.state.Value=1;dirt.crop=null;}

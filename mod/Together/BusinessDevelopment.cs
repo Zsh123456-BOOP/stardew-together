@@ -50,7 +50,7 @@ public sealed partial class ModEntry {
         }
     }
     private bool RunBusinessDevelopment() {
-        var b=Data.Business;var options=BusinessDevelopmentOptions().DistinctBy(o=>o.Id).ToArray();
+        var b=Data.Business;var options=BusinessDevelopmentOptions().Where(o=>o.Id==Data.Operating.Production.Selected).DistinctBy(o=>o.Id).ToArray();
         foreach(var option in BusinessMath.Rank(options,Game1.player.Money,b.KeepGold,b.DailyBudget,b.ReservedToday+Data.FarmInvestment.ReservedToday)
             .OrderBy(o=>o.Id==b.PendingAsset?0:1)) {
             if(b.RetryAfter.GetValueOrDefault(option.Id)>BusinessMinute)continue;

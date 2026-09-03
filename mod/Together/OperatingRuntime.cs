@@ -31,15 +31,10 @@ public sealed partial class ModEntry {
             var option=BusinessDevelopmentOptions().FirstOrDefault(o=>o.Id==b.PendingAsset);
             if(option!=null&&option.Gaps.Length==0) {
                 p.DevelopmentCashHeld=Math.Min(option.Cash,Math.Max(0,Game1.player.Money-b.KeepGold));
-                if(option.Kind=="building"&&DataLoader.Buildings(Game1.content).TryGetValue(option.Item,out var building))
-                    foreach(var m in building.BuildMaterials??new())p.MaterialTargets[ItemRegistry.QualifyItemId(m.ItemId)??m.ItemId]=m.Amount;
-                if(option.Kind=="machine") {
-                    var recipe=goalRecipes.Values.FirstOrDefault(r=>r.Kind=="craft"&&r.Known&&r.Item==option.Item);
-                    if(recipe!=null)foreach(var m in recipe.Inputs)p.MaterialTargets[m.Item]=Math.Max(p.MaterialTargets.GetValueOrDefault(m.Item),m.Count);
-                }
+                foreach(var m in InvestmentNeeds(option))p.MaterialTargets[m.Key]=Math.Max(p.MaterialTargets.GetValueOrDefault(m.Key),m.Value);
             }
         }
-        foreach(var goal in Data.SharedGoals.Where(g=>g.Status=="active"))foreach(var n in goal.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0))p.MaterialTargets[n.Item]=Math.Max(p.MaterialTargets.GetValueOrDefault(n.Item),n.ToPrepare+AccessibleStock(n.Item));
+        foreach(var group in Data.SharedGoals.Where(g=>g.Status=="active").SelectMany(g=>g.Nodes).Where(n=>n.Kind=="gather"&&n.ToPrepare>0).GroupBy(n=>n.Item))p.MaterialTargets[group.Key]=Math.Max(p.MaterialTargets.GetValueOrDefault(group.Key),group.Sum(n=>n.ToPrepare)+AccessibleStock(group.Key));
     }
     private void TickCooperativeBusiness() {
         try {TickCooperativeCore();}

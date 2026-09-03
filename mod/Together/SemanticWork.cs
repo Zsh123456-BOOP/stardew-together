@@ -41,6 +41,7 @@ public sealed class SemanticJob {
     internal List<Point> PickupTiles=new();
     internal bool IncludeTrees;
     internal int StockTarget;
+    internal int ActionLimit=999;
     internal string PlanId="";
     internal string CleanupId="";
     internal int MinimumQuality;
@@ -246,6 +247,7 @@ public sealed partial class ModEntry {
         if(j.NativeQuest!=null&&j.goal!="mine_trip"&&(j.NativeQuest.completed.Value||NativeQuestIdentity.Count(j.NativeQuest).Current>=NativeQuestIdentity.Count(j.NativeQuest).Required)){StopSemanticWork(j,"native_quest_objective_reached",true);return;}
         if(j.StockTarget>0&&TeamStock(j.Item)>=j.StockTarget){StopSemanticWork(j,"shared_stock_target_reached",true);return;}
         if(j.requested>0 && (j.Item.Length>0?j.gained:j.completed)>=j.requested){StopSemanticWork(j,"requested_amount_reached",true);return;}
+        if(j.completed>=j.ActionLimit){StopSemanticWork(j,"planned_labor_allowance_used");return;}
         if(j.goal=="fish"){TickFishingTrip(j);return;}
         if(j.goal=="mine_trip"){TickMineTrip(j);return;}
         if(j.goal=="volcano_trip"){TickVolcanoTrip(j);return;}

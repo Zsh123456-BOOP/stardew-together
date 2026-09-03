@@ -5,7 +5,7 @@ public sealed class AgentDecisionPacing {
     public int QueriesWithoutProgress {get;private set;}
     private int observedProgress=-1;
     public int Observe(int verifiedActions,bool scheduledAction,bool reviewError) {
-        if(scheduledAction||verifiedActions!=observedProgress){QueriesWithoutProgress=0;observedProgress=verifiedActions;}
+        if(verifiedActions!=observedProgress){QueriesWithoutProgress=0;observedProgress=verifiedActions;}
         else QueriesWithoutProgress++;
         return QueriesWithoutProgress<3?1:QueriesWithoutProgress<6?8:20;
     }

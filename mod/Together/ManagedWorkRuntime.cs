@@ -7,15 +7,26 @@ public sealed partial class ModEntry {
     // production helpers retain their explicit incremental-count contracts.
     internal object StartManagedWork(JsonElement args) {
         string goal=AgentToolRegistry.Text(args,"goal");
+        string actor=AgentToolRegistry.Text(args,"actor_id","player");
+        if(Data.Business.Enabled&&goal=="store"&&actor=="player"&&Game1.player.freeSpotsInInventory()>0&&Game1.timeOfDay<1800) {
+            var skipped=(SemanticJob)StartSemanticWork(args);StopSemanticWork(skipped,"storage_not_required_capacity_available",true);return skipped;
+        }
         string item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),_=>""};
         if(item.Length==0||!Data.Business.Enabled&&!args.TryGetProperty("stock_target",out _)||AgentToolRegistry.Text(args,"quest_id").Length>0||AgentToolRegistry.Text(args,"order_id").Length>0)return StartSemanticWork(args);
         int target=AgentToolRegistry.Number(args,"stock_target",AgentToolRegistry.Number(args,"count",20));
         if(target is <1 or >9999)throw new InvalidOperationException("stock_target_requires_1_to_9999");
         UpdateOperatingTargets();target=Math.Max(target,Data.Operating.MaterialTargets.GetValueOrDefault(item));
         int stock=TeamStock(item),missing=Math.Max(0,target-stock);
+        int actionLimit=999;
+        if(actor!="player"&&missing>0) {
+            RefreshFacts(true);var companion=WorkActor(actor);
+            int remaining=companion.TryGetProperty("labor",out var labor)?labor.GetProperty("remaining").GetInt32():0;
+            actionLimit=Together.Shared.CompanionLabor.OptionalAllowance(remaining,Facts.DryCrops,Facts.RipeCrops,Game1.timeOfDay)/4;
+            if(actionLimit==0)throw new InvalidOperationException("partner_labor_reserved_for_farm_or_exhausted");
+        }
         var values=args.Deserialize<Dictionary<string,JsonElement>>()!;
-        values["count"]=JsonSerializer.SerializeToElement(Math.Clamp(Math.Min(missing,AgentToolRegistry.Number(args,"count",999)),1,999));
-        var job=(SemanticJob)StartSemanticWork(JsonSerializer.SerializeToElement(values));job.StockTarget=target;
+        values["count"]=JsonSerializer.SerializeToElement(Math.Clamp(Math.Min(actionLimit,Math.Min(missing,AgentToolRegistry.Number(args,"count",999))),1,999));
+        var job=(SemanticJob)StartSemanticWork(JsonSerializer.SerializeToElement(values));job.StockTarget=target;job.ActionLimit=actionLimit;
         job.evidence.Add(new{kind="shared_stock_target",item,target,owned_including_cargo=stock,missing});
         if(missing==0)StopSemanticWork(job,"shared_stock_target_already_met",true);
         return job;

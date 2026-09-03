@@ -115,7 +115,10 @@ public sealed partial class ModEntry {
             if(tasks.Any(t=>t==null||t.state!="succeeded")) {
                 b.Reason=bad?.error??"business_receipt_missing";b.RetryAfter[b.Activity]=BusinessMinute+120;
                 Data.Autoplay.Record("business_batch_failed",AgentJson.Encode(new{b.Activity,b.Reason,tasks}));
-            } else Data.Autoplay.Record("business_batch_complete",AgentJson.Encode(new{b.Activity,tasks}));
+            } else {
+                Data.Autoplay.Record("business_batch_complete",AgentJson.Encode(new{b.Activity,tasks}));
+                if(b.Activity==Data.Operating.Production.Selected){Data.Operating.Production.Selected="maintain";Data.Operating.Production.Reason="已完成所选投资，按实际产能重新评估；不自动重复扩建";b.PendingAsset="";WakeAgent("production_investment_completed");}
+            }
             if(b.Activity=="storage")b.RetryAfter[b.Activity]=BusinessMinute+30;
             b.Tasks.Clear();
         }

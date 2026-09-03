@@ -16,7 +16,7 @@ if snap['day']!=0 or snap['time']>700 or snap['money']!=500 or any(a['name']!='T
 (out/'baseline.json').write_text(json.dumps(dict(state=s,autoplay=initial,diagnostics=diag),ensure_ascii=False,indent=2))
 tool('farm.business',enabled=True,expand=True,budget_per_day=2000,keep_gold=100,max_animals=12,max_machines=32,feed_days=7)
 tool('farm.operating',direction='balanced',player_water_limit=24,partner_water_limit=24,reason='先发展可持续种植和周转，再按真实瓶颈发展畜牧加工')
-scenario('agent_start',goal='从正常开局自主经营连续七个完整游戏日。你控制玩家，与我们创建的小禾Together_Partner协作，不招募原生村民。优先稳定农业、实际现金回款与有用途的资源积累；逐步发展畜牧、加工和酿酒，不以刷成就为主线。程序经营政策负责日常维护和伙伴材料分工，不重复派相同任务。你负责经营空档的有效安排、采购和解锁、解释重要取舍、处理真实失败；查询farm.business_status和farm.operating掌握实际预算、在途货物和缺口。初始种子要通过原生交互领取。田地先规划再整块清障播种，不堵门口；材料优先补箱子和生产所需，完整伐木用玩家include_trees，伙伴只做已适配劳动。保留农务、补给与回家时间，低体力可做交接整理；必要时合理休息，不能刚种完就无理由睡觉。普通动作无需反复问模型，计划一次排多个可确定步骤，两条队列独立执行。晚上真实回家睡觉，处理升级结算并保存，次日继续经营。时间正常，不改物资、日期或进度。')
+scenario('agent_start',goal='从正常开局自主经营连续七个完整游戏日。你控制玩家，与我们创建的小禾Together_Partner协作，不招募原生村民。优先稳定农业、实际现金回款与有用途的资源积累；逐步发展畜牧、加工和酿酒，不以刷成就为主线。程序经营政策负责日常维护和伙伴材料分工，不重复派相同任务。通过farm.production查询用途和候选，select批准设备等投资，make批准其他有用配方；不要为了清包卖掉有用途的材料，surplus仅在比较用途后授权今日余量出售。你负责经营空档的有效安排、采购和解锁、解释重要取舍、处理真实失败；查询farm.business_status和farm.operating掌握实际预算、在途货物和缺口。初始种子要通过原生交互领取。田地先规划再整块清障播种，不堵门口；材料优先补箱子和生产所需，完整伐木用玩家include_trees，伙伴只做已适配劳动。保留农务、补给与回家时间，低体力可做交接整理；必要时合理休息，不能刚种完就无理由睡觉。普通动作无需反复问模型，计划一次排多个可确定步骤，两条队列独立执行。晚上真实回家睡觉，处理升级结算并保存，次日继续经营。时间正常，不改物资、日期或进度。')
 start=time.monotonic();seen=set();passed=False;reason='observer_timeout';last=initial;overlap=False;events=[]
 try:
  while time.monotonic()-start<args.seconds:

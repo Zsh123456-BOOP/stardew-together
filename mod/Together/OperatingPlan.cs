@@ -2,6 +2,7 @@ namespace Together;
 
 // Shared, persisted policy. All quantities are targets, never granted inventory.
 public sealed class OperatingPlan {
+    public ProductionPolicy Production {get;set;}=new();
     public Dictionary<string,FarmDistrict> Districts {get;set;}=new();
     public string Direction {get;set;}="balanced";
     public string Reason {get;set;}="先维护与现金周转，再按真实瓶颈投资";

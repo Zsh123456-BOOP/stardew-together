@@ -10,7 +10,7 @@ public sealed partial class ModEntry {
         var locations=new[]{Game1.currentLocation}.Concat(Game1.locations).Distinct();
         foreach(var l in locations.OrderBy(l=>l==Game1.currentLocation?0:1)) {
             if(requested.Length>0&&l.NameOrUniqueName!=requested||!l.canFishHere())continue;
-            if(Knowledge.Index.Get("location:"+l.Name) is {} entry&&!Knowledge.Visible(entry))continue;
+            if(l!=Game1.currentLocation&&Knowledge.Index.Get("location:"+l.Name) is {} entry&&!Knowledge.Visible(entry))continue;
             if(l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)continue;
             if(FishingRules.Eligible(l,rod,item))yield return l;
         }

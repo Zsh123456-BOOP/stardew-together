@@ -4,7 +4,7 @@ namespace Together;
 // Keep the common farming contracts stable for prompt caching. Other complete
 // contracts are loaded on demand; discovery never truncates parameter schemas.
 public static class AgentToolDiscovery {
-    public static readonly string[] CoreNames={"tools.lookup","world.read","inventory.read","map.read","menu.read","menu.choose","menu.close","plan.read","plan.submit","plan.cancel","work.run","action.status","day.plan","farm.business","farm.business_status","farm.operating","farm.production","farm.plan","player.collect_home_gifts","player.travel","player.procure","player.craft","player.place_facility","player.ship_items","player.fish","player.sleep","knowledge.search","knowledge.get","memory.search","agent.wait","agent.pause"};
+    public static readonly string[] CoreNames={"tools.lookup","world.read","inventory.read","map.read","menu.read","menu.choose","menu.close","plan.read","plan.submit","plan.cancel","work.run","action.status","day.plan","farm.business","farm.business_status","farm.operating","farm.production","farm.cleanup","farm.plan","player.collect_home_gifts","player.travel","player.procure","player.craft","player.place_facility","player.ship_items","player.fish","player.sleep","knowledge.search","knowledge.get","memory.search","agent.wait","agent.pause"};
     public static Dictionary<string,string> Core(IReadOnlyDictionary<string,string> catalog)=>CoreNames.Where(catalog.ContainsKey).ToDictionary(k=>k,k=>catalog[k]);
     public static object Lookup(IReadOnlyDictionary<string,string> catalog,JsonElement args) {
         var names=args.TryGetProperty("names",out var raw)?raw.Deserialize<string[]>()??Array.Empty<string>():Array.Empty<string>();

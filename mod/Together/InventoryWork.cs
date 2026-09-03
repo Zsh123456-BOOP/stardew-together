@@ -77,15 +77,18 @@ public sealed partial class ModEntry {
         int keep=o.Edibility>0?Math.Max(0,2-prior):0;
         return Math.Max(0,item.Stack-keep);
     }
-    private object InventoryPlanning()=>new{
+    private object InventoryPlanning() {
+        var processing=BusinessRawReserves();
+        return new{
         player_free_slots=Game1.player.freeSpotsInInventory(),
         storage_trigger="只在后续实际产物放不下、必要材料交接或收工整理时存箱；有可叠加空间就继续。不要因有可存物品或只剩一个空格而另派存箱。",
         keep_policy="工具、种子、设备、任务物品保留，食物每种至少2个。目标预留材料可存共享箱但不能被其他用途消耗；需要时由依赖任务取回。",
         storable=Game1.player.Items.Select((item,slot)=>new{item,slot}).Where(x=>x.item!=null&&StoreCount(x.item)>0).Select(x=>new{x.slot,id=x.item.QualifiedItemId,count=StoreCount(x.item)}),
-        sale_reserves=BusinessRetention.Materials.Select(id=>new{item=id,allocation=AllocateMaterial(id),automatic_sale=ApprovedMaterialSale(id)}),
+        sale_reserves=BusinessRetention.Materials.Select(id=>new{item=id,allocation=AllocateMaterial(id,processing),automatic_sale=ApprovedMaterialSale(id)}),
         expansion_policy=Data.Storage,
-        output_chests=SharedStorage().Select(s=>new{location=s.Location.NameOrUniqueName,x=(int)s.Tile.X,y=(int)s.Tile.Y,capacity=s.Chest.GetActualCapacity(),used=s.Chest.GetItemsForPlayer().Count(i=>i!=null)})
+        shared_storage_chests=SharedStorage().Select(s=>new{location=s.Location.NameOrUniqueName,x=(int)s.Tile.X,y=(int)s.Tile.Y,capacity=s.Chest.GetActualCapacity(),used=s.Chest.GetItemsForPlayer().Count(i=>i!=null)})
     };
+    }
     private void StorePlayerAt(Point tile,SemanticJob job) {
         var l=Game1.currentLocation;
         if(!l.objects.TryGetValue(tile.ToVector2(),out var obj)||obj is not Chest chest||!OutputChest(chest))throw new InvalidOperationException("designated_storage_changed");

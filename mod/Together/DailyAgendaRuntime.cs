@@ -63,9 +63,10 @@ public sealed partial class ModEntry {
             else if(o.BaseName=="Stone" && pick>=0)candidates.Add((tile,"clear",pick,"(O)390","收集石料；产物以实际掉落为准",Math.Max(4,o.MinutesUntilReady*2+2)));
             else if(o.isForage() && !o.bigCraftable.Value)candidates.Add((tile,"forage",-1,o.QualifiedItemId,"拾取季节采集物，留用/补给/出货",0));
         }
+        var stockCache=new Dictionary<string,int>();
         bool Useful(string skill,string item) {
             if(skill!="clear")return true;
-            int owned=TeamStock(item);
+            int owned=stockCache.TryGetValue(item,out var stock)?stock:stockCache[item]=TeamStock(item);
             if(Data.Autoplay.Agenda.Resources.Any(r=>r.Item==item && r.Count>owned))return true;
             if(Data.SharedGoals.Any(g=>g.Status=="active" && g.Nodes.Any(n=>n.Item==item&&n.ToPrepare>0)))return true;
             return owned<(item=="(O)388"?50:item=="(O)390"?25:item=="(O)771"?20:0);
@@ -102,8 +103,6 @@ public sealed partial class ModEntry {
         var block=DailyBudget.SleepBlock(Game1.timeOfDay,Game1.player.Stamina,options.Any(o=>o.fits&&o.useful&&o.estimated_energy==0),options.Any(o=>o.fits&&o.useful),Facts.DryCrops+Facts.RipeCrops>0,dayReviewed==Game1.Date.TotalDays,AgentToolRegistry.Text(args,"reason"));
         Data.Autoplay.Record("sleep_review",AgentJson.Encode(new{Game1.timeOfDay,stamina=Game1.player.Stamina,Facts.DryCrops,Facts.RipeCrops,blocking_rule=block,optional_candidates=options.Where(o=>o.fits&&o.useful).Take(6),reason=AgentToolRegistry.Text(args,"reason"),review=AgentToolRegistry.Text(args,"review")}));
         if(block!=null)throw new InvalidOperationException(block);
-        // An empty local list is not evidence that the whole day is exhausted.
-        if(Game1.timeOfDay<2200 && Game1.player.Stamina>DailyBudget.EnergyReserve && !args.TryGetProperty("review",out _))throw new InvalidOperationException("sleep_requires_review_of_alternatives");
-        if(Game1.timeOfDay<2200 && Game1.player.Stamina>DailyBudget.EnergyReserve && AgentToolRegistry.Text(args,"review").Length<20)throw new InvalidOperationException("sleep_requires_review_of_alternatives");
+
     }
 }

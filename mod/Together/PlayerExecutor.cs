@@ -63,10 +63,16 @@ public sealed partial class PlayerExecutor {
         if(r==Current&&Busy)r.navigation=new{target=new[]{target.X,target.Y},actual=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},path_remaining=ownedController?.pathToEndPoint?.Count,controller_owned=ownedController!=null&&Game1.player.controller==ownedController,item_stowed=Game1.player.netItemStowed.Value,carrying_object=Game1.player.ActiveObject!=null,Game1.player.CanMove,Game1.player.UsingTool,elapsed_seconds=(DateTime.UtcNow-started).TotalSeconds,active_seconds=activeSeconds};
         return r;
     }
+    private bool cancelAfterImpact;
     public object Cancel(string? id=null) {
         if(id!=null && (!receipts.TryGetValue(id,out var receipt) || receipt!=Current))return Poll(id);
         if(Busy) {
             if(sleepConfirmed)return new{command_id=Current!.command_id,status="running",error="native_save_in_progress_cannot_cancel"};
+            if(Current!.skill=="player.work"&&Current.phase=="work_impact") {
+                cancelAfterImpact=true;
+                if(Game1.player.UsingTool)return Current;
+                TickWork();
+            }
             Finish("cancelled","cancelled_by_controller");
         }
         return (object?)Current??new{status="idle"};
@@ -79,6 +85,7 @@ public sealed partial class PlayerExecutor {
         bool buying=AcceptsNativeMenu(skill);
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");
+        cancelAfterImpact=false;
         Current=new(){skill=skill,before=Snapshot()};receipts.Add(Current.command_id,Current);
         started=lastProgress=nextInteraction=nextTravelInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
@@ -296,6 +303,11 @@ public sealed partial class PlayerExecutor {
         if(gap>2)lastProgress=now; // Suspended app frames are not failed path attempts.
         if(Game1.game1.IsActive||!Game1.options.pauseWhenOutOfFocus)activeSeconds+=Math.Clamp(Game1.currentGameTime.ElapsedGameTime.TotalSeconds,0,.1);
         try {
+            if(cancelAfterImpact) {
+                if(Game1.player.UsingTool)return;
+                if(Current!.phase=="work_impact")TickWork();
+                Finish("cancelled","cancelled_after_native_impact");return;
+            }
             if(Current!.skill=="player.sleep" && sleepConfirmed){TickNight();return;}
             if(activeSeconds>(Current.skill=="player.arcade"?arcadeSeconds+180:Current.skill=="player.fish"?900:180)){Finish("failed","action_timeout");return;}
             if(Current.skill=="player.eat") {

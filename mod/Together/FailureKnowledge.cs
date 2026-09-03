@@ -31,6 +31,14 @@ public sealed class FailureKnowledge {
         }catch(JsonException){}
         return Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
     }
+    public static string SelectionKey(string actor,string tool,string args,string location="") {
+        if(tool!="work.run")return Key(actor,tool,args,location);
+        try {
+            using var d=JsonDocument.Parse(args);
+            var values=d.RootElement.EnumerateObject().Where(p=>p.Name is not ("count" or "stock_target")).ToDictionary(p=>p.Name,p=>p.Value.Clone());
+            return Key(actor,tool,JsonSerializer.Serialize(values),location);
+        }catch(JsonException){return Key(actor,tool,args,location);}
+    }
     public FailureExperience? Block(string key,string conditions,int day,int minute)=>Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day&&minute<e.RetryAfterMinute);
     public void Record(string key,string actor,string tool,string reason,string conditions,string task,int day,int minute) {
         var last=Entries.LastOrDefault(e=>e.Key==key&&e.Conditions==conditions&&e.Day==day);

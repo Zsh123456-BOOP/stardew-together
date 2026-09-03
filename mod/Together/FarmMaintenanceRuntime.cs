@@ -31,13 +31,24 @@ public sealed partial class ModEntry {
         for(int y=tile.Y-1;y<=tile.Y+1;y++)for(int x=tile.X-1;x<=tile.X+1;x++)if(l.terrainFeatures.GetValueOrDefault(new(x,y)) is HoeDirt {crop:not null})return ("fields","crop",false);
         return ("general","general",false);
     }
+    private static bool CleanupScytheSafe(FarmCell tile) {
+        // Native scythes sweep an area and can remove young trees/nearby weeds.
+        // Use a single-target axe where collateral effects would leave the order
+        // or its quota ambiguous. Grass and planted/decorated tiles stay intact.
+        var farm=Game1.getFarm();
+        for(int x=tile.X-3;x<=tile.X+3;x++)for(int y=tile.Y-3;y<=tile.Y+3;y++) {
+            var at=new Vector2(x,y);if(x==tile.X&&y==tile.Y)continue;
+            if(farm.objects.ContainsKey(at)||farm.terrainFeatures.ContainsKey(at))return false;
+        }
+        return true;
+    }
     private List<CleanupTarget> CleanupTargets() {
         EnsureMaintenanceMask();var farm=Game1.getFarm();var result=new List<CleanupTarget>();
         foreach(var pair in farm.objects.Pairs) {
             var obj=pair.Value;string kind=obj.IsWeeds()?"weed":obj.IsTwig()?"twig":obj.BaseName=="Stone"?"stone":"";
             if(kind.Length==0||PlotClearCost(farm,pair.Key.ToPoint())<=0)continue;
             var tile=new FarmCell((int)pair.Key.X,(int)pair.Key.Y);var area=CleanupArea(tile);
-            result.Add(new(tile,kind,area.Scope,area.Zone,area.Trees,Math.Max(4,obj.MinutesUntilReady*2+2)));
+            result.Add(new(tile,kind,area.Scope,area.Zone,area.Trees,kind=="weed"&&CleanupScytheSafe(tile)?0:Math.Max(4,obj.MinutesUntilReady*2+2)));
         }
         foreach(var pair in farm.terrainFeatures.Pairs)if(pair.Value is Tree tree&&!tree.tapped.Value) {
             var tile=new FarmCell((int)pair.Key.X,(int)pair.Key.Y);var area=CleanupArea(tile);
@@ -185,7 +196,7 @@ public sealed partial class ModEntry {
         var candidates=new Dictionary<FarmCell,(CleanupTarget Target,int Slot)>();
         foreach(var target in targets) {
             if(job.Excluded.Contains($"{target.Tile.X},{target.Tile.Y}")||AgentTileBusy("Farm",target.Tile.X,target.Tile.Y))continue;
-            int slot=WorkSlot(i=>target.Kind=="stone"?i is Pickaxe:i is Axe);
+            int slot=WorkSlot(i=>target.Kind=="weed"&&target.Energy==0?i is Tool t&&t.isScythe():target.Kind=="stone"?i is Pickaxe:i is Axe);
             if(slot<0){reason="cleanup_tool_missing";continue;}
             candidates[target.Tile]=(target,slot);
         }

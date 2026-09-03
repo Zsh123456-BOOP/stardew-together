@@ -36,7 +36,7 @@ public sealed class SemanticJob {
     internal string CargoActor="";
     internal int StorageSupportAttempts;
     internal int WaterAccessEnergy;
-    internal bool Storing;
+    internal bool Storing,CancelRequested;
     internal bool PickupPending;
     internal List<Point> PickupTiles=new();
     internal bool IncludeTrees;
@@ -149,9 +149,11 @@ public sealed partial class ModEntry {
     private object SemanticReceipt(string id,bool cancel) {
         if(!semanticJobs.TryGetValue(id,out var job))throw new InvalidOperationException("work_receipt_unavailable_replan");
         if(cancel&&job.status=="running") {
+            job.CancelRequested=true;
             if(job.child_id!=null) {
                 PreserveCleanupPickup(job);
                 var receipt=JsonSerializer.SerializeToElement(AgentReceipt(job.child_id,true),AgentJson.Options);
+                if(receipt.GetProperty("status").GetString()=="running"){job.phase="cancelling_native_action";return job;}
                 // Cancellation may arrive between a native hit and the next semantic
                 // poll. Preserve verified partial work instead of replenishing quota.
                 if(job.ChildKind=="cleanup_labor"&&receipt.TryGetProperty("completed",out var completed)) {
@@ -191,6 +193,25 @@ public sealed partial class ModEntry {
         }
     }
     private void TickSemanticJob(SemanticJob j) {
+        if(j.CancelRequested){SemanticReceipt(j.command_id,true);return;}
+        // Deadlines own the child too. Polling a running child must not bypass
+        // until/day bounds for a whole day. Cancellation preserves native effects.
+        var deadline=FishingContinuity.Deadline(j.Day,Game1.Date.TotalDays,j.Until,Game1.timeOfDay);
+        if(deadline!=null) {
+            if(j.child_id!=null) {
+                PreserveCleanupPickup(j);
+                var stopped=JsonSerializer.SerializeToElement(AgentReceipt(j.child_id,true),AgentJson.Options);
+                if(stopped.GetProperty("status").GetString()=="running"){j.phase="deadline_waiting_native_impact";return;}
+                j.evidence.Add(new{kind="deadline_cancel",command_id=j.child_id,receipt=stopped});
+                agentClaims.Remove(j.child_id);j.child_id=null;
+                if(j.ChildKind is "labor" or "cleanup_labor"&&stopped.TryGetProperty("completed",out var partial)) {
+                    j.completed+=partial.GetInt32();if(j.ChildKind=="cleanup_labor")RecordCleanupProgress(j,partial.GetInt32());
+                }
+                if(j.ChildKind=="labor")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
+                if(j.goal=="fish")j.gained=Math.Max(0,FishingRules.Caught(j.Item)-j.FishBaseline);
+            }
+            StopSemanticWork(j,deadline);return;
+        }
         if(j.child_id!=null) {
             var r=JsonSerializer.SerializeToElement(AgentReceipt(j.child_id,false),AgentJson.Options);
             if(r.GetProperty("status").GetString()=="running")return;

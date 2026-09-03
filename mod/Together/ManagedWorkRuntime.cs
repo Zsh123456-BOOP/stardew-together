@@ -16,7 +16,11 @@ public sealed partial class ModEntry {
         int target=AgentToolRegistry.Number(args,"stock_target",AgentToolRegistry.Number(args,"count",20));
         if(target is <1 or >9999)throw new InvalidOperationException("stock_target_requires_1_to_9999");
         UpdateOperatingTargets();target=Math.Max(target,Data.Operating.MaterialTargets.GetValueOrDefault(item));
-        int stock=TeamStock(item),missing=Math.Max(0,target-stock);
+        int stock=TeamStock(item);
+        int approved=Math.Max(Data.Operating.MaterialTargets.GetValueOrDefault(item),Data.Autoplay.Agenda.Resources.Where(r=>r.Item==item).Select(r=>r.Count).DefaultIfEmpty(0).Max());
+        if(Data.Business.Enabled&&target>Math.Max(stock,approved))
+            throw new InvalidOperationException($"material_target_needs_production_plan:{item}:stock={stock}:approved={approved}:use_farm.production_make_or_select_or_day.plan_with_purpose;farm.cleanup_for_space_not_stockpiling");
+        int missing=Math.Max(0,target-stock);
         int actionLimit=999;
         if(actor!="player"&&missing>0) {
             RefreshFacts(true);var companion=WorkActor(actor);

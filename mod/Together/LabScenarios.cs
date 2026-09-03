@@ -68,6 +68,15 @@ public sealed partial class ModEntry {
                 Game1.warpFarmer("Farm",45,28,false);Game1.timeOfDay=1710;Game1.player.Stamina=23.3f;
                 break;
             }
+            case "fishing_continuity_fixture": {
+                RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");
+                Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Partner.Enabled=false;
+                for(int i=5;i<Game1.player.Items.Count;i++)Game1.player.Items[i]=null;
+                Game1.player.Items[5]=ItemRegistry.Create("(T)BambooPole");
+                Game1.player.Stamina=270;Game1.player.health=100;Game1.timeOfDay=1000;
+                Game1.warpFarmer("Beach",30,12,false);break;
+            }
+            case "fishing_continuity_read":return JsonSerializer.Serialize(new{snapshot=AgentSnapshot(),rod=Game1.player.CurrentTool is FishingRod rod?new{rod.isFishing,rod.isTimingCast,rod.isCasting,rod.isReeling,rod.isNibbling,rod.hit,rod.fishCaught,rod.pullingOutOfWater,rod.castedButBobberStillInAir,rod.showingTreasure,rod.doneWithAnimation}:null});
             case "shipping_retention_fixture": {
                 RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new(){Enabled=true,Expand=false};Data.Partner.Enabled=false;
                 foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);

@@ -2,6 +2,10 @@ using System.Text.Json;
 using Together;
 static class OperatingRevisionChecks {
     public static void Run(Action<bool,string> check) {
+        check(FishingContinuity.Deadline(3,3,1200,1200)=="time_reserve_reached","a running child cannot bypass its trip deadline");
+        check(FishingContinuity.Deadline(3,4,1200,600)=="day_changed_replan","day change expires child ownership before polling");
+        check(FishingContinuity.Deadline(3,3,1200,1150)==null,"deadline does not interrupt valid earlier work");
+        check(FishingContinuity.PhaseLimit("fishing_reel_without_menu")<FishingContinuity.PhaseLimit("fishing_wait_bite"),"orphan reel fails promptly while ordinary bite wait has room");
         check(BusinessRetention.Sellable(12,12,40,0)==0&&BusinessRetention.Sellable(60,60,40,0)==20,"sale floors retain sap and allow only actual excess");
         check(BusinessRetention.Sellable(60,5,40,0)==5&&BusinessRetention.Sellable(60,60,40,55)==5,"sales honor both project reservations and current machine inputs");
         var allocation=ProductionAllocation.Split(60,20,15,30);
@@ -27,6 +31,8 @@ static class OperatingRevisionChecks {
         check(Together.Shared.CompanionLabor.Cost("deposit")==0&&Together.Shared.CompanionLabor.Cost("clear")==4,"transport is separate from charged physical labor");
         check(FailureKnowledge.Key("player","player.sleep","{\"reason\":\"one\"}")==FailureKnowledge.Key("player","player.sleep","{\"reason\":\"two\"}"),"bedtime rephrasing cannot bypass known failure");
         check(FailureKnowledge.Key("player","work.run","{\"goal\":\"wood\",\"count\":40}")==FailureKnowledge.Key("player","work.run","{\"count\":40,\"goal\":\"wood\"}"),"argument ordering cannot bypass known failure");
+        check(FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\",\"count\":8}")==FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\",\"count\":3}"),"changing quantity cannot retry an unchanged empty collection area");
+        check(FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\"}")!=FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Forest\"}"),"another collection area remains a valid alternative");
         var grid=(from x in Enumerable.Range(0,5) from y in Enumerable.Range(0,5) select new LayoutCell(new(x,y),x is >0 and <3&&y is >0 and <3,true,true,true,true,true,0)).ToList();
         var growth=grid.Where(c=>c.Plantable).ToDictionary(c=>c.Tile,c=>4);
         var shortCrop=new EconomySeed("short",0,new("short","shop","shop",0,20,99,1),35,-1,28,false,0,0,growth,new());

@@ -12,7 +12,7 @@ from agent.client import Bridge, BridgeError
 
 b = Bridge()
 assert b.state()['player']['name'] == 'AgentLab'
-out = Path('work/farm-cleanup-native'); out.mkdir(exist_ok=True)
+out = Path(sys.argv[1] if len(sys.argv)>1 else 'work/farm-cleanup-native'); out.mkdir(parents=True, exist_ok=True)
 checks = []
 
 def scenario(name, **kw):

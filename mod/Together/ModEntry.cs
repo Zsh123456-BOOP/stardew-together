@@ -335,6 +335,7 @@ public sealed partial class ModEntry:Mod {
     }
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null || !canPersist)return;
+        Data.Knowledge.Visited.Add(Game1.currentLocation.NameOrUniqueName);
         long stage=System.Diagnostics.Stopwatch.GetTimestamp();Knowledge.Tick();FrameStage("knowledge",ref stage);
         TickAutoplay();
         if(AutoplayRunning)return;

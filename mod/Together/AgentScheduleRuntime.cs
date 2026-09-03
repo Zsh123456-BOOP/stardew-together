@@ -45,11 +45,11 @@ public sealed partial class ModEntry {
         var tasks=ids.Distinct().Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)??throw new InvalidOperationException("unknown_task_id")).ToArray();
         foreach(var t in tasks.Where(t=>t.state=="running")) {
             var result=JsonSerializer.SerializeToElement(AgentReceipt(t.command_id!,true),AgentJson.Options);
-            if(result.TryGetProperty("status",out var s)&&s.GetString()=="running")throw new InvalidOperationException("native_operation_cannot_cancel_yet");
+            if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"){t.error="cancellation_pending_native_action";continue;}
             string status=result.TryGetProperty("status",out var ended)&&ended.GetString()=="succeeded"?"succeeded":"cancelled";
             Data.Autoplay.Schedule.Finish(t,status,"model_cancel_requested",AgentJson.Encode(result));agentClaims.Remove(t.command_id!);
         }
-        Data.Autoplay.Schedule.CancelPending(ids);return new{status="cancelled_pending",revision=Data.Autoplay.Schedule.Revision};
+        Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t.state!="running").Select(t=>t.spec.id));return new{status=tasks.Any(t=>t.state=="running")?"cancelling_native_action":"cancelled_pending",revision=Data.Autoplay.Schedule.Revision};
     }
     internal object AgentPlanArchive()=>new{archived=Data.Autoplay.Schedule.Archive(),revision=Data.Autoplay.Schedule.Revision};
     private object QueueLegacyAction(AgentCall call) {

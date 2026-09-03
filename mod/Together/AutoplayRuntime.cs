@@ -186,13 +186,23 @@ public sealed partial class ModEntry {
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),inventory=AgentToolRegistry.Inventory(),day=AgentDay(true),progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production=ProductionSummary(),policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
+        FrameStage("decision_ui",ref stage);
+        var inventoryPlan=InventoryPlanning();FrameStage("decision_inventory",ref stage);
+        var cleanup=FarmMaintenanceSummary();FrameStage("decision_cleanup",ref stage);
+        var day=AgentDay(true);FrameStage("decision_day",ref stage);
+        var production=ProductionSummary();FrameStage("decision_production",ref stage);
+        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production,policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
-        string serialized=ContextCompression.Pack(context,18000);agentLastContextCharacters=serialized.Length;
+        FrameStage("decision_context",ref stage);
+        string serialized=ContextCompression.Pack(context,18000);FrameStage("decision_serialize",ref stage);agentLastContextCharacters=serialized.Length;
         WriteBusinessLog("model_request",AgentJson.Encode(new{context_characters=serialized.Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
-        agentPending=AutoplayModel.Ask(file,Settings.Model,serialized,agentCancellation.Token);
+        // Key-file IO, request encoding and budget ledger IO must not run on
+        // the game thread before the first HTTP await. Only immutable values cross.
+        var token=agentCancellation.Token;string model=Settings.Model;
+        agentPending=Task.Run(()=>AutoplayModel.Ask(file,model,serialized,token),token);
+        FrameStage("decision_dispatch",ref stage);
     }
     internal (GameLocation Location,Point Tile) AgentMapOrigin(string actorId) {
         if(actorId=="player")return (Game1.currentLocation,Game1.player.TilePoint);

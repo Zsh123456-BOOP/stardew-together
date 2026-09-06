@@ -149,7 +149,7 @@ public sealed partial class ModEntry {
             if(j.goal!="store"&&!PlayerNeedsWorkStorage(j)&&(!j.PickupPending||Game1.player.freeSpotsInInventory()>0)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
         }
         if(!Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)) {
-            if(j.goal=="store"){StopSemanticWork(j,"stored_available_cargo",true);return;}
+            if(j.goal=="store"){bool ready=OperationsPolicy.CapacityReady(Game1.player.freeSpotsInInventory(),j.RequiredSlots);StopSemanticWork(j,ready?"stored_available_cargo":"inventory_contains_only_protected_items",ready);return;}
             if(!PlayerNeedsWorkStorage(j)&&Game1.player.Items.Any(i=>i==null)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
             StopSemanticWork(j,"inventory_contains_only_protected_items");return;
         }

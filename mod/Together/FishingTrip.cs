@@ -8,7 +8,7 @@ public sealed partial class ModEntry {
         if(item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(item.StartsWith("(O)")?item[3..]:item))yield break;
         var rod=Game1.player.Items.OfType<FishingRod>().OrderByDescending(r=>r.UpgradeLevel).FirstOrDefault();if(rod==null)yield break;
         var locations=new[]{Game1.currentLocation}.Concat(Game1.locations).Distinct();
-        foreach(var l in locations.OrderBy(l=>l==Game1.currentLocation?0:1)) {
+        foreach(var l in locations.OrderBy(l=>l.IsFarm?2:l==Game1.currentLocation?0:1)) {
             if(requested.Length>0&&l.NameOrUniqueName!=requested||!l.canFishHere())continue;
             if(l!=Game1.currentLocation&&Knowledge.Index.Get("location:"+l.Name) is {} entry&&!Knowledge.Visible(entry))continue;
             if(l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)continue;

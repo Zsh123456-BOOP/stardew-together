@@ -114,7 +114,7 @@ public sealed class AgentToolRegistry {
         ["perfection.read"]="{}: 原生完美度11类实绩、权重、关联目标、原生总分和豁免券分开读取；不是平台成就核验",
         ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|house|boat|shipping|mastery|book|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
-        ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色依次执行，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
+        ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色互斥但不按提交顺序自动依赖；必须用after声明先到商店再购买等真实前置，独立任务可越过等待中的任务，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。",
         ["plan.cancel"]="{ids:[任务id]}: 取消指定任务；保存开始后不可取消。失败后取消受阻旧计划，再根据真实状态提交新任务",
         ["plan.archive"]="{}: 清理已结束且不再被依赖的任务记录，保留在用依赖与全局核验计数",
         ["day.routine"]="{enabled?:bool,assignments?:{orchard?:player,mail?:player,cooking_tv?:player,crab_pots?:player,water?:角色ID,harvest?:角色ID,feed?:角色ID,pet?:角色ID,milk?:player,shear?:player,animal_collect?:player}}: 保存跨日农务分工；每晨按真实缺项生成独立角色队列，无需模型重复派同样农活，首次默认未启用",

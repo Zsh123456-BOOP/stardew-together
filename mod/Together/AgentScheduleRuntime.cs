@@ -90,7 +90,7 @@ public sealed partial class ModEntry {
         if(state=="succeeded") {
             bool emptyWork=result.TryGetProperty("deferred",out var deferred)&&deferred.ValueKind==JsonValueKind.True || task.spec.tool=="work.run"&&new[]{"completed","gained","deposited","refills"}.All(k=>!result.TryGetProperty(k,out var n)||n.GetInt32()==0);
             if(outcome.BusinessProgress){agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;}
-            else Data.Autoplay.Record("no_effect_action",AgentJson.Encode(new{task.spec.id,task.spec.tool,note="请求已处理，但未增加实际劳动进展"}));
+            else Data.Autoplay.Record(emptyWork?"no_effect_action":"support_action_completed",AgentJson.Encode(new{task.spec.id,task.spec.tool,note="请求已处理，但未增加实际劳动进展"}));
             var cleanup=task.spec.tool=="work.run"&&AgentToolRegistry.Text(task.spec.args,"goal")=="cleanup"
                 ?Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==AgentToolRegistry.Text(task.spec.args,"cleanup_id")):null;
             bool cleanupContinues=cleanup is {Status:"active"}&&Game1.timeOfDay<cleanup.Until&&FarmCleanupRules.RemainingBudget(cleanup)>0&&CleanupAllowanceFor(cleanup).Available>=4&&CleanupTargets().Any(t=>CleanupMatches(cleanup,t));

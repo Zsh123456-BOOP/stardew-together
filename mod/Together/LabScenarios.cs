@@ -36,6 +36,7 @@ public sealed partial class ModEntry {
             }
             case "agent_reply_probe": {
                 if(!agentLabProbe || !AutoplayRunning)throw new InvalidOperationException("schedule_probe_required");
+                operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
                 agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }

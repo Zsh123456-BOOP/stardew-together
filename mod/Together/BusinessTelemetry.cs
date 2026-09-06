@@ -20,6 +20,7 @@ public sealed partial class ModEntry {
     }
     private void TickBusinessTelemetry() {
         memoryArchive?.QueueFlush();businessLogError=businessWriter.LastError;
+        if(AutoplayRunning&&(businessLogError.Length>0||Data.Autoplay.Memory.LastError.Length>0)){PauseAutoplay("logging_failed_preserve_evidence:"+businessLogError+Data.Autoplay.Memory.LastError);return;}
         if(!AutoplayRunning||DateTime.UtcNow<businessLogAt)return;businessLogAt=DateTime.UtcNow.AddSeconds(5);
         int minute=DailyBudget.Minutes(Game1.timeOfDay)/30;
         if(businessLogDay==Game1.Date.TotalDays&&businessLogMinute==minute)return;

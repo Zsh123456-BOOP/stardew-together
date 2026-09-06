@@ -39,7 +39,7 @@ public sealed partial class ModEntry {
             if(chest.GetMutex().IsLocked())throw new InvalidOperationException("storage_busy");
             int moved=0;
             var contents=chest.GetItemsForPlayer();
-            foreach(var item in contents.Where(i=>i?.QualifiedItemId==job.Item&&i.Quality>=job.MinimumQuality).OrderBy(i=>i.Quality).ToArray()) {
+            foreach(var item in contents.Where(i=>i?.QualifiedItemId==job.Item&&(job.ExactQuality?i.Quality==job.MinimumQuality:i.Quality>=job.MinimumQuality)).OrderBy(i=>i.Quality).ToArray()) {
                 int want=Math.Min(item.Stack,job.requested-job.gained-moved);if(want<=0)break;
                 var copy=item.getOne();copy.Stack=want;
                 int actual=want-(p.addItemToInventory(copy)?.Stack??0);item.Stack-=actual;moved+=actual;
@@ -50,7 +50,7 @@ public sealed partial class ModEntry {
             if(job.gained>=job.requested){StopSemanticWork(job,"requested_amount_withdrawn",true);return;}
         }
         foreach(var storage in SharedStorage().OrderBy(s=>s.Location==Game1.currentLocation?0:1).ThenBy(s=>Vector2.DistanceSquared(s.Tile,p.Tile))) {
-            if(storage.Chest.GetMutex().IsLocked()||!storage.Chest.GetItemsForPlayer().Any(i=>i?.QualifiedItemId==job.Item&&i.Quality>=job.MinimumQuality))continue;
+            if(storage.Chest.GetMutex().IsLocked()||!storage.Chest.GetItemsForPlayer().Any(i=>i?.QualifiedItemId==job.Item&&(job.ExactQuality?i.Quality==job.MinimumQuality:i.Quality>=job.MinimumQuality)))continue;
             if(Game1.currentLocation!=storage.Location){WorkChild(job,"player.travel",new{location=storage.Location.NameOrUniqueName},"withdraw_travel");return;}
             var stand=WorkStand(storage.Location,storage.Tile.ToPoint());if(!stand.HasValue)continue;
             job.StorageTile=storage.Tile.ToPoint();WorkChild(job,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"withdraw_move");return;

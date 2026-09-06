@@ -21,6 +21,9 @@ public static class AgentScheduleChecks {
         var quoted=JsonSerializer.Deserialize<AgentTaskSpec>("{\"not_before\":\"900\",\"deadline\":\"2000\"}")!;
         check(quoted.not_before==900&&quoted.deadline==2000,"unambiguous quoted schedule times normalize to integers");
         check(WorkCapabilities.Validate("npc:Abigail","fish")?.Contains("supported=")==true&&WorkCapabilities.Validate("npc:Abigail","water")==null,"advertised companion semantic capabilities agree with rejected player-only actions");
+        var args=JsonSerializer.SerializeToElement(new{expected_revision=4});
+        check(AgentSchedule.RebaseOwnTurn(args,4,6).GetProperty("expected_revision").GetInt32()==6&&args.GetProperty("expected_revision").GetInt32()==4,"same-turn owned edits update later submission revision without mutating original request");
+        check(AgentSchedule.RebaseOwnTurn(args,5,6).GetProperty("expected_revision").GetInt32()==4,"preexisting stale observation is not rebased across external changes");
         var q=new AgentSchedule();var input=new List<AgentTaskSpec>{Player("p1"),Player("p2","p1"),Npc("n1")};
         check(q.Submit("plan1",0,input,3)&&!q.Submit("plan1",0,input,3)&&q.Tasks.Count==3,"plan submission retries are idempotent even with an old revision");
         check(input.All(t=>t.day==-1),"submitting a plan does not mutate the model request fingerprint");

@@ -59,6 +59,7 @@ public sealed class SemanticJob {
     internal string MineReturnReason="";
     internal int FoodUsed,MaxFood=3,FishBaseline;
     internal string FishLocation="";
+    internal bool ExactQuality;
 }
 
 public sealed partial class ModEntry {
@@ -73,7 +74,7 @@ public sealed partial class ModEntry {
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
         int reserve=AgentToolRegistry.Number(args,"reserve_stamina",DailyBudget.EnergyReserve),until=AgentToolRegistry.Number(args,"until",2200);
-        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>2300||until%100>59)throw new InvalidOperationException("invalid_work_limits");
+        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>(goal is "withdraw" or "store"?2500:2300)||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
@@ -127,6 +128,7 @@ public sealed partial class ModEntry {
             if(job.MinimumQuality is not (0 or 1 or 2 or 4)||job.Item.Length>0&&ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem)throw new InvalidOperationException("invalid_target_gather_item_or_quality");
         }
         if(goal=="withdraw") {
+            job.ExactQuality=args.TryGetProperty("exact_quality",out var exact)&&exact.ValueKind==JsonValueKind.True;
             job.Item=AgentToolRegistry.Text(args,"item");job.MinimumQuality=AgentToolRegistry.Number(args,"quality",0);
             if(job.MinimumQuality is not (0 or 1 or 2 or 4))throw new InvalidOperationException("invalid_minimum_quality");
             if(job.Item.Length==0||ItemRegistry.GetDataOrErrorItem(job.Item).IsErrorItem||count<1)throw new InvalidOperationException("withdraw_item_and_positive_count_required");

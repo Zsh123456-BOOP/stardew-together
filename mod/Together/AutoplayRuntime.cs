@@ -146,10 +146,15 @@ public sealed partial class ModEntry {
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
+                    int turnRevision=Data.Autoplay.Schedule.Revision;
                     foreach(var call in turn.calls) {
                         if(!AutoplayRunning)break;
                         object result;
-                        try{result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,call.args);}
+                        try {
+                            var args=call.tool=="plan.submit"?AgentSchedule.RebaseOwnTurn(call.args,turnRevision,Data.Autoplay.Schedule.Revision):call.args;
+                            if(args.GetRawText()!=call.args.GetRawText())Data.Autoplay.Record("own_turn_revision_rebased",AgentJson.Encode(new{from=turnRevision,to=Data.Autoplay.Schedule.Revision}));
+                            result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,args);
+                        }
                         catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
                         var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);
                         Data.Autoplay.Record("tool_result",AgentJson.Encode(new{tool=call.tool,result=ModelToolObservation(call.tool,observed)}));

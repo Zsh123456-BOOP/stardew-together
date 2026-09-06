@@ -78,6 +78,22 @@ public sealed partial class ModEntry {
                 Game1.warpFarmer("Beach",30,12,false);break;
             }
             case "fishing_continuity_read":return JsonSerializer.Serialize(new{snapshot=AgentSnapshot(),rod=Game1.player.CurrentTool is FishingRod rod?new{rod.isFishing,rod.isTimingCast,rod.isCasting,rod.isReeling,rod.isNibbling,rod.hit,rod.fishCaught,rod.pullingOutOfWater,rod.castedButBobberStillInAir,rod.showingTreasure,rod.doneWithAnimation}:null});
+            case "shipping_capacity_fixture": {
+                RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new(){Enabled=true,Expand=false};Data.Partner.Enabled=false;
+                foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);
+                for(int x=62;x<=71;x++)for(int y=16;y<=21;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                farm.getShippingBin(Game1.player).Clear();
+                Game1.player.Items[5]=ItemRegistry.Create("(T)BambooPole");
+                for(int i=6;i<11;i++){var item=ItemRegistry.Create<StardewValley.Object>("(O)388");item.questItem.Value=true;Game1.player.Items[i]=item;}Game1.player.Items[11]=null;
+                var chest=new Chest(true){TileLocation=new(65,17)};chest.modData[WorkChestRole]="output";
+                foreach(int quality in new[]{0,1,2,4})chest.addItem(ItemRegistry.Create("(O)129",4,quality));
+                chest.addItem(ItemRegistry.Create("(O)137",5,0));chest.addItem(ItemRegistry.Create("(O)137",4,2));farm.objects[new(65,17)]=chest;
+                Game1.warpFarmer("Farm",66,18,false);Game1.timeOfDay=2240;
+                businessAt=DateTime.UtcNow.AddMinutes(30);cooperationAt=DateTime.UtcNow.AddMinutes(30);break;
+            }
+            case "shipping_capacity_read":return JsonSerializer.Serialize(new{snapshot=AgentSnapshot(),free_slots=Game1.player.freeSpotsInInventory(),earned=Game1.player.totalMoneyEarned,
+                stock=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i!=null).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack)),
+                shipped=Game1.player.basicShipped.Pairs.ToDictionary(p=>p.Key,p=>p.Value)});
             case "shipping_retention_fixture": {
                 RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new(){Enabled=true,Expand=false};Data.Partner.Enabled=false;
                 foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);

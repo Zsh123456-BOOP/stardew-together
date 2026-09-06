@@ -85,6 +85,13 @@ public sealed class AgentSchedule {
         foreach(var key in Submissions.Keys.Take(Math.Max(0,Submissions.Count-96)).ToArray())Submissions.Remove(key);
         Revision++;EventVersion++;return true;
     }
+    public static JsonElement RebaseOwnTurn(JsonElement args,int turnRevision,int currentRevision) {
+        if(turnRevision==currentRevision||!args.TryGetProperty("expected_revision",out var expected))return args;
+        int value=expected.ValueKind==JsonValueKind.Number?expected.GetInt32():expected.ValueKind==JsonValueKind.String&&int.TryParse(expected.GetString(),out int parsed)?parsed:-1;
+        if(value!=turnRevision)return args; // Never rebase an already-stale observation.
+        var copy=args.Deserialize<Dictionary<string,JsonElement>>()!;copy["expected_revision"]=JsonSerializer.SerializeToElement(currentRevision);
+        return JsonSerializer.SerializeToElement(copy);
+    }
     public List<ScheduledAgentTask> Ready(int day,int time) {
         foreach(var t in Tasks.Where(t=>t.state=="queued")) {
             if(t.spec.day<day || t.spec.day==day&&time>t.spec.deadline){t.state="blocked";t.error="task_window_expired_replan";EventVersion++;}

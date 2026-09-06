@@ -117,7 +117,7 @@ public sealed partial class ModEntry {
             farmPlantPlans[plan.Id]=plan;Add("work.run",new{goal="plant",plan_id=plan.Id},"按预算组合与通道布局播种照料");
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};
-        Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays);job.Submitted=true;
+        Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);job.Submitted=true;
         if(!PlayerExecutor.LoadedLocation(job.Location)!.IsGreenhouse)District(PlayerExecutor.LoadedLocation(job.Location)!).Commit(result.PreparationTiles);
         return new{status="queued",tasks=tasks.Select(t=>t.id),result.Spent,note="采购/播种以各阶段原生回执为准。"};
     }

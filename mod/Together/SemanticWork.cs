@@ -35,6 +35,7 @@ public sealed class SemanticJob {
     internal string StorageLocation="",StorageSupportId="",StorageSupportFor="";
     internal string CargoActor="";
     internal int StorageSupportAttempts;
+    internal int RequiredSlots;
     internal int WaterAccessEnergy;
     internal bool Storing,CancelRequested;
     internal bool PickupPending;
@@ -76,6 +77,8 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
+        job.RequiredSlots=OperationsPolicy.RequiredFreeSlots(goal,AgentToolRegistry.Number(args,"required_free_slots",0));
+        if(job.RequiredSlots is <0 or >12)throw new InvalidOperationException("invalid_required_free_slots");
         string questId=AgentToolRegistry.Text(args,"quest_id");
         if(questId.Length>0) {
             job.NativeQuest=NativeQuestIdentity.Find(questId)??throw new InvalidOperationException("active_native_quest_required");job.quest_id=questId;
@@ -105,6 +108,7 @@ public sealed partial class ModEntry {
             job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
             if(job.requested is <1 or >100||job.Item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(job.Item.StartsWith("(O)")?job.Item[3..]:job.Item))throw new InvalidOperationException("fish_trip_requires_valid_item_and_count");
             job.FishBaseline=FishingRules.Caught(job.Item);
+            if(job.FishLocation.Length==0)job.FishLocation=FishingLocations(job.Item).FirstOrDefault()?.NameOrUniqueName??location;
         }
         if(goal=="volcano_trip") {
             job.MineTarget=AgentToolRegistry.Number(args,"target_level",10);job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);

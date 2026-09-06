@@ -23,7 +23,7 @@ public sealed partial class ModEntry {
     private void TickDailyAutomation() {
         var policy=Data.Autoplay.Routine;
         if(!AutoplayRunning||!policy.Enabled||policy.SubmittedDay==Game1.Date.TotalDays||Game1.timeOfDay>=1800||Game1.eventUp||Game1.fadeToBlack||Game1.activeClickableMenu!=null)return;
-        if(Data.Autoplay.Schedule.Tasks.Any(t=>!t.Terminal&&policy.Assignments.Values.Contains(t.spec.actor)))return;
+        if(policy.Assignments.Values.Any(OperationActorOccupied))return;
         policy.SubmittedDay=Game1.Date.TotalDays;
         try {
             RefreshFacts(true);var tasks=new List<AgentTaskSpec>();var skips=new List<object>();

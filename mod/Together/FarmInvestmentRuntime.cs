@@ -57,7 +57,7 @@ public sealed partial class ModEntry {
                     ObserveShop(JsonSerializer.SerializeToElement(new{}));if(!menu.readyToClose())return;menu.exitThisMenu();p.Phase="start_planning";
                 }
             }
-            if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.player.UsingTool||!Game1.player.CanMove||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
+            if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.player.UsingTool||!Game1.player.CanMove||OperationActorOccupied("player"))return;
             if(p.Phase=="planning") {
                 if(!economyJobs.TryGetValue(p.PlanId,out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("farm_investment_snapshot_lost_replan");
                 if(!job.Task.IsCompleted)return;
@@ -67,9 +67,9 @@ public sealed partial class ModEntry {
                 if(Data.Autoplay.Schedule.Tasks.Count+24>180)Data.Autoplay.Schedule.Archive();
                 // Reserve before queueing. Failed/interrupted purchases cannot reset
                 // the allowance and duplicate spending later on the same game day.
-                p.ReservedToday+=result.Spent;
                 var queued=JsonSerializer.SerializeToElement(ExecuteFarmEconomy(JsonSerializer.SerializeToElement(new{plan_id=p.PlanId})));
                 if(!queued.TryGetProperty("tasks",out var taskIds))throw new InvalidOperationException("farm_investment_queue_not_created");
+                p.ReservedToday+=result.Spent;
                 p.Tasks=taskIds.EnumerateArray().Select(t=>t.GetString()!).ToList();p.Phase="executing";
                 Data.Autoplay.Record("farm_investment_plan",AgentJson.Encode(new{p.Day,p.PlanId,p.ReservedToday,p.Tasks,result.Plants}));return;
             }

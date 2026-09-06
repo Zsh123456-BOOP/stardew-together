@@ -15,11 +15,20 @@ public static class ContextCompression {
         if(Size()>maxCharacters) {
             if(root["companions"] is JsonArray companions)foreach(var actor in companions.OfType<JsonObject>())Limit(actor,"candidates",8);
             Limit(root["progression"] as JsonObject,"missing_achievements",6);
-            Limit(root["day"] as JsonObject,"options",8);
+            Limit(root["day"] as JsonObject,"options",5);
+            Limit(root["inventory_plan"] as JsonObject,"storable",4);
+            Limit(root["farm_cleanup"] as JsonObject,"areas",8);
+            Limit(root["schedule"] as JsonObject,"recent_results",3);
             if(root["recent"] is JsonArray recent) {
                 bool Error(JsonNode? n) {
-                    string text=n?.ToJsonString()??"";
-                    return text.Contains("error",StringComparison.OrdinalIgnoreCase)||text.Contains("failed",StringComparison.OrdinalIgnoreCase)||text.Contains("blocked",StringComparison.OrdinalIgnoreCase);
+                    if(n is JsonObject o) {
+                        if(o["error"] is JsonValue err&&err.TryGetValue<string>(out var message)&&!string.IsNullOrEmpty(message))return true;
+                        if(o["status"] is JsonValue state&&state.TryGetValue<string>(out var status)&&status is "failed" or "blocked")return true;
+                        return o.Any(p=>Error(p.Value));
+                    }
+                    if(n is JsonArray a)return a.Any(Error);
+                    if(n is JsonValue v&&v.TryGetValue<string>(out var text)&&text.StartsWith("{"))try{return Error(JsonNode.Parse(text));}catch(JsonException){}
+                    return false;
                 }
                 while(recent.Count>2&&Size()>maxCharacters) {
                     int disposable=Enumerable.Range(0,recent.Count-2).FirstOrDefault(i=>!Error(recent[i]),-1);

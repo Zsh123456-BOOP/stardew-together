@@ -33,7 +33,7 @@ public sealed partial class ModEntry {
         var tasks=operations.Select(o=>{var args=JsonSerializer.SerializeToElement(o.Args);return new AgentTaskSpec{actor=o.Tool is "work.run" or "companion.assign"?AgentToolRegistry.Text(args,"actor_id","player"):"player",id="pursuit-"+Guid.NewGuid().ToString("N"),tool=o.Tool,args=args,purpose="推进原生目标 "+pursuit.Target,day=Game1.Date.TotalDays,deadline=2200};}).ToList();
         if(tasks.Count==0)return false;
         if(Data.Autoplay.Schedule.Tasks.Count+tasks.Count>180)Data.Autoplay.Schedule.Archive();
-        Data.Autoplay.Schedule.Submit("pursuit-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays);
+        Data.Autoplay.Schedule.Submit("pursuit-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);
         policy.ReservedGold+=cost;pursuit.Attempts++;pursuit.Tasks=tasks.Select(t=>t.id).ToList();PursuitState(pursuit,"running","已按实际条件排队；等待原生结果后重新核验");return true;
     }
     private bool TryClaimPursuitReward(ProgressPursuit pursuit) {

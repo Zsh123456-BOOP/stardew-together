@@ -37,7 +37,7 @@ public sealed partial class ModEntry {
         var tasks=actions.Select(a=>new AgentTaskSpec{id="business-"+Guid.NewGuid().ToString("N"),actor=a.Tool=="work.run"?AgentToolRegistry.Text(JsonSerializer.SerializeToElement(a.Args),"actor_id","player"):"player",tool=a.Tool,args=JsonSerializer.SerializeToElement(a.Args),purpose=reason,day=Game1.Date.TotalDays,deadline=2200}).ToList();
         if(tasks.Count==0)return false;
         if(Data.Autoplay.Schedule.Tasks.Count+tasks.Count>180)Data.Autoplay.Schedule.Archive();
-        Data.Autoplay.Schedule.Submit("business-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays);
+        Data.Autoplay.Schedule.Submit("business-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);
         b.ReservedToday+=cost;b.ActiveReservation=cost;b.Activity=id;b.Reason=reason;b.Tasks=tasks.Select(t=>t.id).ToList();
         Data.Autoplay.Record("business_dispatch",AgentJson.Encode(new{id,reason,cost,tasks,cash=Game1.player.Money,b.ReservedToday,seed_reserved=Data.FarmInvestment.ReservedToday}));return true;
     }
@@ -122,7 +122,7 @@ public sealed partial class ModEntry {
             if(b.Activity=="storage")b.RetryAfter[b.Activity]=BusinessMinute+30;
             b.Tasks.Clear();
         }
-        if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Game1.timeOfDay>=2130||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
+        if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Game1.timeOfDay>=2130||OperationActorOccupied("player"))return;
         try {
             Data.FarmInvestment.BudgetPerDay=Math.Max(Data.FarmInvestment.ReservedToday,b.DailyBudget-b.ReservedToday);
             Data.FarmInvestment.KeepGold=b.KeepGold;

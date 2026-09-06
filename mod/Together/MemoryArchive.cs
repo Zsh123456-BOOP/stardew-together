@@ -32,8 +32,11 @@ public sealed record ArchivedMemory(string Id,int Sequence,int Day,string Actor,
 public sealed class MemoryArchive {
     private readonly string root,bucket;
     private readonly MemoryCheckpoint checkpoint;
-    public MemoryArchive(string root,string bucket,MemoryCheckpoint checkpoint) {
-        this.root=root;this.bucket=bucket;this.checkpoint=checkpoint;
+    private readonly bool deferredWrites;
+    private Task<(List<ArchivedMemory> Written,string Error)>? writer;
+
+    public MemoryArchive(string root,string bucket,MemoryCheckpoint checkpoint,bool deferredWrites=false) {
+        this.root=root;this.bucket=bucket;this.checkpoint=checkpoint;this.deferredWrites=deferredWrites;
         if(bucket.Any(c=>!char.IsLetterOrDigit(c)&&c!='-'))throw new ArgumentException("invalid_memory_bucket");
     }
     public void Append(int day,string actor,string kind,string text) {
@@ -41,7 +44,7 @@ public sealed class MemoryArchive {
         var entry=new ArchivedMemory(key+":"+sequence,sequence,day,actor,kind,text,checkpoint.ActorGenerations.GetValueOrDefault(actor));
         checkpoint.Cursors[key]=sequence;checkpoint.Pending.Add(entry);
         if(kind=="action_result")Summarize(entry);
-        Flush();
+        if(deferredWrites&&checkpoint.Pending.Count<128)QueueFlush();else Flush();
     }
     public void Remember(int day,string actor,string kind,string source,object value) {
         string text=AgentJson.Encode(new{source_id=source,value}),key=actor+":"+checkpoint.ActorGenerations.GetValueOrDefault(actor)+":"+source;
@@ -53,17 +56,31 @@ public sealed class MemoryArchive {
         checkpoint.ActorGenerations[actor]=checkpoint.ActorGenerations.GetValueOrDefault(actor)+1;
         foreach(var key in checkpoint.SourceHashes.Keys.Where(k=>k.StartsWith(actor+":",StringComparison.Ordinal)).ToArray())checkpoint.SourceHashes.Remove(key);
     }
-    public void Flush() {
+    private (List<ArchivedMemory> Written,string Error) WriteBatch(ArchivedMemory[] batch) {
+        var written=new List<ArchivedMemory>();
         try {
             Directory.CreateDirectory(root);
-            foreach(var entry in checkpoint.Pending.ToArray()) {
+            foreach(var entry in batch) {
                 string target=Path.Combine(root,entry.Id.Replace(':','_')+".json"),temp=target+".tmp";
-                File.WriteAllText(temp,AgentJson.Encode(entry));File.Move(temp,target,true);
-                checkpoint.Pending.Remove(entry);
+                File.WriteAllText(temp,AgentJson.Encode(entry));File.Move(temp,target,true);written.Add(entry);
             }
-            checkpoint.LastError="";
-        }catch(IOException e){checkpoint.LastError="memory_archive_write_failed:"+e.GetType().Name;}
-        catch(UnauthorizedAccessException){checkpoint.LastError="memory_archive_permission_denied";}
+            return (written,"");
+        }catch(IOException e){return (written,"memory_archive_write_failed:"+e.GetType().Name);}
+        catch(UnauthorizedAccessException){return (written,"memory_archive_permission_denied");}
+    }
+    private void ApplyWrite((List<ArchivedMemory> Written,string Error) result) {
+        foreach(var entry in result.Written)checkpoint.Pending.Remove(entry);
+        checkpoint.LastError=result.Error;
+    }
+    public void QueueFlush() {
+        if(writer is {IsCompleted:true}){ApplyWrite(writer.GetAwaiter().GetResult());writer=null;}
+        if(writer!=null||checkpoint.Pending.Count==0)return;
+        var batch=checkpoint.Pending.ToArray(); // Only immutable entries cross threads.
+        writer=Task.Run(()=>WriteBatch(batch));
+    }
+    public void Flush() {
+        if(writer!=null){ApplyWrite(writer.GetAwaiter().GetResult());writer=null;}
+        if(checkpoint.Pending.Count>0)ApplyWrite(WriteBatch(checkpoint.Pending.ToArray()));
     }
     private void Summarize(ArchivedMemory entry) {
         var day=checkpoint.Days.FirstOrDefault(x=>x.Day==entry.Day);
@@ -89,6 +106,7 @@ public sealed class MemoryArchive {
             for(int sequence=pair.Value;sequence>0;sequence--) {
                 if(++scanned>5000){incomplete=true;break;}
                 var entry=Find(pair.Key,sequence);if(entry==null){incomplete=true;continue;}
+                if(entry.Kind=="decision"&&entry.Id!=query)continue; // Unverified model plans are not factual recall.
                 if(entry.ActorGeneration!=checkpoint.ActorGenerations.GetValueOrDefault(entry.Actor))continue;
                 if(entry==null||entry.Sequence>pair.Value||actor.Length>0&&entry.Actor!=actor)continue;
                 if(query.Length>0&&!terms.Any(t=>entry.Text.Contains(t,StringComparison.OrdinalIgnoreCase)||entry.Kind.Contains(t,StringComparison.OrdinalIgnoreCase))&&entry.Id!=query)continue;

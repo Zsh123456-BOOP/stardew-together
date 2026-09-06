@@ -42,7 +42,7 @@ public sealed partial class ModEntry {
                 }
                 goal.AutoBlockedReason="";goal.AutoBlockedConditions="";
                 if(Data.Autoplay.Schedule.Tasks.Count+batch.tasks.Count>180)Data.Autoplay.Schedule.Archive();
-                Data.Autoplay.Schedule.Submit("goal-auto-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,batch.tasks,Game1.Date.TotalDays);
+                Data.Autoplay.Schedule.Submit("goal-auto-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,batch.tasks,Game1.Date.TotalDays,ordered:true);
                 Data.Autoplay.Record("goal_batch",AgentJson.Encode(new{goal=goal.Id,tasks=batch.tasks,source="deterministic_dependency_execution"}));
                 TickAgentSchedule();break;
             }catch(Exception e){goal.AutoExecute=false;goal.AutoBlockedReason=e is InvalidOperationException?e.Message:e.GetType().Name;Data.Autoplay.Record("goal_blocked",AgentJson.Encode(new{goal=goal.Id,goal.AutoBlockedReason}));WakeAgent("goal_blocked:"+goal.Id);}

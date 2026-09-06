@@ -26,13 +26,30 @@ public static class AgentScheduleChecks {
         int count=q.Tasks.Count;
         bool rejected=false;try{q.Submit("bad",q.Revision,new(){Player("x","missing")},3);}catch(InvalidOperationException){rejected=true;}
         check(rejected&&q.Tasks.Count==count,"invalid dependency submission is atomic");
-        var cycle=new AgentSchedule();rejected=false;try{cycle.Submit("cycle",0,new(){Player("a","b"),Player("b")},3);}catch(InvalidOperationException){rejected=true;}
-        check(rejected&&cycle.Tasks.Count==0,"FIFO plus dependency cycles are rejected before dispatch");
+        var cycle=new AgentSchedule();rejected=false;try{cycle.Submit("cycle",0,new(){Player("a","b"),Player("b","a")},3);}catch(InvalidOperationException){rejected=true;}
+        check(rejected&&cycle.Tasks.Count==0,"explicit business dependency cycles are rejected before dispatch");
         rejected=false;try{q.Submit("old_revision",0,new(){Player("new")},3);}catch(InvalidOperationException){rejected=true;}
         check(rejected,"stale structural plan revision cannot overwrite newer scheduling");
         var timed=new AgentSchedule();var future=Player("later");future.not_before=900;future.deadline=1000;timed.Submit("time",0,new(){future},3);
         check(timed.Ready(3,800).Count==0&&timed.Ready(3,900).Count==1,"planned time windows are respected at native time");
         check(timed.Ready(4,600).Count==0&&timed.Tasks[0].state=="blocked","yesterday's coordinates are not silently replayed after a day change");
+        var bypass=new AgentSchedule();var shop=Player("shop");shop.not_before=900;
+        bypass.Submit("purchase",0,new(){shop},3);bypass.Submit("chores",1,new(){Player("water")},3);
+        check(bypass.Ready(3,600).Single().spec.id=="water","future purchase does not block independent morning care");
+        bypass.Finish(bypass.Tasks[0],"failed","shop_closed","{}");
+        check(bypass.Ready(3,700).Single().spec.id=="water","shop failure cannot cancel unrelated care on the same actor");
+        var ordered=new AgentSchedule();ordered.Submit("transaction",0,new(){Player("open"),Player("buy")},3,ordered:true);
+        check(ordered.Tasks[1].spec.after.SequenceEqual(new[]{"open"}),"native transaction batches explicitly retain business order");
+        var longReceipt=JsonSerializer.Serialize(new{status="succeeded",before=new{money=500},detail=new string('x',12000),after=new{money=400}});
+        ordered.Finish(ordered.Tasks[0],"succeeded",null,longReceipt);
+        check(JsonDocument.Parse(ordered.Tasks[0].receipt!).RootElement.GetProperty("after").GetProperty("money").GetInt32()==400,"long native receipt retains structured settlement evidence");
+        var partial=OperationsPolicy.Outcome("work.run",JsonSerializer.SerializeToElement(new{status="failed",stop_reason="fishing_trip_time_or_attempt_budget",requested=5,gained=3}));
+        check(partial.Disposition=="partial"&&partial.Remaining==2&&partial.BusinessProgress,"deadline retains partial catches and remaining goal without blacklisting location");
+        check(!OperationsPolicy.Outcome("player.travel",JsonSerializer.SerializeToElement(new{status="succeeded",completed=1})).BusinessProgress,"travel alone cannot clear a stalled business goal");
+        check(!OperationsPolicy.CapacityReady(1,OperationsPolicy.RequiredFreeSlots("fish"))&&OperationsPolicy.CapacityReady(2,OperationsPolicy.RequiredFreeSlots("fish")),"supply and fishing share the same downstream capacity requirement");
+        var constraints=new OperationsState();constraints.Observe(new(){Subject="SeedShop",Condition="door-closed",Day=3,RetryTime=900,Reason="before_open",Evidence="visit1"});
+        check(constraints.Blocking("SeedShop","door-closed",3,800)!=null&&constraints.Blocking("SeedShop","door-closed",3,900)==null,"service constraint waits for its opening window rather than arbitrary retry intervals");
+        check(constraints.Blocking("SeedShop","owner-now-ready",3,800)==null,"relevant native condition changes release the constraint");
         q.Suspend();var restored=JsonSerializer.Deserialize<AgentSchedule>(JsonSerializer.Serialize(q))!;
         check(restored.Tasks[2].state=="needs_review"&&restored.Ready(3,900).Count==0,"interrupted running work survives serialization without automatic replay");
         var nativeRestored=Newtonsoft.Json.JsonConvert.DeserializeObject<AgentSchedule>(Newtonsoft.Json.JsonConvert.SerializeObject(q))!;

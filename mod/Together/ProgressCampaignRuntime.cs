@@ -63,7 +63,7 @@ public sealed partial class ModEntry {
     }
     private void TickProgressCampaign() {
         if(!AutoplayRunning||!Data.Autoplay.Campaign.Enabled||DateTime.UtcNow<progressCampaignAt)return;progressCampaignAt=DateTime.UtcNow.AddSeconds(3);
-        if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||Game1.timeOfDay>=2100||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
+        if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||Game1.timeOfDay>=2100||OperationActorOccupied("player"))return;
         RefreshFacts(true);var native=ReadNativeGoalRows().GroupBy(r=>r.id).ToDictionary(g=>g.Key,g=>g.First());
         var policy=Data.Autoplay.Campaign;if(policy.BudgetDay!=Game1.Date.TotalDays){policy.BudgetDay=Game1.Date.TotalDays;policy.ReservedGold=0;policy.ReservedNuts=0;policy.ReservedGiftValue=0;}
         foreach(var pursuit in Data.Autoplay.Campaign.Targets) {

@@ -119,6 +119,11 @@ public static class AutonomyDevelopmentChecks {
             archive.Append(1,"Abigail","experience","未来才得到的物品");
             var past=new MemoryArchive(root,"epoch2",saved);
             using(var entries=JsonDocument.Parse(AgentJson.Encode(past.Read("","Abigail",20))))check(entries.RootElement.GetProperty("entries").GetArrayLength()==1,"reload checkpoint cannot recall future appended events");
+            var decisionCheckpoint=new MemoryCheckpoint();var decisions=new MemoryArchive(root,"semantic",decisionCheckpoint,deferredWrites:true);
+            decisions.Append(1,"autoplay","decision","SeedShop guess: go now");
+            decisions.Append(1,"autoplay","action_result","{\"status\":\"failed\",\"error\":\"SeedShop_closed\"}");
+            decisions.Flush();
+            using(var recalled=JsonDocument.Parse(AgentJson.Encode(decisions.Read("SeedShop","autoplay",20))))check(recalled.RootElement.GetProperty("entries").GetArrayLength()==1&&recalled.RootElement.GetProperty("entries")[0].GetProperty("Kind").GetString()=="action_result","async archive commits evidence and excludes unverified model plans from factual recall");
             archive.ForgetActor("Abigail");
             using(var entries=JsonDocument.Parse(AgentJson.Encode(archive.Read("","Abigail",20))))check(entries.RootElement.GetProperty("entries").GetArrayLength()==0,"forgotten companion archive stays out of retrieval");
             string blocked=root+"-file";File.WriteAllText(blocked,"occupied");

@@ -1,6 +1,7 @@
 """Build the pinned Squad with additive adapter hooks into isolated CompanionMods."""
 from pathlib import Path
 import json
+import argparse
 import fcntl
 import os
 import shutil
@@ -15,8 +16,9 @@ def replace_once(path, old, new):
     path.write_text(text.replace(old, new))
 
 
-def build():
-    lock_path = ROOT / 'work/companion-runtime.lock'
+def build(mods_dir=None):
+    mods = Path(mods_dir).resolve() if mods_dir else ROOT / 'work/CompanionMods'
+    lock_path = ROOT / 'work' / ('companion-runtime.lock' if mods_dir is None else mods.name+'-runtime.lock')
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_lock = lock_path.open('a')
     try:
@@ -119,7 +121,6 @@ def build():
     start = xml.index('  <Target Name="DeployMods"')
     end = xml.index('</Target>',start) + len('</Target>')
     project.write_text(xml[:start] + xml[end:])
-    mods = ROOT / 'work/CompanionMods'
     for path, name in [(project,'TheStardewSquad'),(ROOT/'mod/AgentBridge/AgentBridge.csproj','AgentBridge'),(ROOT/'mod/Together/Together.csproj','Together')]:
         subprocess.run([DOTNET,'build',str(path),'-c','Release','--nologo',f'-p:GamePath={GAME}',
                         '-p:EnableModDeploy=false','-p:EnableModZip=false'],check=True,cwd=ROOT)
@@ -136,4 +137,5 @@ def build():
 
 
 if __name__ == '__main__':
-    build()
+    parser=argparse.ArgumentParser();parser.add_argument('--mods-dir');args=parser.parse_args()
+    build(args.mods_dir)

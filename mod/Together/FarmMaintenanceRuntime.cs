@@ -159,8 +159,9 @@ public sealed partial class ModEntry {
                 if(order.Status!="complete")order.Reason=task?.error??(task?.state=="succeeded"?"batch_complete":"reconcile_current_map_after_interruption");order.TaskId="";order.RetryAt=BusinessMinute+(task==null||task.state is "succeeded" or "cancelled" or "needs_review"?0:30);
             }
         }
-        if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&!t.Terminal))return;
+        if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||OperationActorOccupied("player"))return;
         foreach(var order in state.Orders.Where(o=>o.Status=="active").OrderBy(o=>o.Recurring)) {
+            if(order.Recurring&&(agentPending!=null||Game1.currentLocation.NameOrUniqueName!="Farm"))continue;
             if(order.Recurring&&(!state.Enabled||!Data.Business.Enabled)||order.RetryAt>BusinessMinute||order.TaskId.Length>0)continue;
             var remaining=CleanupTargets().Where(t=>CleanupMatches(order,t)).ToArray();
             if(remaining.Length==0&&order.PendingPickup.Count==0&&CleanupLoose(order).Length==0){order.Status="complete";order.Reason="current_scope_clear";order.RetryAt=BusinessMinute+60;Data.Autoplay.Record("cleanup_complete",AgentJson.Encode(order));continue;}

@@ -6,7 +6,7 @@ public sealed partial class ModEntry {
     private MemoryArchive? memoryArchive;
     private void AttachMemoryArchive() {
         string root=Path.Combine(Helper.DirectoryPath,"memory-archive",Game1.uniqueIDForThisGame+"-"+Game1.player.UniqueMultiplayerID);
-        memoryArchive=new(root,agentSaveEpoch,Data.Autoplay.Memory);
+        memoryArchive=new(root,agentSaveEpoch,Data.Autoplay.Memory,deferredWrites:true);
         memoryArchive.Flush();
         Data.Autoplay.Archive=(kind,text)=>{memoryArchive.Append(Game1.Date.TotalDays,"autoplay",kind,text);WriteBusinessLog(kind,text);};
         foreach(var person in Data.People)BindCompanionArchive(person.Key,person.Value);
@@ -29,6 +29,7 @@ public sealed partial class ModEntry {
     internal object ReadMemoryEvidence(JsonElement args)=>memoryArchive?.Evidence(AgentToolRegistry.Text(args,"id"),AgentToolRegistry.Number(args,"offset",0))??new{error="memory_archive_unavailable"};
     private object AgentMemoryContext()=>new {
         days=Data.Autoplay.Memory.Days.TakeLast(4),seasons=Data.Autoplay.Memory.Seasons.TakeLast(2).Select(s=>new{s.SeasonIndex,s.Successful,s.Failed,s.CoveredUntilDay,evidence_count=s.Evidence.Count,s.SchemaVersion}),archive_error=Data.Autoplay.Memory.LastError,pending_archive=Data.Autoplay.Memory.Pending.Count,
+        service_constraints=Data.Autoplay.Operations.Constraints.Where(e=>e.Day==Game1.Date.TotalDays).ToArray(),
         recent_failure_rules=Data.Autoplay.Failures.Entries.TakeLast(6).Select(e=>new{e.Tool,e.Actor,e.Reason,e.Day,e.RetryAfterMinute,e.Attempts,e.TaskEvidence,invalidates="日期、库存、体力、位置、对象、人物或预留变化；超时后允许复查。不是永久禁令。"}),
         unfinished=Data.SharedGoals.Where(g=>g.Status=="active").Select(g=>new{g.Id,g.Title,g.Summary}).Take(8),
         promises=Data.People.SelectMany(kv=>kv.Value.Job is {Status:"active" or "waiting" or "paused"} j?new[]{new{actor=kv.Key,j.Id,j.Title,j.Status,j.Index,j.DoneInStep}}:Array.Empty<object>()).Take(8),

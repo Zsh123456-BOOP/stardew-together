@@ -8,7 +8,7 @@ public sealed partial class ModEntry {
     internal object StartManagedWork(JsonElement args) {
         string goal=AgentToolRegistry.Text(args,"goal");
         string actor=AgentToolRegistry.Text(args,"actor_id","player");
-        if(Data.Business.Enabled&&goal=="store"&&actor=="player"&&Game1.player.freeSpotsInInventory()>0&&Game1.timeOfDay<1800) {
+        if(Data.Business.Enabled&&goal=="store"&&actor=="player"&&Game1.player.freeSpotsInInventory()>=Math.Max(1,AgentToolRegistry.Number(args,"required_free_slots",0))&&Game1.timeOfDay<1800) {
             var skipped=(SemanticJob)StartSemanticWork(args);StopSemanticWork(skipped,"storage_not_required_capacity_available",true);return skipped;
         }
         string item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),_=>""};

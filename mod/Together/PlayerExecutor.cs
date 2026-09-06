@@ -25,6 +25,7 @@ public sealed partial class PlayerExecutor {
     public PlayerAction? Current {get;private set;}
     public Func<LevelUpMenu,bool>? ApplyProfession {get;set;}
     public Func<bool>? ApplyNightPolicy {get;set;}
+    public Action<string,JsonElement>? ValidateOperation {get;set;}
     public Action<int>? NativeSleepRequested {get;set;}
     public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
@@ -82,6 +83,7 @@ public sealed partial class PlayerExecutor {
     internal static bool AcceptsNativeMenu(string skill)=>skill=="player.forge"&&Game1.activeClickableMenu is ForgeMenu || skill=="player.read_mail"&&Game1.activeClickableMenu is LetterViewerMenu || skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
+        ValidateOperation?.Invoke(skill,args);
         bool buying=AcceptsNativeMenu(skill);
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
             throw new InvalidOperationException("player_not_free_read_menu");

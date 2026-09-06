@@ -35,12 +35,13 @@ public sealed partial class ModEntry {
     private int agentReplyFailures;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){RecruitCompanion=RecruitForAgent,ApplyProfession=ApplyProfessionPolicy,ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=ApplyProfessionPolicy,ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=day=>Data.Autoplay.NativeSleepRequestedDay=day,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         ArcadeInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
         Helper.Events.GameLoop.UpdateTicking+=(_,_)=>playerExecutor.ObserveNativeTransition();
-        Helper.Events.GameLoop.Saved+=(_,_)=>playerExecutor.Saved();
+        Helper.Events.GameLoop.Saved+=(_,_)=>{playerExecutor.Saved();businessWriter.Flush();};
+        Helper.Events.GameLoop.ReturnedToTitle+=(_,_)=>{memoryArchive?.Flush();businessWriter.Flush();};
         Helper.Events.GameLoop.DayStarted+=(_,_)=>{
             if(playerExecutor.DayStarted())Data.Autoplay.ReconcileSleep(Game1.Date.TotalDays);
             if(AutoplayRunning) {Data.Autoplay.Record("day_started",AgentJson.Encode(AgentSnapshot()));WakeAgent("new_day");agentNext=DateTime.UtcNow.AddMilliseconds(250);}
@@ -71,10 +72,11 @@ public sealed partial class ModEntry {
             var p=Person(name);if(p.Job is {Status:"active" or "waiting"} j){if(j.Command!=null)api?.CancelAction(j.Command);if(j.TravelCommand!=null)api?.CancelAction(j.TravelCommand);j.Command=null;j.TravelCommand=null;j.Status="paused";}
         }
         ResetAgentRuntime();playerExecutor.ClearStopped();dayReviewed=-1;
-        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Failures=Data.Autoplay.Failures,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine,Campaign=Data.Autoplay.Campaign};
+        if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Operations=Data.Autoplay.Operations,Failures=Data.Autoplay.Failures,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine,Campaign=Data.Autoplay.Campaign};
         AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
+        Data.Autoplay.Schedule.Prepare=PrepareOperation;
         Data.Autoplay.Goal=goal;Data.Autoplay.Status="running";Data.Autoplay.Detail="DeepSeek 接管；F10 或方向键随时暂停。";
         EnsureCustomPartner();
         agentKnownActors.Clear();agentKnownActors.Add("player");foreach(var actor in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(actor.GetProperty("id").GetString()!);agentIdleSignature="";
@@ -137,11 +139,12 @@ public sealed partial class ModEntry {
             string? unappliedReply=null;bool applying=false;
             try {
                 var reply=task.GetAwaiter().GetResult();unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
-                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays) {
-                    Data.Autoplay.Record("stale_decision","请求期间换日或接管会话改变；丢弃旧动作，重新观察。");WakeAgent("stale_response");
+                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || DecisionBasisChanged()) {
+                    Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
                     var turn=AgentTurn.Parse(reply.Json);applying=true;agentReplyFailures=0;Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
+                    decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
                     foreach(var call in turn.calls) {
                         if(!AutoplayRunning)break;
@@ -191,11 +194,14 @@ public sealed partial class ModEntry {
         var cleanup=FarmMaintenanceSummary();FrameStage("decision_cleanup",ref stage);
         var day=AgentDay(true);FrameStage("decision_day",ref stage);
         var production=ProductionSummary();FrameStage("decision_production",ref stage);
-        var context=new{run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production,policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
+        var opportunities=OperatingOpportunities();
+        WriteBusinessLog("operating_candidates",AgentJson.Encode(opportunities));
+        var context=new{operating_candidates=opportunities,commitments=OperationCommitments(),run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production,policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         FrameStage("decision_context",ref stage);
         string serialized=ContextCompression.Pack(context,18000);FrameStage("decision_serialize",ref stage);agentLastContextCharacters=serialized.Length;
         WriteBusinessLog("model_request",AgentJson.Encode(new{context_characters=serialized.Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
+        operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         // Key-file IO, request encoding and budget ledger IO must not run on

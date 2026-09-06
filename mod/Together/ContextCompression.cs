@@ -37,6 +37,28 @@ public static class ContextCompression {
                 }
             }
         }
+        JsonNode? Copy(JsonNode? node)=>node is null?null:JsonNode.Parse(node.ToJsonString());
+        if(Size()>maxCharacters) {
+            // Keep the two newest tool observations complete for chained calls.
+            // Older evidence remains durable in memory, not repeated raw payloads.
+            if(root["recent"] is JsonArray history) {
+                var earlier=new JsonArray();
+                while(history.Count>2) {
+                    var entry=history[0];history.RemoveAt(0);
+                    JsonNode? detail=entry;
+                    if(entry is JsonObject e&&e["Text"] is JsonValue text&&text.TryGetValue<string>(out var raw))try{detail=JsonNode.Parse(raw);}catch(JsonException){}
+                    if(detail is JsonObject obj) {
+                        var result=obj["result"] as JsonObject??obj;
+                        earlier.Add(new JsonObject{["kind"]=Copy(entry is JsonObject item?item["Kind"]:null),["tool"]=Copy(obj["tool"]),["status"]=Copy(result["status"]),["error"]=Copy(result["error"]),["command_id"]=Copy(result["command_id"]),["task_id"]=Copy(result["task_id"])});
+                    }
+                }
+                root["earlier_observation_summaries"]=earlier;reductions.Add("older_events_retrievable_from_memory");
+            }
+            foreach(string key in new[]{"farm_cleanup","inventory_plan","progression"}) {
+                if(Size()<=maxCharacters)break;
+                if(root[key] is not null){root[key]=new JsonObject{["details_available_via"]=key=="farm_cleanup"?"farm.cleanup":key=="inventory_plan"?"world.read":"progress.read"};reductions.Add(key+"_on_demand");}
+            }
+        }
         root["context_budget"]=JsonSerializer.SerializeToNode(new{unit="characters_not_tokens",soft_limit=maxCharacters,omitted=reductions.Distinct().ToArray(),over_budget=Size()>maxCharacters,
             details="省略表示摘要，不代表没有目标；完整目标用progress.catalog，行动用action.status，历史用memory.search。当前任务/承诺/错误不做字符截断。"});
         return root.ToJsonString(AgentJson.Options);

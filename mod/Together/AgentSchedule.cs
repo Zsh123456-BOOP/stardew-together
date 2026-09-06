@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace Together;
 
+[System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)]
 public sealed class AgentTaskSpec {
     public string id {get;set;}="";
     public string actor {get;set;}="player";
@@ -58,10 +59,13 @@ public sealed class AgentSchedule {
         foreach(var s in specs) {
             if(s==null||s.intent_id==null||s.intent_id.Length>80||s.source==null||s.source.Length>60||s.priority is <0 or >100||s.goal_id==null||s.goal_id.Length>80||s.goal_id.Length>0&&!IdValid(s.goal_id)||!IdValid(s.id)||known.ContainsKey(s.id)||!IdValid(s.actor)||!Queueable(s.tool)||s.args.ValueKind!=JsonValueKind.Object || s.after==null || s.after.Count>16 || s.after.Any(d=>!IdValid(d)) || s.location==null||s.location.Length>120||s.purpose==null||s.purpose.Length>200 || !TimeValid(s.not_before)||!TimeValid(s.deadline)||s.not_before>s.deadline || s.day < -1 || s.day>day+7 || s.day>=0&&s.day<day)
                 throw new InvalidOperationException("invalid_plan_task");
-            if(s.tool.StartsWith("player.") && s.actor!="player" || s.tool=="companion.assign" && (s.actor=="player" || !s.args.TryGetProperty("actor_id",out var actor)||actor.GetString()!=s.actor))throw new InvalidOperationException("task_actor_mismatch");
-            if(s.tool=="work.run" && (s.args.TryGetProperty("actor_id",out var worker)?worker.GetString():"player")!=s.actor)throw new InvalidOperationException("task_actor_mismatch");
+            if(s.tool.StartsWith("player.") && s.actor!="player" || s.tool=="companion.assign" && (s.actor=="player" || s.args.TryGetProperty("actor_id",out var actor)&&actor.GetString()!=s.actor))throw new InvalidOperationException("task_actor_mismatch");
+            if(s.tool=="work.run" && s.args.TryGetProperty("actor_id",out var worker)&&worker.GetString()!=s.actor)throw new InvalidOperationException("task_actor_mismatch");
             // Clone inputs: normalization must not change the idempotency fingerprint.
             var clone=JsonSerializer.Deserialize<AgentTaskSpec>(JsonSerializer.Serialize(s))!;if(clone.day<0)clone.day=day;
+            if(clone.tool is "work.run" or "companion.assign" && !clone.args.TryGetProperty("actor_id",out _)) {
+                var normalized=clone.args.Deserialize<Dictionary<string,JsonElement>>()!;normalized["actor_id"]=JsonSerializer.SerializeToElement(clone.actor);clone.args=JsonSerializer.SerializeToElement(normalized);
+            }
             if(Tasks.Any(t=>t.spec.actor==clone.actor&&t.state=="needs_review"))throw new InvalidOperationException("cancel_interrupted_tasks_before_resubmitting");
             if(clone.intent_id.Length==0)clone.intent_id=submission;
             var predecessor=ordered?staged.LastOrDefault(t=>t.spec.actor==clone.actor):null;

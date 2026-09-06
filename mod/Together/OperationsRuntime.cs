@@ -44,6 +44,7 @@ public sealed partial class ModEntry {
         return (open,close,reason,conditions);
     }
     private void PrepareOperation(AgentTaskSpec spec) {
+        if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);
         if(spec.id.StartsWith("routine-")){spec.source="daily_care";spec.priority=80;}
         else if(spec.id.StartsWith("cleanup-")){spec.source="farm_cleanup";spec.priority=20;}
         else if(spec.id.StartsWith("farm-")||spec.id.StartsWith("invest-")){spec.source="investment";spec.priority=60;}

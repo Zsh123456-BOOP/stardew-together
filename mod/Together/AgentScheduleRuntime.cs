@@ -26,7 +26,7 @@ public sealed partial class ModEntry {
         revision=Data.Autoplay.Schedule.Revision,event_version=Data.Autoplay.Schedule.EventVersion,
         tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{t.spec,t.state,t.command_id,t.error}),
         recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=compact?ReceiptSummary(t.receipt):(object?)t.receipt}),
-        note="同一角色按队列顺序执行，角色之间独立；after指定跨角色依赖。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
+        note="同一角色只能执行一个任务；after声明真正的前置条件，未来时间的任务不会挡住其他就绪工作。actor统一选择角色，args.actor_id省略时自动继承，显式冲突才拒绝。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
     };
     internal object AgentPlanSubmit(JsonElement args) {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
@@ -124,7 +124,11 @@ public sealed partial class ModEntry {
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
                 if(task.spec.actor=="player"&&ToolLocationContract.RequiresObservedLocation(task.spec.tool)&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
-                if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player"))throw new InvalidOperationException("finish_or_cancel_companion_work_before_sleep");
+                if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player")) {
+                    if(task.wait_reason!="companion_finishing_before_sleep")Data.Autoplay.Record("intent_deferred",AgentJson.Encode(new{task.spec.id,reason="companion_finishing_before_sleep",resume_when="companion_active_work_finished"}));
+                    task.wait_reason="companion_finishing_before_sleep";continue;
+                }
+                if(task.wait_reason=="companion_finishing_before_sleep")task.wait_reason=null;
                 if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
                 if(Data.Business.Enabled&&task.spec.tool is "player.ship" or "player.ship_items"&&!task.spec.id.StartsWith("closing-")&&Game1.timeOfDay<1700&&Game1.player.freeSpotsInInventory()>0) {
                     CompleteScheduled(task,JsonSerializer.SerializeToElement(new{status="succeeded",deferred=true,note="未出货、未移动；可售物品留到晚间或收工统一交付，不重复请求"}));continue;

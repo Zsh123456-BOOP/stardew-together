@@ -229,9 +229,11 @@ public sealed partial class ModEntry {
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
             var info=new Dictionary<string,object>();
-            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","fishing_available","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","cargo_storage","in_combat","relationship","labor"})
+            foreach(string key in new[]{"id","name","location","tile","task","moving","reachable_locations","travel_options","resource_sites","control_mode","cargo","cargo_slots","cargo_capacity","storable_cargo","cargo_storage","in_combat","relationship","labor"})
                 if((!compact||key is not ("reachable_locations" or "travel_options" or "resource_sites" or "cargo_storage"))&&a.TryGetProperty(key,out var value))info[key]=value.Clone();
             string id=a.GetProperty("id").GetString()!;
+            info["work_run_goals"]=WorkCapabilities.CompanionGoals;
+            info["work_run_fishing_supported"]=false;
             info["queue"]=Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==id&&!t.Terminal).Select(t=>new{t.spec.id,t.state,skill=AgentToolRegistry.Text(t.spec.args,"skill"),t.spec.purpose}).ToArray();
             if(!compact&&a.TryGetProperty("candidates",out var candidates))info["candidates"]=candidates.EnumerateArray().Select(c=>{
                 var tile=c.GetProperty("tile");string location=a.GetProperty("location").GetString()!;

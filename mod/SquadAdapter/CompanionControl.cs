@@ -263,14 +263,14 @@ public sealed partial class CompanionControl {
         if (!records.TryGetValue(id, out var r)) return Json(new { command_id = id, status = "unknown" });
         if (r.Status == "running") {
             long tick=Game1.currentGameTime.TotalGameTime.Ticks;
-            float dt=r.LastTick==tick?0:(float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
+            float dt=r.LastTick<0?0:(float)Math.Clamp((tick-r.LastTick)/(double)TimeSpan.TicksPerSecond,0,1);
             r.LastTick=tick;
             if (!Context.IsPlayerFree || (!Game1.game1.IsActive && Game1.options.pauseWhenOutOfFocus)) dt=0;
             bool combat=r.Mate.Task?.Type==TaskType.Attacking;
             if (combat) r.CombatPaused=true;
             else if(r.CombatPaused && r.Assigned==null){r.CombatPaused=false;r.Resumes++;}
             if (!combat && r.Skill!="dismiss") r.ActiveSeconds+=dt;
-            if(!combat && r.Skill is "buy" or "ship" or "clear" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
+            if(!combat && r.Skill is "travel" or "buy" or "ship" or "clear" or "till" or "plant" or "feed" or "tend" or "forage" or "gift" or "refill" or "deposit" or "mine" or "water" or "harvest" or "pet" or "collect") {
                 r.StallSeconds=r.LastPosition==r.Mate.Npc.TilePoint && !r.Mate.IsOnCooldown()?r.StallSeconds+dt:0;
                 r.LastPosition=r.Mate.Npc.TilePoint;
             }
@@ -283,6 +283,7 @@ public sealed partial class CompanionControl {
             else if(r.Skill=="dismiss") {if(r.ActiveSeconds>300)Finish(r,"failed","home_route_unavailable");}
             else if(r.Skill=="travel") {
                 if(r.Mate.Npc.currentLocation.NameOrUniqueName==r.Destination)Finish(r,"succeeded");
+                else if(r.StallSeconds>12)Finish(r,"failed","route_no_position_progress");
                 else if(r.ActiveSeconds>r.Duration)Finish(r,"failed","route_timeout");
             }
             else if (r.Skill is "guard" or "rest") {

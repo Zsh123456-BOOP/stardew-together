@@ -14,6 +14,13 @@ public static class AgentScheduleChecks {
         check(semantic.Ready(3,600).Count==2,"semantic jobs occupy independent actor lanes without coordinates");
         bool mismatch=false;try{semantic.Submit("mismatch",semantic.Revision,new(){new(){id="bad-work",actor="npc:Other",tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id="player",goal="water"})}},3);}catch(InvalidOperationException){mismatch=true;}
         check(mismatch,"semantic job cannot claim a different actor's scheduling lane");
+        var inherit=new AgentSchedule();var inherited=new AgentTaskSpec{id="inherit",actor="npc:Abigail",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="water"})};
+        inherit.Submit("inherit",0,new(){inherited},3);
+        check(inherit.Tasks.Single().spec.args.GetProperty("actor_id").GetString()=="npc:Abigail"&&!inherited.args.TryGetProperty("actor_id",out _),"outer actor propagates to executor without mutating submitted fingerprint");
+        check(!inherit.Submit("inherit",0,new(){inherited},3),"normalized actor remains idempotent on retransmission");
+        var quoted=JsonSerializer.Deserialize<AgentTaskSpec>("{\"not_before\":\"900\",\"deadline\":\"2000\"}")!;
+        check(quoted.not_before==900&&quoted.deadline==2000,"unambiguous quoted schedule times normalize to integers");
+        check(WorkCapabilities.Validate("npc:Abigail","fish")?.Contains("supported=")==true&&WorkCapabilities.Validate("npc:Abigail","water")==null,"advertised companion semantic capabilities agree with rejected player-only actions");
         var q=new AgentSchedule();var input=new List<AgentTaskSpec>{Player("p1"),Player("p2","p1"),Npc("n1")};
         check(q.Submit("plan1",0,input,3)&&!q.Submit("plan1",0,input,3)&&q.Tasks.Count==3,"plan submission retries are idempotent even with an old revision");
         check(input.All(t=>t.day==-1),"submitting a plan does not mutate the model request fingerprint");

@@ -37,3 +37,9 @@ public static class OperationsPolicy {
     public static int RequiredFreeSlots(string goal,int requested=0)=>goal is "fish" or "mine_trip" or "volcano_trip"?Math.Max(2,requested):Math.Max(0,requested);
     public static bool CapacityReady(int free,int required)=>free>=required;
 }
+
+public static class WorkCapabilities {
+    public static readonly string[] CompanionGoals={"water","harvest","forage","wood","stone","fiber","resource","store","pet","feed","tend","collect","process"};
+    public static string? Validate(string actor,string goal)=>actor!="player"&&!CompanionGoals.Contains(goal)
+        ?"work_goal_unavailable:actor="+actor+":goal="+goal+":supported="+string.Join(",",CompanionGoals)+";assign_player_for_fish_or_plant":null;
+}

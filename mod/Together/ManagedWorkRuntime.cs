@@ -13,14 +13,14 @@ public sealed partial class ModEntry {
         }
         string item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),_=>""};
         if(item.Length==0||!Data.Business.Enabled&&!args.TryGetProperty("stock_target",out _)||AgentToolRegistry.Text(args,"quest_id").Length>0||AgentToolRegistry.Text(args,"order_id").Length>0)return StartSemanticWork(args);
-        int target=AgentToolRegistry.Number(args,"stock_target",AgentToolRegistry.Number(args,"count",20));
-        if(target is <1 or >9999)throw new InvalidOperationException("stock_target_requires_1_to_9999");
-        UpdateOperatingTargets();target=Math.Max(target,Data.Operating.MaterialTargets.GetValueOrDefault(item));
+        UpdateOperatingTargets();
         int stock=TeamStock(item);
         int approved=Math.Max(Data.Operating.MaterialTargets.GetValueOrDefault(item),Data.Autoplay.Agenda.Resources.Where(r=>r.Item==item).Select(r=>r.Count).DefaultIfEmpty(0).Max());
-        if(Data.Business.Enabled&&target>Math.Max(stock,approved))
-            throw new InvalidOperationException($"material_target_needs_production_plan:{item}:stock={stock}:approved={approved}:use_farm.production_make_or_select_or_day.plan_with_purpose;farm.cleanup_for_space_not_stockpiling");
-        int missing=Math.Max(0,target-stock);
+        int? explicitTarget=args.TryGetProperty("stock_target",out _)?AgentToolRegistry.Number(args,"stock_target",0):null;
+        int count=AgentToolRegistry.Number(args,"count",0);
+        var quantity=WorkQuantity.Resolve(stock,approved,count,explicitTarget,Data.Business.Enabled);
+        if(quantity.Error is {} error)throw new InvalidOperationException(error);
+        int target=quantity.Target,missing=quantity.Missing;
         int actionLimit=999;
         if(actor!="player"&&missing>0) {
             RefreshFacts(true);var companion=WorkActor(actor);
@@ -29,7 +29,7 @@ public sealed partial class ModEntry {
             if(actionLimit==0)throw new InvalidOperationException("partner_labor_reserved_for_farm_or_exhausted");
         }
         var values=args.Deserialize<Dictionary<string,JsonElement>>()!;
-        values["count"]=JsonSerializer.SerializeToElement(Math.Clamp(Math.Min(actionLimit,Math.Min(missing,AgentToolRegistry.Number(args,"count",999))),1,999));
+        values["count"]=JsonSerializer.SerializeToElement(Math.Clamp(Math.Min(actionLimit,missing),1,999));
         var job=(SemanticJob)StartSemanticWork(JsonSerializer.SerializeToElement(values));job.StockTarget=target;job.ActionLimit=actionLimit;
         job.evidence.Add(new{kind="shared_stock_target",item,target,owned_including_cargo=stock,missing});
         if(missing==0)StopSemanticWork(job,"shared_stock_target_already_met",true);

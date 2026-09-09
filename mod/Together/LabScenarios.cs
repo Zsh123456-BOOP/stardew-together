@@ -24,6 +24,9 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "dual_body_start":return StartDualBodyProbe(Arg("chain"));
+            case "dual_body_read":return ReadDualBodyProbe();
+            case "dual_body_metadata":return JsonSerializer.Serialize(DualBodyMetadata());
             case "agent_tool":return JsonSerializer.Serialize(agentTools.Execute(Arg("tool"),root.GetProperty("args")));
             case "agent_start":StartAutoplay(Arg("goal"));break;
             case "agent_pause":PauseAutoplay("lab_pause");break;

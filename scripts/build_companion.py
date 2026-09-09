@@ -36,6 +36,17 @@ def build(mods_dir=None):
                     ignore=shutil.ignore_patterns('bin','obj'))
     replace_once(stage / 'ModEntry.cs', 'public class ModEntry : Mod\n    {',
         'public class ModEntry : Mod\n    {\n        private CompanionControl? agentControl;\n        public override object GetApi() => agentControl ??= new CompanionControl(this);')
+    # D6: managed companions own a Farmer inventory; never divert their drops
+    # into Squad's shared chest. Unmanaged mates retain upstream behavior.
+    collector = stage / 'Framework/DebrisCollector.cs'
+    replace_once(collector, 'var allMates = squadMembers.ToList();',
+        'var allMates = squadMembers.Where(mate => !CompanionControl.IsManaged(mate)).ToList();')
+    replace_once(collector, '            var depositLocation = targetMate.Npc.currentLocation;',
+        '            if (CompanionControl.IsManaged(targetMate)) { this._targetedDebris.Remove(debris); return; }\n'
+        '            var depositLocation = targetMate.Npc.currentLocation;')
+    replace_once(collector, '            return this._targetedDebris.TryGetValue(debris, out mate!);',
+        '            if (this._targetedDebris.TryGetValue(debris, out mate!) && !CompanionControl.IsManaged(mate)) return true;\n'
+        '            this._targetedDebris.Remove(debris); mate = null!; return false;')
     follower = stage / 'Framework/FollowerManager.cs'
     replace_once(follower, 'private void AssignTaskToMate(ISquadMate mate, SquadTask newTask)',
         'public void AssignAgentTask(ISquadMate mate, SquadTask task) => AssignTaskToMate(mate, task);\n\n        private void AssignTaskToMate(ISquadMate mate, SquadTask newTask)')

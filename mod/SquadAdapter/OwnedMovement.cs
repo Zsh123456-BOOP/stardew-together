@@ -64,6 +64,20 @@ public sealed partial class CompanionControl {
     private static bool DriveOwnedCore(ISquadMate mate,Farmer player,bool fast,bool slow) {
         if(instance==null || !IsManaged(mate))return false;
         var self=instance;var npc=mate.Npc;
+        if(self.labCollectWalk.TryGetValue(npc,out var pickup)) {
+            var standing=new Vector2((int)npc.Position.X+pickup.Offset.X,(int)npc.Position.Y+pickup.Offset.Y);
+            if(Math.Abs(pickup.Center.X-standing.X)<=64 && Math.Abs(pickup.Center.Y-standing.Y)<=64)mate.Halt();
+            else {
+                // Convert the Farmer pickup center to the NPC navigation's standing coordinate.
+                var destination=pickup.Center-pickup.Offset.ToVector2()+(npc.getStandingPosition()-npc.Position);
+                self.mod.FollowerManager.WalkAgent(mate,(destination/64f).ToPoint(),slow,player);
+            }
+            return true;
+        }
+        if(self.labBodyWalk.TryGetValue(npc,out var labTarget)) {
+            if(npc.TilePoint!=labTarget)self.mod.FollowerManager.WalkAgent(mate,labTarget,slow,player);else mate.Halt();
+            return true;
+        }
         npc.speed=Math.Clamp((int)player.getMovementSpeed(),2,5);mate.IsCatchingUp=false;
         var active=self.records.Values.LastOrDefault(r=>r.Actor==Id(mate) && r.Status=="running");
         if(active?.Skill=="dismiss"){self.DriveHome(active,slow,player);return true;}

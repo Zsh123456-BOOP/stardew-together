@@ -10,6 +10,8 @@ namespace Together;
 public interface ICompanionControl {
     string GetState(); string GetMap(string actorId); string StartAction(string request);
     string PollAction(string id); string CancelAction(string id); string PrepareLab(); void Reset();
+    void LabDualBodyWalk(string name,int x,int y,bool active);
+    void LabDualBodyCollectWalk(string name,float x,float y,int offsetX,int offsetY);
     string ConfigureFarm(string json); NPC? GetCharacter(string name); bool ResumeDay(string name); bool AttachCustomCompanion(string name);
 }
 public sealed class Config {
@@ -88,6 +90,7 @@ public sealed partial class ModEntry:Mod {
             }
         };
         helper.Events.GameLoop.UpdateTicked+=Update;
+        helper.Events.Display.Rendered+=(_,_)=>RenderDualBodyProbe();
         helper.Events.Display.RenderedWorld+=(_,e)=>{
             if(!Context.IsWorldReady)return;
             foreach(var pair in bubbles.Where(p=>p.Value.Until>DateTime.UtcNow)) {
@@ -335,6 +338,7 @@ public sealed partial class ModEntry:Mod {
     }
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
         if(!Context.IsWorldReady || api==null || !canPersist)return;
+        if(TickDualBodyProbe())return;
         Data.Knowledge.Visited.Add(Game1.currentLocation.NameOrUniqueName);
         long stage=System.Diagnostics.Stopwatch.GetTimestamp();Knowledge.Tick();FrameStage("knowledge",ref stage);
         TickAutoplay();

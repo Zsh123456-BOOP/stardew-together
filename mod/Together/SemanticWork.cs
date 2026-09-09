@@ -69,7 +69,7 @@ public sealed partial class ModEntry {
         string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
         if(goal is not ("cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
-        if(actor!="player" && goal is "cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
+        if(actor!="player" && goal is "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
@@ -136,6 +136,7 @@ public sealed partial class ModEntry {
         if(goal=="cleanup") {
             job.CleanupId=AgentToolRegistry.Text(args,"cleanup_id");
             var order=Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==job.CleanupId&&o.Status=="active")??throw new InvalidOperationException("active_cleanup_order_required");
+            if(semanticJobs.Values.Any(j=>j.status=="running"&&j.CleanupId==job.CleanupId))throw new InvalidOperationException("cleanup_order_owned_by_another_actor");
             job.location="Farm";job.Reserve=Math.Max(reserve,order.ReserveStamina);job.Until=Math.Min(until,order.Until);job.requested=Math.Min(count>0?count:FarmCleanupRules.RemainingBudget(order),FarmCleanupRules.RemainingBudget(order));
         }
         if(goal=="plant") {
@@ -182,7 +183,7 @@ public sealed partial class ModEntry {
     }
     private JsonElement WorkActor(string id)=>World().GetProperty("actors").EnumerateArray().First(a=>a.GetProperty("id").GetString()==id);
     private static int CompanionCargoSlots(JsonElement actor)=>actor.TryGetProperty("cargo_slots",out var slots)?slots.GetInt32():actor.GetProperty("cargo").EnumerateObject().Count();
-    private int WorkCount(SemanticJob j)=>j.OrderObjective!=null?j.OrderObjective.GetCount():j.NativeQuest!=null?NativeQuestIdentity.Count(j.NativeQuest).Current:j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
+    private int WorkCount(SemanticJob j)=>j.goal=="cleanup"&&j.actor!="player"?WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Sum(c=>c.Value.GetInt32()):j.OrderObjective!=null?j.OrderObjective.GetCount():j.NativeQuest!=null?NativeQuestIdentity.Count(j.NativeQuest).Current:j.Item.Length==0?0:j.actor=="player"?Game1.player.Items.Where(i=>i?.QualifiedItemId==j.Item&&i.Quality>=j.MinimumQuality).Sum(i=>i.Stack):WorkActor(j.actor).GetProperty("cargo").EnumerateObject().Where(p=>p.Name.StartsWith(j.Item+":")&&int.TryParse(p.Name[(p.Name.LastIndexOf(':')+1)..],out int quality)&&quality>=j.MinimumQuality).Sum(p=>p.Value.GetInt32());
     private void WorkChild(SemanticJob j,string tool,object args,string kind,string target="") {
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
@@ -228,7 +229,7 @@ public sealed partial class ModEntry {
             if(j.ChildKind is "labor" or "pickup_recovery")j.gained+=Math.Max(0,WorkCount(j)-j.BeforeCount);
             if(j.ChildKind is "labor" or "cleanup_labor") {
                 int completed=r.TryGetProperty("completed",out var amount)?amount.GetInt32():ok?1:0;
-                j.completed+=completed;if(j.ChildKind=="cleanup_labor")RecordCleanupProgress(j,completed);
+                j.completed+=completed;if(j.CleanupId.Length>0)RecordCleanupProgress(j,completed);
             }
             if(ok&&j.CleanupId.Length>0&&j.ChildKind is "cleanup_labor" or "pickup_recovery")Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==j.CleanupId)?.PendingPickup.Clear();
             if(!ok) {
@@ -298,7 +299,7 @@ public sealed partial class ModEntry {
             var loose=PlayerExecutor.LooseDrops(origin.Location).Where(d=>Vector2.DistanceSquared(d.Pixel,Game1.player.StandingPixel.ToVector2())<=256*256).Select(d=>(d.Pixel/64).ToPoint()).Distinct().Take(6).ToList();
             if(loose.Count>0) {j.PickupTiles=loose;WorkChild(j,"player.collect_drops",new{tiles=loose.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;}
         }
-        if(j.goal=="cleanup")TickCleanupWork(j);
+        if(j.goal=="cleanup"){if(j.actor=="player")TickCleanupWork(j);else TickCompanionCleanup(j);}
         else if(j.goal=="plant")TickPlantWork(j);
         else if(j.actor=="player")SelectPlayerWork(j);else SelectCompanionWork(j,origin.Location);
     }

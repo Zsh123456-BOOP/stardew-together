@@ -95,7 +95,7 @@ public sealed partial class CompanionControl {
         }
     }
     private object[] Candidates(ISquadMate mate) => FindCandidates(mate).Select(c=>(object)new {
-        target_id=c.Id, location=mate.Npc.currentLocation.NameOrUniqueName, skill=c.Skill, tile=Tile(c.Tile), item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
+        target_id=c.Id, location=mate.Npc.currentLocation.NameOrUniqueName, skill=c.Skill, tile=Tile(c.Tile), stand=Tile(c.Stand), route_tiles=regions.TryGetValue(Id(mate),out var region)?region.Distances.GetValueOrDefault(c.Stand,-1):-1, item_id=(c.Source as StardewValley.Object)?.QualifiedItemId, expected_items=CandidateOutputs(c) }).ToArray();
     private static string[] CandidateOutputs(Candidate c) {
         if(c.Skill=="harvest" && c.Source is HoeDirt dirt && dirt.crop!=null)return new[]{Together.Shared.ForageCropRules.HarvestId(dirt.crop.forageCrop.Value,dirt.crop.whichForageCrop.Value,ItemRegistry.QualifyItemId(dirt.crop.indexOfHarvest.Value)??"")};
         if(c.Source is not StardewValley.Object item)return Array.Empty<string>();

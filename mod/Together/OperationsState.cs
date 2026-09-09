@@ -39,7 +39,7 @@ public static class OperationsPolicy {
 }
 
 public static class WorkCapabilities {
-    public static readonly string[] CompanionGoals={"water","harvest","forage","wood","stone","fiber","resource","store","pet","feed","tend","collect","process"};
+    public static readonly string[] CompanionGoals={"cleanup","water","harvest","forage","wood","stone","fiber","resource","store","pet","feed","tend","collect","process"};
     public static string? Validate(string actor,string goal)=>actor!="player"&&!CompanionGoals.Contains(goal)
         ?"work_goal_unavailable:actor="+actor+":goal="+goal+":supported="+string.Join(",",CompanionGoals)+";assign_player_for_fish_or_plant":null;
 }

@@ -91,6 +91,12 @@ public sealed partial class ModEntry {
             bool exists=farm.objects.Values.Any(o=>goal=="wood"?o.IsTwig():goal=="stone"?o.BaseName=="Stone":o.IsWeeds());
             if(exists&&Queue(goal,"Farm",Math.Min(30,missing),"为已批准经营目标补齐材料："+t.Key))return;
         }
-        p.PartnerReason="当前经营分工已完成，等待新目标或玩家互动";
+        if(TryQueueCompanionCleanup(partner))return;
+        // A local, natively reachable forage candidate avoids sending an idle
+        // partner across the world based on an object count alone.
+        if(partner.GetProperty("candidates").EnumerateArray().Any(c=>c.GetProperty("skill").GetString()=="forage")&&
+            Queue("forage",partner.GetProperty("location").GetString()!,0,"顺路收取伙伴所在地图已核验可达的季节产物"))return;
+        p.PartnerReason="没有当前可执行工作：农务已安排、项目无缺料、清理无授权/额度/可达候选；保留休息与陪伴";
+        Data.Autoplay.Record("companion_idle_reason",AgentJson.Encode(new{actor,reason=p.PartnerReason,material_targets=p.MaterialTargets}));
     }
 }

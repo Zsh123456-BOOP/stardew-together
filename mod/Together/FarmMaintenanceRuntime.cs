@@ -56,8 +56,16 @@ public sealed partial class ModEntry {
         }
         return result;
     }
-    private bool CleanupMatches(FarmCleanupOrder order,CleanupTarget target)=>
+    private bool CleanupScopeMatches(FarmCleanupOrder order,CleanupTarget target)=>
         (order.Scopes.Contains(target.Scope)||order.Scopes.Contains("all")||order.Scopes.Contains("fields")&&target.Zone=="crop"||order.Scopes.Contains("general")&&target.Zone=="production")&&FarmCleanupRules.Allowed(target.Kind,target.Zone,order.RemoveTrees,target.ZoneTrees);
+    private bool CleanupMatches(FarmCleanupOrder order,CleanupTarget target) {
+        if(!CleanupScopeMatches(order,target))return false;
+        // A dispatched explicit patch owns its targets ahead of broad recurring
+        // cleanup. Per-tile action claims alone do not protect the next batch.
+        var owner=Data.Maintenance.Orders.Where(o=>o.Status=="active"&&o.TaskId.Length>0&&CleanupScopeMatches(o,target))
+            .OrderBy(o=>o.Recurring).ThenBy(o=>o.Id,StringComparer.Ordinal).FirstOrDefault();
+        return owner==null||ReferenceEquals(owner,order);
+    }
     private Point[] CleanupLoose(FarmCleanupOrder order)=>PlayerExecutor.LooseDrops(Game1.getFarm()).Select(d=>(d.Pixel/64).ToPoint()).Distinct().Where(p=>{
         var tile=new FarmCell(p.X,p.Y);var area=CleanupArea(tile);return CleanupMatches(order,new(tile,"weed",area.Scope,area.Zone,area.Trees,0));
     }).ToArray();

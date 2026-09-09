@@ -78,6 +78,43 @@ public sealed partial class ModEntry {
                 Game1.warpFarmer("Beach",30,12,false);break;
             }
             case "fishing_continuity_read":return JsonSerializer.Serialize(new{snapshot=AgentSnapshot(),rod=Game1.player.CurrentTool is FishingRod rod?new{rod.isFishing,rod.isTimingCast,rod.isCasting,rod.isReeling,rod.isNibbling,rod.hit,rod.fishCaught,rod.pullingOutOfWater,rod.castedButBobberStillInAir,rod.showingTreasure,rod.doneWithAnimation}:null});
+            case "operating_followup_fixture": {
+                RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.Reservations.Clear();Data.SharedGoals.Clear();Data.Autoplay.Failures=new();
+                for(int x=60;x<=72;x++)for(int y=20;y<=30;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}
+                foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);
+                var chest=new Chest(true){TileLocation=new(64,21)};chest.modData[WorkChestRole]="output";farm.objects[new(64,21)]=chest;
+                Data.Maintenance=new(){Enabled=true,Zones=new(){new(){Id="lab-work",Kind="production",X=65,Y=24,Width=3,Height=3},new(){Id="lab-protected",Kind="reserve",X=69,Y=24,Width=2,Height=3}},
+                    Orders=new(){new(){Id="lab-mixed",Scopes=new(){"zone:lab-work"},DailyLimit=6,Until=1800}}};
+                for(int i=0;i<6;i++){var at=new Vector2(65+i%3,24+i/3);string id=i%3==0?"0":i%3==1?"294":"343";farm.objects[at]=new StardewValley.Object(id,1){TileLocation=at,HasBeenInInventory=false,MinutesUntilReady=1};}
+                farm.objects[new(69,24)]=new StardewValley.Object("0",1){TileLocation=new(69,24),HasBeenInInventory=false};
+                EnsureCustomPartner();var npc=FindCharacter(PartnerName)??throw new InvalidOperationException("fixture_partner_missing");npc.currentLocation?.characters.Remove(npc);farm.characters.Add(npc);npc.currentLocation=farm;npc.Position=new Vector2(66,23)*64;
+                var pouch=Game1.player.team.GetOrCreateGlobalInventory($"Together_Pouch_{Game1.player.UniqueMultiplayerID}_{PartnerName}");pouch.Clear();
+                Game1.warpFarmer("Farm",62,23,false);Game1.timeOfDay=1000;Game1.player.Stamina=270;Game1.player.Money=800;
+                businessAt=DateTime.UtcNow.AddMinutes(30);maintenanceAt=DateTime.UtcNow.AddMinutes(30);cooperationAt=DateTime.MinValue;
+                Data.Business=new(){Enabled=true,Expand=false};break;
+            }
+            case "operating_followup_read":return JsonSerializer.Serialize(new{snapshot=AgentSnapshot(),orders=Data.Maintenance.Orders,investment=Data.FarmInvestment,
+                protected_present=farm.objects.ContainsKey(new(69,24)),remaining=farm.objects.Pairs.Count(p=>p.Key.X>=65&&p.Key.X<=67&&p.Key.Y>=24&&p.Key.Y<=25),
+                crops=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value),ripe=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.readyForHarvest()),
+                partner=World().GetProperty("actors"),calls=Data.Autoplay.Decisions});
+            case "operating_failure_probe": {
+                var task=new ScheduledAgentTask{spec=new(){id="failure-evidence",actor="player",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="wood",location="Farm",count=2})}};
+                LearnActionResult(task,"failed","no_approved_material_demand");
+                float energy=Game1.player.Stamina;Game1.player.Stamina-=4;
+                task.spec.args=JsonSerializer.SerializeToElement(new{goal="wood",location="Farm",count=8,until=1800});bool blocked=false,released=true;
+                try{CheckKnownFailure(task);}catch(InvalidOperationException e){blocked=e.Message.StartsWith("known_failure_conditions_unchanged");}
+                Data.Autoplay.Agenda.Resources.Add(new(){Item="(O)388",Count=80,Purpose="测试新批准项目"});
+                try{CheckKnownFailure(task);}catch{released=false;}
+                Game1.player.Stamina=energy;Data.Autoplay.Agenda.Resources.Clear();Data.Autoplay.Failures=new();
+                return JsonSerializer.Serialize(new{unrelated_energy_and_quantity_blocked=blocked,real_policy_change_released=released});
+            }
+            case "operating_reinvestment_fixture": {
+                RunLabScenario("{\"scenario\":\"operating_followup_fixture\"}");Data.Business.Enabled=false;Data.Maintenance.Enabled=false;Data.Maintenance.Orders.Clear();Data.Partner.Enabled=false;Data.Operating=new();
+                for(int x=62;x<=70;x++)for(int y=24;y<=29;y++){farm.objects.Remove(new(x,y));farm.terrainFeatures.Remove(new(x,y));}Data.Maintenance.Zones.Clear();
+                for(int x=65;x<=67;x++){var crop=new Crop("472",x,26,farm);crop.currentPhase.Value=crop.phaseDays.Count-1;crop.dayOfCurrentPhase.Value=0;farm.terrainFeatures[new(x,26)]=new HoeDirt(1,farm){crop=crop};}
+                Data.FarmInvestment=new(){Enabled=true,Day=Game1.Date.TotalDays,Phase="done",ReviewedCash=800,ReviewedCrops=3,ReviewedSeeds=0,BudgetPerDay=200,KeepGold=100,Plots=6,ManualWaterLimit=6};
+                quoteEpoch="";seedQuotes.Clear();nextCropExpansionCheck=DateTime.MinValue;Game1.player.questLog.Clear();Game1.player.mailbox.Clear();Game1.player.Money=800;break;
+            }
             case "shipping_capacity_fixture": {
                 RunLabScenario("{\"scenario\":\"bedtime_review_fixture\"}");Data.Operating=new();Data.SharedGoals.Clear();Data.Reservations.Clear();Data.Business=new(){Enabled=true,Expand=false};Data.Partner.Enabled=false;
                 foreach(var storage in SharedStorage().ToArray())storage.Location.objects.Remove(storage.Tile);

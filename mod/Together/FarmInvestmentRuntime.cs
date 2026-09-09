@@ -22,12 +22,20 @@ public sealed partial class ModEntry {
     private void TickFarmInvestment() {
         var p=Data.FarmInvestment;
         if(!AutoplayRunning||!p.Enabled||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null)return;
-        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.PurchaseRecoveryUsed=false;p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.ReservedToday=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
+        if(p.Day!=Game1.Date.TotalDays){p.Day=Game1.Date.TotalDays;p.PurchaseRecoveryUsed=false;p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.ReservedToday=0;p.ReviewedCash=-1;p.ReviewedCrops=-1;p.ReviewedSeeds=-1;p.Reviews=0;p.Phase="idle";p.Error="";p.ServiceTask="";p.PlanId="";p.Tasks.Clear();p.CompletedLocations.Clear();p.CropLocation="Farm";}
         if(p.Phase=="done"&&p.OwnedSeedsOnly){p.OwnedSeedsOnly=false;p.Phase="idle";p.Tasks.Clear();}
+        if(p.Phase=="done"&&DateTime.UtcNow>=nextCropExpansionCheck) {
+            int crops=Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
+            int seeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74).Sum(i=>i.Stack);
+            if(ReinvestmentReview.Needed(p.ReviewedCash,Game1.player.Money,p.ReviewedCrops,crops,p.ReviewedSeeds,seeds,p.BudgetPerDay-p.ReservedToday,Game1.timeOfDay)) {
+                Data.Autoplay.Record("reinvestment_review",AgentJson.Encode(new{reason="cash_or_harvest_or_seeds_changed",p.ReviewedCash,cash=Game1.player.Money,p.ReviewedCrops,crops,p.ReviewedSeeds,seeds,p.ReservedToday}));
+                p.Phase="idle";p.CropLocation="Farm";p.OwnedSeedsPassDone=false;p.OwnedSeedsOnly=false;p.CompletedLocations.Clear();p.Tasks.Clear();p.Error="";
+            }
+        }
         if(p.Phase=="done") {
             if(DateTime.UtcNow<nextCropExpansionCheck)return;nextCropExpansionCheck=DateTime.UtcNow.AddSeconds(10);
             if(!p.CompletedLocations.Contains(p.CropLocation))p.CompletedLocations.Add(p.CropLocation);
-            var next=MaterialLocations(l=>l.IsGreenhouse&&!p.CompletedLocations.Contains(l.NameOrUniqueName)).FirstOrDefault();
+            var next=Game1.locations.Concat(Game1.getFarm().buildings.Select(b=>b.GetIndoors()).Where(l=>l!=null)).Distinct().Where(l=>l.IsGreenhouse&&(l.NameOrUniqueName!="Greenhouse"||Game1.getFarm().greenhouseUnlocked.Value)&&!p.CompletedLocations.Contains(l.NameOrUniqueName)).FirstOrDefault(l=>l==Game1.currentLocation||PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)!=null);
             if(next==null||Game1.timeOfDay>=1500)return;p.CropLocation=next.NameOrUniqueName;p.Phase="start_planning";
         }
         if(p.Phase=="blocked")return;
@@ -75,11 +83,18 @@ public sealed partial class ModEntry {
             }
             if(Game1.timeOfDay>=1500){p.Phase="done";p.Error="investment_window_closed_revisit_tomorrow";return;}
             if(p.Phase=="idle") {
+                // Harvest first; otherwise ripe tiles are missing from the new
+                // layout and a premature no-space result suppresses reinvestment.
+                if(Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.readyForHarvest()))return;
+                p.ReviewedCash=Game1.player.Money;p.ReviewedCrops=Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
+                p.ReviewedSeeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74).Sum(i=>i.Stack);p.Reviews++;
+                if(p.ReviewedCrops>=p.ManualWaterLimit&&p.CropLocation=="Farm"){p.Phase="done";p.Error="care_capacity_full_wait_for_harvest";return;}
+
                 bool ownedSeeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Any(i=>i?.Category==-74);
                 if(!p.OwnedSeedsPassDone&&ownedSeeds) {p.OwnedSeedsPassDone=true;p.OwnedSeedsOnly=true;p.Phase="start_planning";}
                 else {
                 if(Game1.timeOfDay<900)return;
-                if(p.BudgetPerDay>p.ReservedToday&&Game1.player.Money>p.KeepGold) {
+                if(p.BudgetPerDay>p.ReservedToday&&Game1.player.Money>p.KeepGold&&!(quoteEpoch==agentSaveEpoch&&seedQuotes.Values.Any(q=>q.Day==Game1.Date.TotalDays&&q.Shop==p.Shop))) {
                     if(Data.Autoplay.Schedule.Tasks.Count>180)Data.Autoplay.Schedule.Archive();
                     string id="farm-quote-"+Guid.NewGuid().ToString("N");
                     Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){new(){id=id,tool="player.service",args=JsonSerializer.SerializeToElement(new{location=p.Location,service="shop",shop=p.Shop}),day=p.Day,deadline=1700,purpose="现场读取今日种子报价，按持续预算重新投资"}},p.Day);

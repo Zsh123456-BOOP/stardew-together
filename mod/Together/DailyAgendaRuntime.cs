@@ -11,7 +11,7 @@ public sealed partial class ModEntry {
     private int dayReviewed=-1;
     private object AgentDay(bool compact=false) {
         RefreshFacts(true);Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);
-        var options=DayOptions();
+        var options=compact?new List<DayOption>():DayOptions();
         var home=Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName;
         return new {
             day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,
@@ -21,7 +21,7 @@ public sealed partial class ModEntry {
             chores=new{Facts.DryCrops,Facts.RipeCrops,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.MachinesReady},
             routine=Data.Autoplay.Routine,farm_investment=Data.FarmInvestment,priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),
             shared_goals=GoalContext(),quests=Facts.Quests.Take(8),
-            watering=compact?(object)new{automatic="work.run water/refill自动定位水源并补水"}:AgentWatering(),options=compact?(object)options.GroupBy(o=>new{o.skill,o.item,o.purpose}).Select(g=>new{g.Key.skill,g.Key.item,g.Key.purpose,local_candidates=g.Count(),feasible=g.Count(o=>o.fits&&o.useful),min_energy=g.Min(o=>o.estimated_energy)}).ToArray():options,resource_policy="材料优先满足day.plan目标库存和共同心愿缺口；统一经营账本根据已批准项目计算储备，不采用另一套固定数量。useful=false表示当前没有已声明用途，不要求清空整个农场。",options_scope="仅当前地图最近一批已核验路径的农活、石块、树枝和采集物，非全世界；空列表不能证明没有可做的事，换地点、查百科/任务、整理与补给也要考虑。",
+            watering=compact?(object)new{automatic="work.run water/refill自动定位水源并补水"}:AgentWatering(),options=compact?(object)new{details_available_via="day.read",not_enumerated=true,note="常驻决策不对每一格重复寻路；使用经营候选，高层工作在执行时核验路径"}:options,resource_policy="材料优先满足day.plan目标库存和共同心愿缺口；统一经营账本根据已批准项目计算储备，不采用另一套固定数量。useful=false表示当前没有已声明用途，不要求清空整个农场。",options_scope="仅当前地图最近一批已核验路径的农活、石块、树枝和采集物，非全世界；空列表不能证明没有可做的事，换地点、查百科/任务、整理与补给也要考虑。",
             next_review="每批完成、换地图、换日或失败后刷新；不要按每个格子调用模型。伙伴可通过world.read并行派工；出货前先核对材料预留。",
             today_completed_batches=Data.Autoplay.Agenda.CompletedBatches,recent_days=Data.Autoplay.Agenda.History.TakeLast(3)
         };

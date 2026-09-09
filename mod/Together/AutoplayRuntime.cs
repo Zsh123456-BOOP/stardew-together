@@ -23,6 +23,7 @@ public sealed partial class ModEntry {
     private DateTime agentNext;
     private DateTime agentModelNotBefore;
     private int agentLastContextCharacters;
+    private double agentLastPackMs;
     private readonly AgentDecisionPacing decisionPacing=new();
     private readonly Dictionary<string,(string Location,int X,int Y)> agentClaims=new();
     private int agentGeneration;
@@ -138,7 +139,7 @@ public sealed partial class ModEntry {
             var task=agentPending;agentPending=null;agentLastLatency=agentWatch.Elapsed.TotalMilliseconds;
             string? unappliedReply=null;bool applying=false;
             try {
-                var reply=task.GetAwaiter().GetResult();unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
+                var reply=task.GetAwaiter().GetResult();Data.Autoplay.Record("context_packed",AgentJson.Encode(new{characters=agentLastContextCharacters,background_ms=agentLastPackMs}));unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
                 if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || DecisionBasisChanged()) {
                     Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
@@ -204,15 +205,16 @@ public sealed partial class ModEntry {
         var context=new{operating_candidates=opportunities,commitments=OperationCommitments(),run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production,policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
             recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         FrameStage("decision_context",ref stage);
-        string serialized=ContextCompression.Pack(context,18000);FrameStage("decision_serialize",ref stage);agentLastContextCharacters=serialized.Length;
-        WriteBusinessLog("model_request",AgentJson.Encode(new{context_characters=serialized.Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
+        // Freeze on the game thread; no game objects or deferred enumeration cross the boundary.
+        var frozen=JsonSerializer.SerializeToElement(context,AgentJson.Options);FrameStage("decision_snapshot",ref stage);
+        WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         // Key-file IO, request encoding and budget ledger IO must not run on
         // the game thread before the first HTTP await. Only immutable values cross.
         var token=agentCancellation.Token;string model=Settings.Model;
-        agentPending=Task.Run(()=>AutoplayModel.Ask(file,model,serialized,token),token);
+        agentPending=Task.Run(()=>{var packing=Stopwatch.StartNew();string serialized=ContextCompression.Pack(frozen,18000);agentLastContextCharacters=serialized.Length;agentLastPackMs=packing.Elapsed.TotalMilliseconds;return AutoplayModel.Ask(file,model,serialized,token);},token);
         FrameStage("decision_dispatch",ref stage);
     }
     internal (GameLocation Location,Point Tile) AgentMapOrigin(string actorId) {

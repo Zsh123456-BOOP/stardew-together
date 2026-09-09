@@ -6,12 +6,13 @@ public static class ContextCompression {
     public static string Pack(object value,int maxCharacters=40000) {
         var root=JsonSerializer.SerializeToNode(value,AgentJson.Options)!.AsObject();
         var reductions=new List<string>();
+        int cachedSize=-1;
         void Limit(JsonObject? parent,string key,int keep) {
             if(parent?[key] is not JsonArray rows||rows.Count<=keep)return;
             int total=rows.Count;while(rows.Count>keep)rows.RemoveAt(rows.Count-1);
-            parent[key+"_omitted"]=total-keep;reductions.Add(key);
+            parent[key+"_omitted"]=total-keep;reductions.Add(key);cachedSize=-1;
         }
-        int Size()=>root.ToJsonString(AgentJson.Options).Length;
+        int Size()=>cachedSize>=0?cachedSize:cachedSize=root.ToJsonString(AgentJson.Options).Length;
         if(Size()>maxCharacters) {
             if(root["companions"] is JsonArray companions)foreach(var actor in companions.OfType<JsonObject>())Limit(actor,"candidates",8);
             Limit(root["progression"] as JsonObject,"missing_achievements",6);
@@ -33,6 +34,7 @@ public static class ContextCompression {
                 while(recent.Count>2&&Size()>maxCharacters) {
                     int disposable=Enumerable.Range(0,recent.Count-2).FirstOrDefault(i=>!Error(recent[i]),-1);
                     if(disposable<0)break;
+                    cachedSize=Size()-(recent[disposable]?.ToJsonString(AgentJson.Options).Length??4)-1;
                     recent.RemoveAt(disposable);reductions.Add("older_non_error_events");
                 }
             }
@@ -52,11 +54,11 @@ public static class ContextCompression {
                         earlier.Add(new JsonObject{["kind"]=Copy(entry is JsonObject item?item["Kind"]:null),["tool"]=Copy(obj["tool"]),["status"]=Copy(result["status"]),["error"]=Copy(result["error"]),["command_id"]=Copy(result["command_id"]),["task_id"]=Copy(result["task_id"])});
                     }
                 }
-                root["earlier_observation_summaries"]=earlier;reductions.Add("older_events_retrievable_from_memory");
+                root["earlier_observation_summaries"]=earlier;cachedSize=-1;reductions.Add("older_events_retrievable_from_memory");
             }
             foreach(string key in new[]{"farm_cleanup","inventory_plan","progression"}) {
                 if(Size()<=maxCharacters)break;
-                if(root[key] is not null){root[key]=new JsonObject{["details_available_via"]=key=="farm_cleanup"?"farm.cleanup":key=="inventory_plan"?"world.read":"progress.read"};reductions.Add(key+"_on_demand");}
+                if(root[key] is not null){root[key]=new JsonObject{["details_available_via"]=key=="farm_cleanup"?"farm.cleanup":key=="inventory_plan"?"world.read":"progress.read"};reductions.Add(key+"_on_demand");cachedSize=-1;}
             }
         }
         root["context_budget"]=JsonSerializer.SerializeToNode(new{unit="characters_not_tokens",soft_limit=maxCharacters,omitted=reductions.Distinct().ToArray(),over_budget=Size()>maxCharacters,

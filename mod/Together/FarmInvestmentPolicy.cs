@@ -9,6 +9,10 @@ public sealed class FarmInvestmentPolicy {
     public string Shop {get;set;}="SeedShop";
     public string Location {get;set;}="SeedShop";
     public int Day {get;set;}=-1;
+    public int ReviewedCash {get;set;}=-1;
+    public int ReviewedCrops {get;set;}=-1;
+    public int ReviewedSeeds {get;set;}=-1;
+    public int Reviews {get;set;}
     public int ReservedToday {get;set;}
     public string CropLocation {get;set;}="Farm";
     public List<string> CompletedLocations {get;set;}=new();
@@ -20,4 +24,9 @@ public sealed class FarmInvestmentPolicy {
     public string ServiceTask {get;set;}="";
     public string PlanId {get;set;}="";
     public List<string> Tasks {get;set;}=new();
+}
+
+public static class ReinvestmentReview {
+    public static bool Needed(int oldCash,int cash,int oldCrops,int crops,int oldSeeds,int seeds,int remainingBudget,int time)=>
+        time<1500&&oldCash>=0&&(seeds>oldSeeds||crops<oldCrops||cash>oldCash&&remainingBudget>0);
 }

@@ -19,6 +19,7 @@ public sealed partial class ModEntry {
     }
     internal object PlanFarmEconomy(JsonElement args) {
         RefreshFacts(true);var l=PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location","Farm"))??throw new InvalidOperationException("unknown_farm_location");var p=Game1.player;
+        if(l.NameOrUniqueName=="Greenhouse"&&!Game1.getFarm().greenhouseUnlocked.Value)throw new InvalidOperationException("greenhouse_not_unlocked");
         if(!(l.IsFarm||l.IsGreenhouse)||l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)throw new InvalidOperationException("reachable_farm_or_greenhouse_required");
         int budget=AgentToolRegistry.Number(args,"budget",0),keep=AgentToolRegistry.Number(args,"keep_gold",500),limit=AgentToolRegistry.Number(args,"plots",24),dailyManual=AgentToolRegistry.Number(args,"max_daily_manual_water",24);
         string priority=AgentToolRegistry.Text(args,"priority","income");
@@ -28,12 +29,16 @@ public sealed partial class ModEntry {
         var scares=l.objects.Pairs.Where(o=>o.Value.IsScarecrow()).ToArray();var grid=new List<LayoutCell>();var water=new List<FarmCell>();
         var anchors=PlayerExecutor.Exits(l).Select(e=>new FarmCell(e.X,e.Y)).ToList();
         foreach(var b in l.buildings)if(b.humanDoor.Value.X>=0)anchors.Add(new(b.tileX.Value+b.humanDoor.Value.X,b.tileY.Value+b.humanDoor.Value.Y+1));
-        foreach(var o in l.objects.Pairs.Where(o=>o.Value.bigCraftable.Value))if(WorkStand(l,o.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
-        foreach(var crop in l.terrainFeatures.Pairs.Where(x=>x.Value is HoeDirt {crop:not null}))if(WorkStand(l,crop.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
+        Point? Access(Point tile)=>new[]{new Point(tile.X,tile.Y+1),new Point(tile.X-1,tile.Y),new Point(tile.X+1,tile.Y),new Point(tile.X,tile.Y-1)}.Where(at=>PlayerExecutor.Passable(l,at)).Select(at=>(Point?)at).FirstOrDefault();
+        foreach(var o in l.objects.Pairs.Where(o=>o.Value.bigCraftable.Value))if(Access(o.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
+        foreach(var crop in l.terrainFeatures.Pairs.Where(x=>x.Value is HoeDirt {crop:not null}))if(Access(crop.Key.ToPoint()) is {} at)anchors.Add(new(at.X,at.Y));
+        // Poll each live claim once, not once per every map tile.
+        foreach(var claim in agentClaims.Values.ToArray())AgentTileBusy(claim.Location,claim.X,claim.Y);
+        var occupiedClaims=agentClaims.Values.Where(c=>c.Location==l.NameOrUniqueName).Select(c=>new Point(c.X,c.Y)).ToHashSet();
         for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++) {
             var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;int clearance=PlotClearCost(l,new(x,y));bool pass=PlayerExecutor.Passable(l,new(x,y))||clearance>0;
             if(l.CanRefillWateringCanOnTile(x,y))water.Add(at);
-            bool legal=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&pass&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
+            bool legal=!occupiedClaims.Contains(new(x,y))&&!IsPlacementProtected(l.NameOrUniqueName,new(x,y),false)&&pass&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
             grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
         }
         ApplyFarmZoning(l,grid,anchors);grid=DistrictGrid(l,grid);

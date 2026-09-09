@@ -151,6 +151,6 @@ public sealed partial class ModEntry {
         agentWasInDanger=danger;
         string signature=$"{Game1.Date.TotalDays}:{Game1.timeOfDay>=2200}:{Game1.player.health<35}:{Game1.player.Stamina<20}:{(playerExecutor.Busy?"owned":Game1.activeClickableMenu?.GetType().Name)}:{Game1.eventUp}:{Game1.currentMinigame?.GetType().Name}";
         if(signature!=agentEventSignature){agentEventSignature=signature;WakeAgent("environment_changed");}
-        if(playerExecutor.NeedsMenuChoice)WakeAgent("night_menu_choice");
+        if(NeedsAgentMenuDecision)WakeAgent("menu_choice_required");
     }
 }

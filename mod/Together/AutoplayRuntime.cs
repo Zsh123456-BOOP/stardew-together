@@ -162,7 +162,7 @@ public sealed partial class ModEntry {
                         if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;hadToolError=true;}
                         if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
                     }
-                    bool allActorsHaveWork=AgentWorkCovered();
+                    bool allActorsHaveWork=AgentWorkCovered()&&!NeedsAgentMenuDecision;
                     if(followup&&AgentPollingPolicy.Defer(allActorsHaveWork,hadToolError,turn.calls.Select(c=>c.tool)))followup=false;
                     if(followup)WakeAgent("tool_results");
                     bool action=turn.calls.Any(c=>AgentSchedule.Queueable(c.tool)||c.tool=="plan.submit");
@@ -180,12 +180,12 @@ public sealed partial class ModEntry {
             }
         }
         if(!AutoplayRunning || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
-        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(AgentDecisionPacing.RoutineWake)&&AgentWorkCovered())return;
-        if(DateTime.UtcNow<agentModelNotBefore&&!playerExecutor.NeedsMenuChoice&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
+        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(AgentDecisionPacing.RoutineWake)&&AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision))return;
+        if(DateTime.UtcNow<agentModelNotBefore&&!NeedsAgentMenuDecision&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
             bool playerQueued=AgentPlayerCovered();
-            if(playerQueued && !playerExecutor.NeedsMenuChoice)return;
+            if(AgentDecisionPacing.CanDefer(playerQueued,NeedsAgentMenuDecision))return;
             WakeAgent("player_needs_next_plan");
         }
         // Sleep owns the native save lifecycle; only branch menus or its result need the model.

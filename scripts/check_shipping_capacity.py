@@ -3,13 +3,13 @@ import json,time,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from agent.client import Bridge
-b=Bridge();assert b.state()['player']['name']=='AgentLab';out=Path('work/shipping-capacity');out.mkdir(exist_ok=True);checks=[]
+b=Bridge();assert b.state()['player']['name']=='AgentLab';out=Path(sys.argv[1] if len(sys.argv)>1 else 'work/shipping-capacity');out.mkdir(exist_ok=True);checks=[]
 def sc(code,**kw):return b.request('POST','/lab/together',dict(session_id=b.session,scenario=code,**kw))
 def tool(code,**kw):return sc('agent_tool',tool=code,args=kw)
 def check(ok,label):
  checks.append(dict(passed=bool(ok),label=label));(out/'checks.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2));print(('PASS ' if ok else 'FAIL ')+label,flush=True);assert ok,label
 try:
- sc('agent_schedule_probe');day=b.state()['day'];rev=tool('plan.read')['revision']
+ sc('bedtime_review_fixture');sc('agent_schedule_probe');day=b.state()['day'];rev=tool('plan.read')['revision']
  tool('plan.submit',submission_id='old-future',expected_revision=rev,tasks=[dict(id='old-future',tool='player.travel',args=dict(location='Town'),day=day,not_before=2300)])
  rev=tool('plan.read')['revision'];reply=dict(plan='synthetic same-turn revision regression',calls=[dict(tool='plan.cancel',args=dict(ids=['old-future'])),dict(tool='plan.submit',args=dict(submission_id='own-a',expected_revision=rev,tasks=[dict(id='own-a',tool='player.travel',args=dict(location='Farm'),day=day,not_before=2400)])),dict(tool='plan.submit',args=dict(submission_id='own-b',expected_revision=rev,tasks=[dict(id='own-b',tool='player.travel',args=dict(location='Town'),day=day,not_before=2400)]))])
  sc('agent_reply_probe',reply=json.dumps(reply));time.sleep(1)

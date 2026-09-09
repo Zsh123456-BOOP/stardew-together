@@ -9,6 +9,7 @@ public sealed class AgentDecisionPacing {
         else QueriesWithoutProgress++;
         return QueriesWithoutProgress<3?1:QueriesWithoutProgress<6?8:20;
     }
+    public static bool CanDefer(bool workCovered,bool needsMenuChoice)=>workCovered&&!needsMenuChoice;
     public void Reset(){QueriesWithoutProgress=0;observedProgress=-1;}
     public static bool RoutineWake(string reason)=>reason.StartsWith("actor_ready:")||reason.StartsWith("idle_actors:")||reason=="player_needs_next_plan"||reason=="farm_investment_complete"||reason=="environment_changed";
 }

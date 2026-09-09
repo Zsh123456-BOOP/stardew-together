@@ -28,6 +28,7 @@ def read():
 baseline = read()
 assert baseline["autoplay"]["model"] == "deepseek-flash"
 (out / "baseline.json").write_text(json.dumps(dict(state=initial, diagnostics=baseline), ensure_ascii=False, indent=2))
+sc("performance_reset")
 sc("agent_start", goal="短程验证现有农场经营：优先处理今天真实成熟作物、照料与已批准投资，和自定义伙伴小禾分工。沿用已有经营预算及片区政策，不追加额度、不招募原生村民。普通清理、采购和补种由已启用程序队列执行，不重复派工。检查真实工具结果，必要时查百科并调整经营方向。")
 started = time.monotonic()
 seen = set()
@@ -61,5 +62,6 @@ try:
 finally:
     (out / "pre-pause.json").write_text(json.dumps(last, ensure_ascii=False, indent=2))
     sc("agent_pause")
-    sc("agent_ui")
+    ui_result = sc("agent_ui")
+    (out / "pause-ui.json").write_text(json.dumps(ui_result, ensure_ascii=False, indent=2))
     (out / "result.json").write_text(json.dumps(dict(reason=reason, elapsed_seconds=time.monotonic()-started, note="Bounded smoke observation, not a continuous multi-day acceptance run", snapshot=last["autoplay"]["snapshot"], performance=last["performance"]), ensure_ascii=False, indent=2))

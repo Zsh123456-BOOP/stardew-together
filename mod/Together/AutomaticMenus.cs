@@ -4,6 +4,7 @@ using StardewValley.Menus;
 namespace Together;
 public sealed partial class ModEntry {
     private DateTime automaticMenuAt;
+    private bool NeedsAgentMenuDecision=>playerExecutor.NeedsMenuChoice||!playerExecutor.Busy&&Game1.activeClickableMenu is DialogueBox {isQuestion:true} or NamingMenu or LevelUpMenu {isProfessionChooser:true};
     private bool TickAutomaticMenus() {
         if(playerExecutor.Busy)return false;
         if(ApplyFamilyNightPolicy())return true;

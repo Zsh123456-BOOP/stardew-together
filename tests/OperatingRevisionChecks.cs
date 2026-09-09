@@ -33,6 +33,7 @@ static class OperatingRevisionChecks {
         check(FailureKnowledge.Key("player","work.run","{\"goal\":\"wood\",\"count\":40}")==FailureKnowledge.Key("player","work.run","{\"count\":40,\"goal\":\"wood\"}"),"argument ordering cannot bypass known failure");
         check(FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\",\"count\":8}")==FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\",\"count\":3}"),"changing quantity cannot retry an unchanged empty collection area");
         check(FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Town\"}")!=FailureKnowledge.SelectionKey("player","work.run","{\"goal\":\"forage\",\"location\":\"Forest\"}"),"another collection area remains a valid alternative");
+        check(!AgentDecisionPacing.CanDefer(true,true)&&AgentDecisionPacing.CanDefer(true,false),"queued work never suppresses a required branch-menu decision");
         check(WorkQuantity.Resolve(10,50,0,null,true)==new WorkQuantity(50,40,null),"zero material count fills only an approved deficit");
         check(WorkQuantity.Resolve(10,50,5,null,true)==new WorkQuantity(15,5,null),"positive count is incremental, never silently a total");
         check(WorkQuantity.Resolve(10,12,20,null,true)==new WorkQuantity(12,2,null),"incremental collection is capped by the approved remaining need");

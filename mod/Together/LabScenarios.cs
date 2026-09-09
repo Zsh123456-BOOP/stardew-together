@@ -27,7 +27,12 @@ public sealed partial class ModEntry {
             case "agent_tool":return JsonSerializer.Serialize(agentTools.Execute(Arg("tool"),root.GetProperty("args")));
             case "agent_start":StartAutoplay(Arg("goal"));break;
             case "agent_pause":PauseAutoplay("lab_pause");break;
-            case "agent_ui":Game1.activeClickableMenu=new AutoplayMenu(this);break;
+            case "agent_ui":
+                // A watchdog may stop during a native dialogue. Replacing that menu
+                // would lose its callback and strand the event when play resumes.
+                if(Game1.activeClickableMenu!=null && Game1.activeClickableMenu is not AutoplayMenu)
+                    return JsonSerializer.Serialize(new{opened=false,reason="native_menu_preserved",menu=Game1.activeClickableMenu.GetType().Name});
+                Game1.activeClickableMenu=new AutoplayMenu(this);break;
             case "agent_schedule_probe": {
                 PauseAutoplay("lab_schedule_probe");Game1.exitActiveMenu();
                 Data.Autoplay=new(){Goal="LAB deterministic scheduler contract",Status="running",StartDay=Game1.Date.TotalDays,RunId=Guid.NewGuid().ToString("N")};

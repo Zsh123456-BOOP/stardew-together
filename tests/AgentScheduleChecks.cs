@@ -56,7 +56,7 @@ public static class AgentScheduleChecks {
         var partial=OperationsPolicy.Outcome("work.run",JsonSerializer.SerializeToElement(new{status="failed",stop_reason="fishing_trip_time_or_attempt_budget",requested=5,gained=3}));
         check(partial.Disposition=="partial"&&partial.Remaining==2&&partial.BusinessProgress,"deadline retains partial catches and remaining goal without blacklisting location");
         check(!OperationsPolicy.Outcome("player.travel",JsonSerializer.SerializeToElement(new{status="succeeded",completed=1})).BusinessProgress,"travel alone cannot clear a stalled business goal");
-        check(!OperationsPolicy.CapacityReady(1,OperationsPolicy.RequiredFreeSlots("fish"))&&OperationsPolicy.CapacityReady(2,OperationsPolicy.RequiredFreeSlots("fish")),"supply and fishing share the same downstream capacity requirement");
+        check(OperationsPolicy.CapacityReady(1,OperationsPolicy.RequiredFreeSlots("fish"))&&OperationsPolicy.RequiredFreeSlots("fish")==0,"trip planning does not reserve two unused slots; actual catches validate native capacity");
         var constraints=new OperationsState();constraints.Observe(new(){Subject="SeedShop",Condition="door-closed",Day=3,RetryTime=900,Reason="before_open",Evidence="visit1"});
         check(constraints.Blocking("SeedShop","door-closed",3,800)!=null&&constraints.Blocking("SeedShop","door-closed",3,900)==null,"service constraint waits for its opening window rather than arbitrary retry intervals");
         check(constraints.Blocking("SeedShop","owner-now-ready",3,800)==null,"relevant native condition changes release the constraint");

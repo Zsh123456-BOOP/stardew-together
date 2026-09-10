@@ -10,7 +10,7 @@ internal static class NativeRewards {
         if(menu.heldItem!=null) {
             string id=menu.heldItem.QualifiedItemId;int before=menu.heldItem.Stack;
             menu.heldItem=Game1.player.addItemToInventory(menu.heldItem);
-            if(menu.heldItem!=null)throw new InvalidOperationException("reward_inventory_full_menu_preserved");
+            if(menu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");
             return(false,new{kind="native_reward_held_item_received",item=id,count=before});
         }
         var inventory=menu.ItemsToGrabMenu.actualInventory;
@@ -22,7 +22,7 @@ internal static class NativeRewards {
         }
         var item=inventory[slot];
         bool unlock=item.IsRecipe||item is StardewValley.Objects.SpecialItem||item.QualifiedItemId is "(O)326" or "(O)102" or "(O)434";
-        if(!unlock&&!Game1.player.couldInventoryAcceptThisItem(item))throw new InvalidOperationException("reward_inventory_full_menu_preserved");
+        if(!unlock&&!CapacityAdapter.CanReceive(Game1.player,item))throw new InvalidOperationException("capacity_no_stackable_room");
         string qid=item.QualifiedItemId;int amount=item.Stack,beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         int beforeSource=inventory.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         var bounds=menu.ItemsToGrabMenu.inventory[slot].bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);

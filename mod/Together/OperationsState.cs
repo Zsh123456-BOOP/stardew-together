@@ -34,8 +34,8 @@ public static class OperationsPolicy {
         bool progress=!navigation&&!deferred&&(changed||status=="succeeded"&&tool is "player.sleep" or "player.read_mail" or "player.collect_reward");
         return new(disposition,reason,progress,Count("completed"),Count("gained"),Count("deposited"),Math.Max(0,Count("requested")-Math.Max(Count("completed"),Count("gained"))));
     }
-    public static int RequiredFreeSlots(string goal,int requested=0)=>goal is "fish" or "mine_trip" or "volcano_trip"?Math.Max(2,requested):Math.Max(0,requested);
-    public static bool CapacityReady(int free,int required)=>free>=required;
+    public static int RequiredFreeSlots(string goal,int requested=0)=>CapacityPlan.RequiredSlots(goal,requested);
+    public static bool CapacityReady(int free,int required)=>CapacityPlan.FreeFits(free,required);
 }
 
 public static class WorkCapabilities {

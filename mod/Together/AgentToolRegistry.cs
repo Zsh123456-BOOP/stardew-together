@@ -26,7 +26,7 @@ public sealed class AgentToolRegistry {
         ["player.tap_tree"]="{output,location?:Farm,tapper?:(BC)105}: 根据原生树木数据选成熟树，安装真实树液器或收取指定已成熟产物；计时保持原生，安装不等于获得树脂",
         ["farm.maintenance"]="{enabled?:bool,scope?:string}: 农场整理摘要（分类计数、体力估算、保留物、剩余订单），省略scope不返回坐标；enabled调整经营中的每日自动整理。scope返回最多32个详细目标。",
         ["farm.zones"]="{zones?:[{id:string,kind:crop|production|woodland|pasture|reserve,x:int,y:int,width:int,height:int,allow_trees?:bool}]}: 查询或原子替换农场分区列表，不重叠；先map.read观察。林区/牧草/保留区不清理；只有crop/production可授权树木整理。修改时玩家须空闲。",
-        ["farm.cleanup"]="{request_id:string,mode?:run|pause,scopes?:[roads|courtyard|fields|general|all|zone:分区ID],reserve_stamina?:15..270,until?:HHMM<=2200,daily_limit?:1..120,remove_trees?:bool}: 保存持久清理目标，自动分批选目标、工具、寻路、存货续做；默认清杂草/树枝/小石头，树木须分区allow_trees且remove_trees。默认每日30目标、18点停止；30为安全底线，另预留未完浇水/播种和20%最大体力生产余量。所有整理订单共享35%最大体力成本与180游戏分钟日上限，额度用完不代表该睡觉。余量次日继续。相同request_id必须同参数，不重复创建；pause保留进度。AI暂停时不执行。当前执行角色为玩家，伙伴仍可独立承担已有农务/资源任务。",
+        ["farm.cleanup"]="{request_id:string,mode?:run|pause,scopes?:[roads|courtyard|fields|general|all|zone:分区ID],reserve_stamina?:15..270,until?:HHMM<=2200,daily_limit?:0..120,remove_trees?:bool}: 保存持久清理目标，自动分批选目标、工具、寻路、存货续做；默认清杂草/树枝/小石头，树木须分区allow_trees且remove_trees。默认不设目标数上限，18点停止；按已批准播种/浇水与安全返程预留体力；daily_limit仅用于明确指定的每日目标上限，0不设。为播种清地应直接使用farm.plan→work.run plant，不另建竞争清理单。余量次日继续。相同request_id必须同参数，不重复创建；pause保留进度。AI暂停时不执行。当前执行角色为玩家，伙伴仍可独立承担已有农务/资源任务。",
         ["farm.production"]="{action?:read|uses|select|make|surplus,item?:QID,offset?:int,id?:候选id,recipe?:配方id,count?:int,request_id?:string,allow?:bool,reason?:string}: read查统一生产/预留；uses查材料用途与解锁(每页12)；select选择一项投资或maintain不扩建；make按已知配方建立持续依赖目标；surplus明确授权今日材料余量出货，预留不解除。决策需reason。",
         ["farm.operating"]="{direction?:balanced|cashflow|low_labor,player_water_limit?:0..96,partner_water_limit?:0..96,reason?:string}: 设置统一经营方向和劳动容量，返回可用现金与实际/在途材料缺口",
         ["companion.configure"]="{enabled?:bool,name?:string,appearance?:Leah|Alex|Sam|Maru|Sebastian|Abigail}: 创建/配置自定义伙伴；外观仅素材引用，不招募村民",
@@ -150,7 +150,7 @@ public sealed class AgentToolRegistry {
         ["action.status"]="{id:string}: 动作真实进度和前后证据；也接受 plan 的任务 id，排队状态不是完成",
         ["action.cancel"]="{id:string}: 取消尚可取消的动作，已消耗物资不回滚",
         ["agent.wait"]="{seconds:1..60}: 等待游戏进展，期间不重复请求模型",
-        ["agent.pause"]="{reason:string}: 保存计划并暂停接管"
+        ["agent.pause"]="{reason:string}: 模型放弃今日计划，程序安全返家过夜，次日再试；真正暂停由玩家F10或界面操作"
     };
     internal static string Text(JsonElement a,string k,string fallback="")=>a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??fallback:fallback;
     internal static int Number(JsonElement a,string k,int fallback=0)=>AgentNumbers.Read(a,k,fallback);
@@ -202,7 +202,7 @@ public sealed class AgentToolRegistry {
         };
     }
     private object Wait(int seconds){int actual=mod.AgentWait(seconds);return new{status="waiting",seconds=actual,note="按原生时间限制等待长度，深夜前重新决策"};}
-    private object Pause(string reason){mod.PauseAutoplay(reason);return new{status="paused",reason};}
+    private object Pause(string reason)=>mod.ModelRequestedStop(reason);
     internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name,upgrade_level=item is Tool tool?(int?)tool.UpgradeLevel:null,water_left=item is StardewValley.Tools.WateringCan can?(int?)can.WaterLeft:null};
     internal static object Inventory()=>new{selected=Game1.player.CurrentToolIndex,items=Game1.player.Items.Select((v,i)=>new{slot=i,item=ItemInfo(v)}).ToArray()};
     private static object Progress()=>new{scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),

@@ -2,7 +2,7 @@ namespace Together;
 
 // Storage is a prerequisite or a delivery, never a reward for finishing a batch.
 public static class StorageTiming {
-    public static bool NeedsRoom(int freeSlots,bool expectsOutput,bool stackHasRoom)=>expectsOutput&&freeSlots<=0&&!stackHasRoom;
+    public static bool NeedsRoom(int freeSlots,bool expectsOutput,bool stackHasRoom)=>expectsOutput&&!stackHasRoom&&!CapacityPlan.FreeFits(freeSlots,1);
     public static string DeliveryReason(int storable,int freeSlots,bool closesMaterialGap,bool endOfDay) {
         if(storable<=0)return "";
         if(closesMaterialGap)return "经营材料已凑齐，交接后可继续制作或建设";

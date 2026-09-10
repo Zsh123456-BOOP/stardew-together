@@ -19,7 +19,7 @@ public sealed class FarmCleanupOrder {
     public string Reason {get;set;}="";
     public int ReserveStamina {get;set;}=30;
     public int Until {get;set;}=1800;
-    public int DailyLimit {get;set;}=30;
+    public int DailyLimit {get;set;}=0;
     public int Day {get;set;}=-1;
     public int CompletedToday {get;set;}
     public int Completed {get;set;}
@@ -49,19 +49,17 @@ public static class FarmCleanupRules {
         if(order.Day==day)return;order.Day=day;order.CompletedToday=0;order.RetryAt=0;
         if(order.Recurring&&order.Status=="complete")order.Status="active";
     }
-    public static int RemainingBudget(FarmCleanupOrder order)=>Math.Max(0,order.DailyLimit-order.CompletedToday);
+    public static int RemainingBudget(FarmCleanupOrder order)=>order.DailyLimit<=0?999:Math.Max(0,order.DailyLimit-order.CompletedToday);
 }
 
-// Conservative estimates, not claimed exact native stamina costs. The daily cap
-// is shared by every order so new IDs/food/retries cannot refill the allowance.
+// Only committed care and a return reserve reduce optional cleanup. Historical
+// spend is telemetry, not a second artificial stamina bar.
 public sealed record CleanupAllowance(int FarmEnergy,int ProductionReserve,int Reserve,int Available,string Reason);
 public static class CleanupBudget {
     public static CleanupAllowance Calculate(int stamina,int maximum,int safety,int dry,int newPlots,int committed,int minutes) {
         int farm=Math.Max(0,dry)*2+Math.Max(0,newPlots)*4;
-        int production=(int)Math.Ceiling(maximum*.20);
-        int reserve=Math.Max(15,safety)+farm+production;
-        int available=Math.Max(0,Math.Min(stamina-reserve,(int)(maximum*.35)-committed));
-        string reason=minutes>=180?"cleanup_daily_time_cap":available==0?"cleanup_farm_or_daily_energy_reserve":"available";
-        return new(farm,production,reserve,minutes>=180?0:available,reason);
+        int reserve=Math.Max(15,safety)+farm;
+        int available=Math.Max(0,stamina-reserve);
+        return new(farm,0,reserve,available,available==0?"cleanup_committed_care_or_return_reserve":"available");
     }
 }

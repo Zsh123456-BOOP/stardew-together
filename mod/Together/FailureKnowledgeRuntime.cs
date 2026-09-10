@@ -46,6 +46,7 @@ public sealed partial class ModEntry {
         }catch{return "unavailable";}
     }
     private void CheckKnownFailure(ScheduledAgentTask task) {
+        GuardCapacity(task.spec.actor,task.spec.tool,task.spec.args);
         string semantic=FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string exact=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string selection=FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);

@@ -17,7 +17,7 @@ public sealed partial class PlayerExecutor {
         if(forgeLeftSlot<0||forgeRightSlot<0||forgeLeftSlot==forgeRightSlot||forgeLeftSlot>=Game1.player.Items.Count||forgeRightSlot>=Game1.player.Items.Count||forgeCount is <1 or >3||forgeBudget<0)throw new InvalidOperationException("forge_slots_count_budget_required");
         forgeLeft=Game1.player.Items[forgeLeftSlot];forgeRight=Game1.player.Items[forgeRightSlot];
         if(forgeLeft is not (Tool or Ring)||forgeRight==null||forgeRight.Stack<forgeCount)throw new InvalidOperationException("native_forge_ingredients_required");
-        if(Game1.player.Items.Count(i=>i==null)<2)throw new InvalidOperationException("forge_requires_two_free_return_slots");
+        CapacityAdapter.RequireSlots(Game1.player,2); // Two native menu input returns, not one predicted forged item.
         if(Game1.activeClickableMenu is ForgeMenu m&&(m.heldItem!=null||m.leftIngredientSpot.item!=null||m.rightIngredientSpot.item!=null||m.IsBusy()))throw new InvalidOperationException("native_forge_has_unclaimed_items");
         forgeTile=null;forgeSpent=0;forgeRightId=forgeRight.QualifiedItemId;destination=AgentToolRegistry.Text(args,"location",Game1.activeClickableMenu is ForgeMenu?origin:"Caldera");
         Current!.phase="forge_travel";

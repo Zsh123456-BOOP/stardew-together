@@ -19,7 +19,7 @@ public sealed partial class ModEntry {
         var npc=AvailableCargoPartner(job);if(npc==null||wanted<=0){job.CargoActor="";return false;}
         var p=Game1.player;var bag=p.team.GetOrCreateGlobalInventory($"Together_Pouch_{p.UniqueMultiplayerID}_{PartnerName}");
         var items=bag.Where(i=>i?.QualifiedItemId==itemId&&i.Quality>=job.MinimumQuality).ToArray();if(items.Length==0){job.CargoActor="";return false;}
-        if(!items.Any(i=>p.couldInventoryAcceptThisItem(i))){job.CargoActor="";return false;}
+        if(!items.Any(i=>CapacityAdapter.CanReceive(p,i))){job.CargoActor="";return false;}
         if(Game1.currentLocation!=npc.currentLocation){WorkChild(job,"player.travel",new{location=npc.currentLocation.NameOrUniqueName},"cargo_handoff_travel");return true;}
         if(Math.Abs(p.TilePoint.X-npc.TilePoint.X)+Math.Abs(p.TilePoint.Y-npc.TilePoint.Y)>1) {
             var stand=WorkStand(npc.currentLocation,npc.TilePoint);if(!stand.HasValue){job.CargoActor="";return false;}
@@ -47,7 +47,7 @@ public sealed partial class ModEntry {
         int wood=p.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388");
         int missing=Math.Max(0,cost-wood-cargo);
         // Preserve pending crop care and the actual slot required by crafting.
-        if(!chest&&(wood+cargo==0||p.freeSpotsInInventory()<(wood==0?2:1)||p.Stamina-missing*4<20+Facts.DryCrops*4))return false;
+        if(!chest&&(wood+cargo==0||!CapacityAdapter.CanReceive(p,ItemRegistry.Create("(O)388"),Math.Max(0,missing))||p.Stamina-missing*4<20+Facts.DryCrops*4))return false;
         var actions=new List<(string Tool,object Args)>();
         if(missing>0)actions.Add(("work.run",new{goal="wood",location="Farm",count=missing,reserve_stamina=Math.Max(20,20+Facts.DryCrops*4)}));
         actions.Add(("work.run",new{goal="storage_expand",until=2100}));

@@ -37,13 +37,13 @@ public sealed partial class PlayerExecutor {
         if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(180);
         if(purchaseMenu.heldItem is Item held) {
             purchaseMenu.heldItem=Game1.player.addItemToInventory(held);
-            if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("purchased_output_needs_inventory_space");
+            if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");
         }else if(purchaseMenu.heldItem!=null)throw new InvalidOperationException("unknown_shop_held_item");
         if(purchaseRemaining==0){purchaseMenu.exitThisMenu();purchaseMenu=null;Finish("succeeded");return;}
         var item=purchaseMenu.itemPriceAndStock.Keys.FirstOrDefault(i=>i.QualifiedItemId==purchaseId&&(!purchaseRecipe.HasValue||i.IsRecipe==purchaseRecipe.Value))??throw new InvalidOperationException("shop_item_unavailable");
         if(!purchaseMenu.itemPriceAndStock.TryGetValue(item,out var offer)||offer.Stock<1)throw new InvalidOperationException("shop_stock_or_condition_changed");
         // CanBuyItem also rejects a full bag; expose that recoverable cause first.
-        if(!item.IsRecipe&&item is Item product&&purchaseMenu.ShopId!="ClintUpgrade"&&!Game1.player.couldInventoryAcceptThisItem(product))throw new InvalidOperationException("purchase_inventory_space_required");
+        if(!item.IsRecipe&&item is Item product&&purchaseMenu.ShopId!="ClintUpgrade"&&!CapacityAdapter.CanReceive(Game1.player,product))throw new InvalidOperationException("capacity_no_stackable_room");
         if(!item.IsRecipe&&!item.CanBuyItem(Game1.player))throw new InvalidOperationException("shop_purchase_condition_changed");
         int currency=ShopMenu.getPlayerCurrencyAmount(Game1.player,purchaseCurrency);
         if(offer.Price<0||offer.Price>purchasePriceLimit||offer.Price>purchaseBudget-purchaseSpent||offer.Price>currency-purchaseKeepGold)throw new InvalidOperationException("purchase_budget_or_price_changed");
@@ -54,7 +54,7 @@ public sealed partial class PlayerExecutor {
         if(upgrade&&Game1.player.toolBeingUpgraded.Value!=null)throw new InvalidOperationException("another_tool_upgrade_active");
         var recipeBook=prototype.Category==-7?Game1.player.cookingRecipes:Game1.player.craftingRecipes;
         if(item.IsRecipe&&recipeBook.ContainsKey(prototype.BaseName))throw new InvalidOperationException("recipe_already_known");
-        if(!item.IsRecipe&&!upgrade&&!Game1.player.couldInventoryAcceptThisItem(prototype))throw new InvalidOperationException("purchase_inventory_space_required");
+        if(!item.IsRecipe&&!upgrade&&!CapacityAdapter.CanReceive(Game1.player,prototype))throw new InvalidOperationException("capacity_no_stackable_room");
         string trade=offer.TradeItem==null?"":ItemRegistry.QualifyItemId(offer.TradeItem)??offer.TradeItem;
         int tradeCount=trade.Length==0?0:offer.TradeItemCount??5;
         if(trade.Length>0&&(trade!=purchaseTrade||tradeCount>purchaseTradeBudget-purchaseTradeSpent||!purchaseMenu.HasTradeItem(trade,tradeCount)))throw new InvalidOperationException("explicit_trade_budget_or_stock_missing");

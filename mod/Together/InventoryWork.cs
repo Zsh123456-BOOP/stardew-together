@@ -46,7 +46,7 @@ public sealed partial class ModEntry {
                 if(item.Stack<=0)contents.Remove(item);
             }
             job.gained+=moved;job.evidence.Add(new{kind="native_withdraw",location=Game1.currentLocation.NameOrUniqueName,tile,item=job.Item,moved});job.StorageTile=null;
-            if(moved==0){StopSemanticWork(job,"inventory_full_or_shared_stock_changed");return;}
+            if(moved==0){StopSemanticWork(job,contents.Any(i=>i?.QualifiedItemId==job.Item)?"capacity_no_stackable_room":"shared_stock_changed");return;}
             if(job.gained>=job.requested){StopSemanticWork(job,"requested_amount_withdrawn",true);return;}
         }
         foreach(var storage in SharedStorage().OrderBy(s=>s.Location==Game1.currentLocation?0:1).ThenBy(s=>Vector2.DistanceSquared(s.Tile,p.Tile))) {
@@ -60,14 +60,15 @@ public sealed partial class ModEntry {
     }
     private static bool OutputChest(Chest c)=>c.playerChest.Value&&c.modData.TryGetValue(WorkChestRole,out var role)&&role=="output";
     private bool PlayerNeedsWorkStorage(SemanticJob job) {
-        if(job.RequiredSlots>0&&!OperationsPolicy.CapacityReady(Game1.player.freeSpotsInInventory(),job.RequiredSlots))return true;
+        if(job.goal=="fish"&&!CapacityAdapter.HasSlots(Game1.player,1))return true;
+        if(job.RequiredSlots>0&&!OperationsPolicy.CapacityReady(CapacityAdapter.Of(Game1.player).FreeSlots,job.RequiredSlots))return true;
         bool output=job.goal is "cleanup" or "milk" or "shear" or "animal_collect" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage" or "collect" or "tend";
         string item=job.Item.Length>0?job.Item:job.goal switch{"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771","hardwood"=>"(O)709",_=>""};
-        bool stacks=item.Length>0&&Game1.player.couldInventoryAcceptThisItem(ItemRegistry.Create(item));
+        bool stacks=item.Length>0&&CapacityAdapter.CanReceive(Game1.player,ItemRegistry.Create(item));
         // Unknown side drops are handled by the real pickup-capacity check, which
         // retains their positions and resumes after unloading. Planting consumes
         // seeds; it must not run off to store merely because one slot remains.
-        return StorageTiming.NeedsRoom(Game1.player.freeSpotsInInventory(),output,stacks);
+        return StorageTiming.NeedsRoom(CapacityAdapter.Of(Game1.player).FreeSlots,output,stacks);
     }
     private int StoreCount(Item item) {
         if(semanticJobs.Values.Any(j=>j.status=="running"&&j.goal=="plant"&&farmPlantPlans.TryGetValue(j.PlanId,out var plan)&&plan.Fertilizer==item.QualifiedItemId))return 0;
@@ -84,7 +85,9 @@ public sealed partial class ModEntry {
     private object InventoryPlanning() {
         var processing=BusinessRawReserves();
         return new{
-        player_free_slots=Game1.player.freeSpotsInInventory(),
+        capacity_constraints=Data.Autoplay.Capacity.Constraints,capacity_version=Data.Autoplay.Capacity.Version,
+        preparation=preparationSummary,
+        player_free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,
         storage_trigger="只在后续实际产物放不下、必要材料交接或收工整理时存箱；有可叠加空间就继续。下游工作需要多个空格时可提前整理，使用required_free_slots。",
         keep_policy="工具、种子、设备、任务物品保留，食物按总恢复预算选择一组，不逐品种保留。目标预留材料可存共享箱但不能被其他用途消耗；需要时由依赖任务取回。",
         storable=Game1.player.Items.Select((item,slot)=>new{item,slot}).Where(x=>x.item!=null&&StoreCount(x.item)>0).Select(x=>new{x.slot,id=x.item.QualifiedItemId,count=StoreCount(x.item)}),
@@ -108,9 +111,9 @@ public sealed partial class ModEntry {
             if(item.Stack==0)Game1.player.Items[slot]=null;
         }
         Game1.player.faceGeneralDirection(tile.ToVector2()*64);if(moved>0)Game1.playSound("Ship");
-        Data.Autoplay.Record("supply_verified",AgentJson.Encode(new{job.command_id,job.goal,job.RequiredSlots,free_slots=Game1.player.freeSpotsInInventory(),moved,transfers,resume_location=job.goal=="fish"?job.FishLocation:job.location}));
+        Data.Autoplay.Record("supply_verified",AgentJson.Encode(new{job.command_id,job.goal,job.RequiredSlots,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,moved,transfers,resume_location=job.goal=="fish"?job.FishLocation:job.location}));
         job.evidence.Add(new{kind="native_storage",location=l.NameOrUniqueName,x=tile.X,y=tile.Y,transfers});job.deposited+=moved;
-        if(moved==0)throw new InvalidOperationException("storage_full_or_inventory_protected");
+        if(moved==0)throw new InvalidOperationException("capacity_no_stackable_room");
     }
     private void TickWorkStorage(SemanticJob j) {
         var origin=AgentMapOrigin(j.actor);
@@ -145,22 +148,9 @@ public sealed partial class ModEntry {
                 var stand=WorkStand(Game1.currentLocation,tile);if(!stand.HasValue)throw new InvalidOperationException("selected_storage_unreachable");
                 WorkChild(j,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_move");return;
             }
-            StorePlayerAt(tile,j);j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
-            if(j.goal!="store"&&!PlayerNeedsWorkStorage(j)&&(!j.PickupPending||Game1.player.freeSpotsInInventory()>0)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
+            StorePlayerAt(tile,j);j.ReliefAction="";j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
+            if(j.goal!="store"&&!PlayerNeedsWorkStorage(j)&&(!j.PickupPending||CapacityAdapter.Of(Game1.player).FreeSlots>0)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
         }
-        if(!Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0)) {
-            if(j.goal=="store"){bool ready=OperationsPolicy.CapacityReady(Game1.player.freeSpotsInInventory(),j.RequiredSlots);StopSemanticWork(j,ready?"stored_available_cargo":"inventory_contains_only_protected_items",ready);return;}
-            if(!PlayerNeedsWorkStorage(j)&&Game1.player.Items.Any(i=>i==null)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
-            StopSemanticWork(j,"inventory_contains_only_protected_items");return;
-        }
-        foreach(var storage in SharedStorage().OrderBy(s=>s.Location==Game1.currentLocation?0:1).ThenBy(s=>Vector2.DistanceSquared(s.Tile,Game1.player.Tile))) {
-            var chest=storage.Chest;if(chest.GetMutex().IsLocked()||j.Excluded.Contains("storage:"+storage.Location.NameOrUniqueName+":"+(int)storage.Tile.X+":"+(int)storage.Tile.Y))continue;
-            bool room=chest.GetItemsForPlayer().Count(i=>i!=null)<chest.GetActualCapacity()||Game1.player.Items.Any(i=>i!=null&&StoreCount(i)>0&&chest.GetItemsForPlayer().Any(s=>s!=null&&s.canStackWith(i)&&s.Stack<s.maximumStackSize()));
-            if(!room)continue;
-            j.StorageTile=storage.Tile.ToPoint();j.StorageLocation=storage.Location.NameOrUniqueName;
-            Data.Autoplay.Record("supply_plan",AgentJson.Encode(new{j.command_id,j.goal,j.RequiredSlots,free_slots=Game1.player.freeSpotsInInventory(),destination=j.StorageLocation,tile=j.StorageTile,resume_location=j.goal=="fish"?j.FishLocation:j.location}));return;
-        }
-        if(TryStartStorageExpansion(j))return;
-        StopSemanticWork(j,"no_available_designated_storage_or_expansion_budget");
+        StartCapacityRelief(j);
     }
 }

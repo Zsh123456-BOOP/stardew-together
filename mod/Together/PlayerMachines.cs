@@ -11,6 +11,21 @@ public sealed partial class PlayerExecutor {
     private bool machineUnreachable;
     private Point? machineTile;
     private readonly HashSet<Point> machinesVisited=new();
+    internal static Dictionary<Item,int> MachineConsumption(Farmer p,StardewValley.Object machine,Item input) {
+        var data=machine.GetMachineData()??throw new InvalidOperationException("not_a_machine");
+        if(!MachineDataUtility.TryGetMachineOutputRule(machine,data,MachineOutputTrigger.ItemPlacedInMachine,input,p,Game1.currentLocation,out var rule,out var trigger,out _,out _))throw new InvalidOperationException("machine_input_rule_or_count_unavailable");
+        if(!MachineDataUtility.HasAdditionalRequirements(p.Items,data.AdditionalConsumedItems,out _))throw new InvalidOperationException("machine_fuel_or_additional_ingredients_missing");
+        var consumption=new Dictionary<Item,int>();
+        if(trigger.RequiredCount>0)consumption[input]=trigger.RequiredCount;
+        foreach(var extra in data.AdditionalConsumedItems??new()) {
+            int need=extra.RequiredCount;
+            foreach(var item in p.Items.Where(i=>i!=null&&(i.ItemId==extra.ItemId||i.QualifiedItemId==extra.ItemId))) {
+                int take=Math.Min(need,item.Stack-consumption.GetValueOrDefault(item));if(take<=0)continue;consumption[item]=consumption.GetValueOrDefault(item)+take;need-=take;if(need==0)break;
+            }
+            if(need>0)throw new InvalidOperationException("machine_material_requirements_overlap");
+        }
+        return consumption;
+    }
     private void StartMachines(JsonElement args) {
         machineMode=AgentToolRegistry.Text(args,"mode","collect");machineKind=AgentToolRegistry.Text(args,"machine","");machineInput=AgentToolRegistry.Text(args,"item","");
         machineGoal=AgentToolRegistry.Text(args,"goal_id","");machineOutput=AgentToolRegistry.Text(args,"output","");machineCount=AgentToolRegistry.Number(args,"count",0);
@@ -37,24 +52,14 @@ public sealed partial class PlayerExecutor {
         if(machineMode=="collect") {
             var output=machine.heldObject.Value;
             if(output==null||!machine.readyForHarvest.Value)throw new InvalidOperationException("machine_output_changed");
-            if(!p.couldInventoryAcceptThisItem(output))throw new InvalidOperationException("machine_output_inventory_full");
+            CapacityAdapter.RequireReceive(p,output);
             string id=output.QualifiedItemId;int before=p.Items.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack);
             machine.checkForAction(p);int gained=p.Items.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack)-before;
             Current!.effects.Add(new{kind="native_machine_collection",location=destination,tile,item=id,gained});
             if(gained<=0)throw new InvalidOperationException("machine_collection_not_verified");
         } else {
             var input=p.Items.FirstOrDefault(i=>i?.QualifiedItemId==machineInput)??throw new InvalidOperationException("machine_input_missing");
-            if(!MachineDataUtility.TryGetMachineOutputRule(machine,data,MachineOutputTrigger.ItemPlacedInMachine,input,p,Game1.currentLocation,out var rule,out var trigger,out _,out _))throw new InvalidOperationException("machine_input_rule_or_count_unavailable");
-            if(!MachineDataUtility.HasAdditionalRequirements(p.Items,data.AdditionalConsumedItems,out _))throw new InvalidOperationException("machine_fuel_or_additional_ingredients_missing");
-            var consumption=new Dictionary<Item,int>();
-            if(trigger.RequiredCount>0)consumption[input]=trigger.RequiredCount;
-            foreach(var extra in data.AdditionalConsumedItems??new()) {
-                int need=extra.RequiredCount;
-                foreach(var item in p.Items.Where(i=>i!=null&&(i.ItemId==extra.ItemId||i.QualifiedItemId==extra.ItemId))) {
-                    int take=Math.Min(need,item.Stack-consumption.GetValueOrDefault(item));if(take<=0)continue;consumption[item]=consumption.GetValueOrDefault(item)+take;need-=take;if(need==0)break;
-                }
-                if(need>0)throw new InvalidOperationException("machine_material_requirements_overlap");
-            }
+            var consumption=MachineConsumption(p,machine,input);
             ValidateConsumption?.Invoke(consumption,machineGoal,machineOutput);
             var before=consumption.ToDictionary(x=>x.Key,x=>x.Key.Stack);
             // The native machine method consumes its own inputs/fuel and starts its

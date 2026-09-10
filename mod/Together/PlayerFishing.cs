@@ -74,7 +74,7 @@ public sealed partial class PlayerExecutor {
         if(Current.completed>=fishRequested){Finish("succeeded");return;}
         if(fishCasts>=Math.Max(10,fishRequested*4))throw new InvalidOperationException("fishing_attempt_budget_reached");
         if(Game1.player.Stamina<fishReserve+8||Game1.player.health<30||Game1.timeOfDay>=2200)throw new InvalidOperationException("fishing_resource_or_time_reserve_reached");
-        if(Game1.player.Items.Count(i=>i==null)<2)throw new InvalidOperationException("fishing_inventory_space_required");
+        CapacityAdapter.RequireSlots(Game1.player,1);
         if(!FishingRules.Eligible(Game1.currentLocation,rod,fishTarget))throw new InvalidOperationException("target_fish_window_closed");
         fishLandingChecked=false;Game1.player.faceDirection(fishDirection);Game1.player.BeginUsingTool();
         if(!Game1.player.UsingTool)throw new InvalidOperationException("native_cast_not_started");

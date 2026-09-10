@@ -28,6 +28,8 @@ public sealed class Config {
     public int AutoplayMaxCallsPerDay {get;set;}=180;
     public long ModelTokenBudgetPerDay {get;set;}=1000000;
     public int ModelRequestByteLimit {get;set;}=240000;
+    public bool AgentOverlay {get;set;}=true;
+    public float AgentOverlayOpacity {get;set;}=.60f;
     public bool EnableLab {get;set;}
 }
 
@@ -69,6 +71,7 @@ public sealed partial class ModEntry:Mod {
         SetupCustomPartner();
         SetupKnowledge();
         SetupAutoplay();
+        SetupAgentOverlay();
         NativeQuestIdentity.Install(ModManifest.UniqueID);
         helper.Events.GameLoop.GameLaunched+=(_,_)=>{
             api=helper.ModRegistry.GetApi<ICompanionControl>("ThaliaFawnheart.TheStardewSquad");
@@ -183,7 +186,7 @@ public sealed partial class ModEntry:Mod {
         if(Data.SchemaVersion>6){canPersist=false;Notice="这是更新版本的同行记录，请先更新 Mod；本次不覆盖它。";return;}
         Data.SchemaVersion=6;Data.Autoplay.Schedule.Suspend();Data.Autoplay.ReconcileSleep(Game1.Date.TotalDays);
         AttachMemoryArchive();
-        if(Data.Autoplay.Status=="running"){Data.Autoplay.Status="paused";Data.Autoplay.Detail="重新载入后先核对状态，使用 together_agent resume 继续。";}
+        if(Data.Autoplay.Status=="running"&&!Data.Autoplay.Survival.AutoResume){Data.Autoplay.Status="paused";Data.Autoplay.Detail="重新载入后先核对状态，使用 together_agent resume 继续。";}
         factsMinute=-1;RefreshFacts(true);
         foreach(var p in Data.People.Values) if(p.Job?.Status is "active" or "waiting") {p.Job.Status="paused";p.Job.Command=null;p.Job.TravelCommand=null;p.Job.Detail="上次的小约定还在；点继续后重新检查环境。";}
         foreach(var p in Data.People.Values){p.DailyCompanion??=p.Job!=null;p.NewDay(Game1.Date.TotalDays);}
@@ -196,6 +199,7 @@ public sealed partial class ModEntry:Mod {
         EnsureBudget();autoAt=DateTime.UtcNow.AddSeconds(30);
         Helper.GameContent.InvalidateCache("Data/Characters");EnsureCustomPartner(true);
         if(Settings.EnableLab)Game1.options.pauseWhenOutOfFocus=false;
+        ResumeNativeCheckpoint();
     }
     // State is committed by SMAPI's Saving event together with the game save.
     // Dialogue/UI changes remain in memory until that checkpoint, so a day reload

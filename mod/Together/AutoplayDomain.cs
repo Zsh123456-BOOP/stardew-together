@@ -4,6 +4,9 @@ namespace Together;
 
 // Serializable checkpoints contain observations and intentions, never an API credential.
 public sealed class AutoplayState {
+    public SurvivalState Survival {get;set;}=new();
+    public CapacityState Capacity {get;set;}=new();
+    public SurvivalQuality Quality {get;set;}=new();
     public RoutinePolicy Routine {get;set;}=new();
     public ProgressCampaign Campaign {get;set;}=new();
     public Dictionary<string,int> ProfessionChoices {get;set;}=new();

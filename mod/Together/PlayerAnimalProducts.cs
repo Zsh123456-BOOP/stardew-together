@@ -12,14 +12,14 @@ public sealed partial class PlayerExecutor {
         if(careCollectChest!=null&&Game1.activeClickableMenu is ItemGrabMenu menu) {
             if(!ReferenceEquals(menu.ItemsToGrabMenu.actualInventory,careCollectChest.GetItemsForPlayer()))throw new InvalidOperationException("auto_grabber_inventory_changed");
             if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(180);
-            if(menu.heldItem!=null){menu.heldItem=Game1.player.addItemToInventory(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("animal_products_inventory_full");}
+            if(menu.heldItem!=null){menu.heldItem=Game1.player.addItemToInventory(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");}
             var source=menu.ItemsToGrabMenu.actualInventory;
             int slot=Enumerable.Range(0,Math.Min(source.Count,menu.ItemsToGrabMenu.inventory.Count)).FirstOrDefault(i=>source[i]!=null,-1);
             if(slot<0||careCount>0&&Current!.completed>=careCount) {
                 if(menu.readyToClose()){menu.exitThisMenu();careCollected.Add(destination+":"+careCollectTile);careCollectTile=null;careCollectChest=null;}
                 return;
             }
-            var item=source[slot];if(!Game1.player.couldInventoryAcceptThisItem(item))throw new InvalidOperationException("animal_products_inventory_full");
+            var item=source[slot];CapacityAdapter.RequireReceive(Game1.player,item);
             string id=item.QualifiedItemId;int beforeSource=source.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack),before=Game1.player.Items.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack);
             var bounds=menu.ItemsToGrabMenu.inventory[slot].bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);
             int gained=Game1.player.Items.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack)-before,removed=beforeSource-source.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack);
@@ -44,7 +44,7 @@ public sealed partial class PlayerExecutor {
         if(!AtWalkTarget){MonitorWalk();return;}StopWalk();Face(at);Adjacent(at);
         if(Current.phase=="animal_products_opening")return;
         if(!Game1.currentLocation.objects.TryGetValue(at.ToVector2(),out var product))throw new InvalidOperationException("animal_product_changed");
-        if(careCollectChest==null&&!Game1.player.couldInventoryAcceptThisItem(product))throw new InvalidOperationException("animal_products_inventory_full");
+        if(careCollectChest==null&&!CapacityAdapter.CanReceive(Game1.player,product))throw new InvalidOperationException("capacity_no_stackable_room");
         Game1.player.CurrentToolIndex=careSlot;string qid=product.QualifiedItemId;int beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         if(!Game1.tryToCheckAt(at.ToVector2(),Game1.player))throw new InvalidOperationException("native_animal_product_interaction_rejected");
         if(careCollectChest!=null){Current.phase="animal_products_opening";return;}

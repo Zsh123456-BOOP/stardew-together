@@ -30,7 +30,7 @@ public sealed partial class PlayerExecutor {
         }
         if(menu.heldItem!=null)throw new InvalidOperationException("unexpected_geode_cursor_item");
         if(geodeSpent+25>geodeBudget||Game1.player.Money-25<geodeKeep)throw new InvalidOperationException("geode_budget_exhausted");
-        if(Game1.player.freeSpotsInInventory()<1)throw new InvalidOperationException("geode_output_space_required");
+        CapacityAdapter.RequireSlots(Game1.player,1); // Unknown native geode output: reserve a slot conservatively.
         geodeSlot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is {} item&&Utility.IsGeode(item)&&(geodeFilter.Length==0||item.QualifiedItemId==geodeFilter),-1);
         if(geodeSlot<0)throw new InvalidOperationException("requested_geodes_exhausted");
         var input=Game1.player.Items[geodeSlot];ValidateConsumption?.Invoke(new Dictionary<Item,int>{{input,1}},"","");geodeItem=input.QualifiedItemId;geodeStock=GeodeInventory(menu);geodeMoney=Game1.player.Money;

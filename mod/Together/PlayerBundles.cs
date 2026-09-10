@@ -66,7 +66,7 @@ public sealed partial class PlayerExecutor {
         if(!JunimoNoteMenu.canClick||JunimoNoteMenu.screenSwipe!=null||DateTime.UtcNow<nextInteraction)return;
         nextInteraction=DateTime.UtcNow.AddMilliseconds(200);
         if(donationClosing) {
-            if(menu.heldItem!=null){menu.heldItem=menu.inventory.tryToAddItem(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("bundle_remainder_inventory_full");}
+            if(menu.heldItem!=null){menu.heldItem=menu.inventory.tryToAddItem(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");}
             if(menu.partialDonationItem!=null)throw new InvalidOperationException("bundle_partial_items_require_recovery");
             if(menu.specificBundlePage){var back=menu.backButton?.bounds??menu.upperRightCloseButton.bounds;menu.receiveLeftClick(back.Center.X,back.Center.Y);return;}
             if(menu.presentButton!=null) {var bounds=menu.presentButton.bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);return;}
@@ -103,7 +103,7 @@ public sealed partial class PlayerExecutor {
                 var itemBounds=menu.inventory.inventory[choice.index].bounds;menu.receiveLeftClick(itemBounds.Center.X,itemBounds.Center.Y);
                 if(menu.heldItem==null)throw new InvalidOperationException("bundle_native_pickup_rejected");
                 var bounds=slot.bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);
-                if(menu.heldItem!=null){menu.heldItem=menu.inventory.tryToAddItem(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("bundle_remainder_inventory_full");}
+                if(menu.heldItem!=null){menu.heldItem=menu.inventory.tryToAddItem(menu.heldItem);if(menu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");}
                 if(cc.bundles[donationBundle][ingredient])break;
             }
             var consumed=before.Select(p=>new{item=p.Key,count=p.Value-Game1.player.Items.Where(i=>i?.QualifiedItemId==p.Key).Sum(i=>i.Stack)}).ToArray();

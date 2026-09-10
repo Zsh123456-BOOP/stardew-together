@@ -15,7 +15,7 @@ public sealed partial class PlayerExecutor {
         if(masterySkill is <0 or >4)throw new InvalidOperationException("native_mastery_skill_required");
         if(Game1.player.stats.Get(StatKeys.Mastery(masterySkill))>0){Finish("succeeded");return;}
         if(MasteryTrackerMenu.getCurrentMasteryLevel()<=Game1.stats.Get("masteryLevelsSpent"))throw new InvalidOperationException("unspent_native_mastery_level_required");
-        if(Game1.player.Items.Count(i=>i==null)<3)throw new InvalidOperationException("mastery_reward_inventory_space_required");
+        CapacityAdapter.RequireSlots(Game1.player,3);
         destination="MasteryCave";Current!.phase="mastery_travel";
     }
     private void TickMastery() {
@@ -27,7 +27,7 @@ public sealed partial class PlayerExecutor {
             var field=typeof(MasteryTrackerMenu).GetField("which",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
             if((int?)field?.GetValue(menu)!=masterySkill||Game1.currentLocation.NameOrUniqueName!=destination)throw new InvalidOperationException("wrong_mastery_plaque");
             if(menu.mainButton?.visible!=true)throw new InvalidOperationException("native_mastery_claim_unavailable");
-            if(Game1.player.Items.Count(i=>i==null)<3)throw new InvalidOperationException("mastery_reward_inventory_space_changed");
+            CapacityAdapter.RequireSlots(Game1.player,3);
             uint spent=Game1.stats.Get("masteryLevelsSpent");var bounds=menu.mainButton.bounds;menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);
             if(Game1.player.stats.Get(StatKeys.Mastery(masterySkill))==0||Game1.stats.Get("masteryLevelsSpent")!=spent+1)throw new InvalidOperationException("native_mastery_claim_not_verified");
             Current.effects.Add(new{kind="native_mastery_reward",skill=masterySkill,spent_before=spent,spent_after=Game1.stats.Get("masteryLevelsSpent"),recipes_learned=KnownRecipeKeys().Except(masteryRecipes).ToArray(),inventory=AgentToolRegistry.Inventory()});Current.completed=1;Current.phase="mastery_claimed";return;

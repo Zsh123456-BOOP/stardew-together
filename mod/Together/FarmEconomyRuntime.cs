@@ -99,7 +99,7 @@ public sealed partial class ModEntry {
             var prototype=ItemRegistry.Create(id);sizes[id]=prototype.maximumStackSize();
             room[id]=Game1.player.Items.Where(i=>i!=null&&i.canStackWith(prototype)).Sum(i=>Math.Max(0,i.maximumStackSize()-i.Stack));
         }
-        return new(Game1.player.freeSpotsInInventory(),room,sizes);
+        return new(CapacityAdapter.Of(Game1.player).FreeSlots,room,sizes);
     }
     internal object ExecuteFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)throw new InvalidOperationException("economy_plan_still_computing");var result=job.Task.GetAwaiter().GetResult();

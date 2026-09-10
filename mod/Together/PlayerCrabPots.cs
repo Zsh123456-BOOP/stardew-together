@@ -51,7 +51,7 @@ public sealed partial class PlayerExecutor {
         } else {
             if(!l.objects.TryGetValue(at.ToVector2(),out var o)||o is not CrabPot pot||pot.owner.Value!=p.UniqueMultiplayerID)throw new InvalidOperationException("crab_pot_changed");
             if(pot.readyForHarvest.Value&&pot.heldObject.Value is {} output) {
-                if(!p.couldInventoryAcceptThisItem(output))throw new InvalidOperationException("crab_pot_inventory_full");
+                CapacityAdapter.RequireReceive(p,output);
                 string item=output.QualifiedItemId;int before=p.Items.Where(i=>i?.QualifiedItemId==item).Sum(i=>i.Stack),caught=FishingRules.Caught(item);
                 if(!pot.checkForAction(p)||pot.heldObject.Value!=null||p.Items.Where(i=>i?.QualifiedItemId==item).Sum(i=>i.Stack)<=before)throw new InvalidOperationException("native_crab_pot_collection_not_verified");
                 int nativeCatches=FishingRules.Caught(item)-caught;if(IsTrapFish(item)&&nativeCatches<=0)throw new InvalidOperationException("native_trap_fish_record_not_verified");

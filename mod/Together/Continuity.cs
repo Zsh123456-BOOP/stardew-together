@@ -16,11 +16,19 @@ public sealed partial class ModEntry {
         p.Life.Experiences.Add(new(){Id=id+":partial",Day=Game1.Date.TotalDays,Minute=Minute,Summary=detail,Skill=skill});
     }
     private readonly Dictionary<string,double> frameStages=new();
+    private readonly Dictionary<string,Queue<double>> measuredStages=new();
+    private long performanceDayFrames;private double performanceDayTotal,performanceDayMax;
+    private void ResetDayPerformance(){performanceDayFrames=0;performanceDayTotal=performanceDayMax=0;measuredFrames.Clear();measuredStages.Clear();}
+    private static object TimingSummary(IEnumerable<double> samples) {
+        var v=samples.OrderBy(x=>x).ToArray();return new{count=v.Length,mean_ms=v.Length==0?0:v.Average(),p95_ms=v.Length==0?0:v[(int)((v.Length-1)*.95)],p99_ms=v.Length==0?0:v[(int)((v.Length-1)*.99)],max_ms=v.Length==0?0:v[^1]};
+    }
     private void FrameStage(string name,ref long start) {
         long now=System.Diagnostics.Stopwatch.GetTimestamp();double ms=(now-start)*1000.0/System.Diagnostics.Stopwatch.Frequency;start=now;
+        if(!measuredStages.TryGetValue(name,out var samples))measuredStages[name]=samples=new();samples.Enqueue(ms);if(samples.Count>36000)samples.Dequeue();
         if(ms>=8)frameStages[name]=ms;
     }
     private void ProfileFrame(double milliseconds) {
+        performanceDayFrames++;performanceDayTotal+=milliseconds;performanceDayMax=Math.Max(performanceDayMax,milliseconds);
         measuredFrames.Enqueue(milliseconds);if(measuredFrames.Count>36000)measuredFrames.Dequeue();
         if(milliseconds>=50&&DateTime.UtcNow>=nextSlowFrameLog) {
             nextSlowFrameLog=DateTime.UtcNow.AddSeconds(10);
@@ -31,7 +39,8 @@ public sealed partial class ModEntry {
     private readonly Queue<double> measuredFrames=new();
     private object Performance() {
         var values=measuredFrames.OrderBy(v=>v).ToArray();
-        return new{samples=values.Length,mean_ms=values.Length==0?0:values.Average(),p95_ms=values.Length==0?0:values[(int)((values.Length-1)*.95)],max_ms=values.Length==0?0:values[^1],p99_ms=values.Length==0?0:values[(int)((values.Length-1)*.99)],frames_over_16ms=values.Count(v=>v>16.667),
+        return new{day_samples=performanceDayFrames,day_mean_ms=performanceDayFrames==0?0:performanceDayTotal/performanceDayFrames,day_max_ms=performanceDayMax,percentile_scope="last up to 36000 updates of current day",samples=values.Length,mean_ms=values.Length==0?0:values.Average(),p95_ms=values.Length==0?0:values[(int)((values.Length-1)*.95)],max_ms=values.Length==0?0:values[^1],p99_ms=values.Length==0?0:values[(int)((values.Length-1)*.99)],frames_over_16ms=values.Count(v=>v>16.667),
+            stage_timings=measuredStages.ToDictionary(k=>k.Key,k=>TimingSummary(k.Value)),
             scope="Together main-thread Update; adapter movement separately measured in bridge state; excludes vanilla baseline"};
     }
 }

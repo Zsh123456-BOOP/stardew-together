@@ -13,7 +13,7 @@ public sealed partial class ModEntry {
             Data.Autoplay.Record("native_notice",AgentJson.Encode(new{text=dialogue.getCurrentString(),event_active=Game1.eventUp}));
             dialogue.finishTyping();dialogue.receiveLeftClick(dialogue.xPositionOnScreen+16,dialogue.yPositionOnScreen+16);return true;
         }
-        if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:true} chooser&&ApplyProfessionPolicy(chooser))return true;
+        if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:true} chooser&&(ApplyProfessionPolicy(chooser)||SurvivalProfession(chooser)))return true;
         if(Game1.activeClickableMenu is LevelUpMenu {isProfessionChooser:false,isActive:true} level&&level.CanReceiveInput()) {
             level.okButtonClicked();Data.Autoplay.Record("native_notice","已原生确认无分支技能升级");automaticMenuAt=DateTime.UtcNow.AddMilliseconds(400);return true;
         }

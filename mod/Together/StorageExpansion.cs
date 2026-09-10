@@ -39,7 +39,7 @@ public sealed partial class ModEntry {
             if(stored>0)args=new{goal="withdraw",item="(O)388",count=Math.Min(missing,stored),until=2200};
             else if(job.actor.EndsWith(":"+PartnerName)&&CargoItem(WorkActor(job.actor),"(O)388") is >0 and var carried)args=new{goal="withdraw",item="(O)388",count=Math.Min(missing,carried),until=2200};
             else {
-                if(!Game1.player.couldInventoryAcceptThisItem(ItemRegistry.Create("(O)388"))){StopSemanticWork(job,"storage_support_needs_player_pickup_space_or_existing_wood");return true;}
+                if(!CapacityAdapter.CanReceive(Game1.player,ItemRegistry.Create("(O)388"))){StopSemanticWork(job,"capacity_no_stackable_room");return true;}
                 args=new{goal="wood",location="Farm",count=missing,include_trees=true,until=2200};
             }
         }
@@ -60,7 +60,8 @@ public sealed partial class ModEntry {
             if(missing>0&&ReceivePartnerCargo(job,"(O)388",missing))return true;
             if(!recipe.doesFarmerHaveIngredientsInInventory())return false;
             CompactPlayerStacks();
-            if(!Game1.player.Items.Any(i=>i==null))throw new InvalidOperationException("storage_expansion_requires_one_crafting_slot");
+            var capacity=CapacityAdapter.After(Game1.player,CapacityAdapter.Ingredients(Game1.player,recipe),recipe.createItem());
+            if(!capacity.Feasible)throw new InvalidOperationException(capacity.Reason);
             // Conservative budget reservation survives interrupted crafting. Native
             // production still checks all shared-goal material reservations.
             policy.WoodReserved+=woodCost;WorkChild(job,"player.craft",new{recipe="Chest",count=1},"storage_expansion_craft");return true;
@@ -94,7 +95,7 @@ public sealed partial class ModEntry {
         if(Game1.currentLocation!=farm)throw new InvalidOperationException("storage_expansion_location_changed");
         if(job.ChildKind=="storage_expansion_place") {
             if(!farm.objects.TryGetValue(tile.ToVector2(),out var placed)||placed is not Chest chest||!chest.playerChest.Value||chest.QualifiedItemId!="(BC)130")throw new InvalidOperationException("native_storage_placement_not_verified");
-            chest.modData[WorkChestRole]="output";job.evidence.Add(new{kind="native_shared_storage_expanded",location="Farm",tile,item=chest.QualifiedItemId});job.ExpansionTile=null;job.StorageTile=tile;job.StorageLocation="Farm";return;
+            chest.modData[WorkChestRole]="output";job.evidence.Add(new{kind="native_shared_storage_expanded",location="Farm",tile,item=chest.QualifiedItemId});job.ExpansionTile=null;job.ReliefAction="";job.StorageTile=tile;job.StorageLocation="Farm";return;
         }
         int slot=WorkSlot(i=>i.QualifiedItemId=="(BC)130");if(slot<0)throw new InvalidOperationException("crafted_chest_missing");
         if(IsPlacementProtected("Farm",tile)||farm.objects.ContainsKey(tile.ToVector2())||farm.terrainFeatures.ContainsKey(tile.ToVector2()))throw new InvalidOperationException("storage_placement_site_changed");

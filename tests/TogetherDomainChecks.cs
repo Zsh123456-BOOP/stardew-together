@@ -1,6 +1,10 @@
 using System.Text.Json;
 using Together;
 
+CapacityChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
+SurvivalChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 OperatingRevisionChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 BusinessChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

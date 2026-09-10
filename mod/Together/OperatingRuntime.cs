@@ -37,6 +37,7 @@ public sealed partial class ModEntry {
         foreach(var group in Data.SharedGoals.Where(g=>g.Status=="active").SelectMany(g=>g.Nodes).Where(n=>n.Kind=="gather"&&n.ToPrepare>0).GroupBy(n=>n.Item))p.MaterialTargets[group.Key]=Math.Max(p.MaterialTargets.GetValueOrDefault(group.Key),group.Sum(n=>n.ToPrepare)+AccessibleStock(group.Key));
     }
     private void TickCooperativeBusiness() {
+        if(Data.Autoplay.Survival.NativePlayerOnly)return;
         try {TickCooperativeCore();}
         catch(Exception e){Data.Operating.PartnerReason="cooperation_blocked:"+e.Message;cooperationAt=DateTime.UtcNow.AddSeconds(30);Data.Autoplay.Record("cooperation_error",Data.Operating.PartnerReason);WakeAgent("cooperation_requires_review");}
     }

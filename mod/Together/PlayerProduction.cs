@@ -43,7 +43,7 @@ public sealed partial class PlayerExecutor {
             // Native add-to-inventory returns the unaccepted remainder. Keep it in
             // the native menu if capacity changed; never silently drop the output.
             productionMenu.heldItem=Game1.player.addItemToInventory(productionMenu.heldItem);
-            if(productionMenu.heldItem!=null)throw new InvalidOperationException("crafted_output_needs_inventory_space");
+            if(productionMenu.heldItem!=null)throw new InvalidOperationException("capacity_no_stackable_room");
         }
         if(productionRemaining==0){productionMenu.exitThisMenu();productionMenu=null;Finish("succeeded");return;}
         for(int page=0;page<productionMenu.pagesOfCraftingRecipes.Count;page++) {
@@ -51,28 +51,24 @@ public sealed partial class PlayerExecutor {
             if(choice.Key==null)continue;
             var recipe=choice.Value;
             if(!recipe.doesFarmerHaveIngredientsInInventory())throw new InvalidOperationException("recipe_ingredients_missing");
-            var expected=recipe.createItem();if(!Game1.player.couldInventoryAcceptThisItem(expected))throw new InvalidOperationException("craft_output_capacity_required");
-            var consumption=new Dictionary<Item,int>();
-            foreach(var need in recipe.recipeList) {
-                int remaining=need.Value;
-                foreach(var item in Game1.player.Items.Reverse().Where(i=>CraftingRecipe.ItemMatchesForCrafting(i,need.Key))) {
-                    int take=Math.Min(remaining,item.Stack-consumption.GetValueOrDefault(item));
-                    if(take>0){consumption[item]=consumption.GetValueOrDefault(item)+take;remaining-=take;}
-                    if(remaining==0)break;
-                }
-                if(remaining>0)throw new InvalidOperationException("recipe_ingredients_overlap_or_missing");
-            }
+            var expected=recipe.createItem();
+            var consumption=CapacityAdapter.Ingredients(Game1.player,recipe);
             if(Current.skill=="player.cook"&&expected.Quality==0) {
                 var seasoning=Game1.player.Items.LastOrDefault(i=>i?.QualifiedItemId=="(O)917"&&i.Stack>consumption.GetValueOrDefault(i));
-                if(seasoning!=null)consumption[seasoning]=consumption.GetValueOrDefault(seasoning)+1;
+                if(seasoning!=null){consumption[seasoning]=consumption.GetValueOrDefault(seasoning)+1;expected.Quality=2;}
             }
             ValidateConsumption?.Invoke(consumption,productionGoal,expected.QualifiedItemId);
+            var capacity=CapacityAdapter.After(Game1.player,consumption,expected);
+            if(!capacity.Feasible)throw new InvalidOperationException(capacity.Reason);
             productionMenu.currentCraftingPage=page;
             // Use the game's own handler: consumes ingredients, emits quest events,
             // increments crafting/cooking statistics and checks achievements.
             var method=typeof(CraftingPage).GetMethod("clickCraftingRecipe",BindingFlags.Instance|BindingFlags.NonPublic)??throw new InvalidOperationException("native_crafting_handler_changed");
             int before=Current.skill=="player.cook"?Game1.player.recipesCooked.GetValueOrDefault(expected.ItemId):Game1.player.craftingRecipes[productionRecipe];
+            var inventoryBefore=Game1.player.Items.Select((i,n)=>new{slot=n,id=i?.QualifiedItemId,count=i?.Stack??0,quality=i?.Quality??0}).ToArray();
             method.Invoke(productionMenu,new object[]{choice.Key,true});
+            var inventoryAfter=Game1.player.Items.Select((i,n)=>new{slot=n,id=i?.QualifiedItemId,count=i?.Stack??0,quality=i?.Quality??0}).ToArray();
+            Current.effects.Add(new{kind="native_recipe_order",recipe=productionRecipe,remaining_before=productionRemaining,inventory_before=inventoryBefore,inventory_after=inventoryAfter,held=productionMenu.heldItem==null?null:new{id=productionMenu.heldItem.QualifiedItemId,count=productionMenu.heldItem.Stack},capacity});
             int after=Current.skill=="player.cook"?Game1.player.recipesCooked.GetValueOrDefault(expected.ItemId):Game1.player.craftingRecipes[productionRecipe];
             if(productionMenu.heldItem?.QualifiedItemId!=expected.QualifiedItemId||after<=before)throw new InvalidOperationException("native_crafting_result_not_verified");
             Current.effects.Add(new{kind="native_recipe",recipe=productionRecipe,item=expected.QualifiedItemId,count=productionMenu.heldItem.Stack,native_count_before=before,native_count_after=after});

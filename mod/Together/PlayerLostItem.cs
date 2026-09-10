@@ -34,7 +34,7 @@ public sealed partial class PlayerExecutor {
         // callback from observation: this quest's implementation mutates even in probe mode.
         if(!Game1.currentLocation.overlayObjects.TryGetValue(lostTile.ToVector2(),out var item)||item.QualifiedItemId!=q.ItemId.Value)
             throw new InvalidOperationException("native_lost_item_not_spawned_reenter_location");
-        if(!Game1.player.couldInventoryAcceptThisItem(item))throw new InvalidOperationException("lost_item_inventory_full");
+        CapacityAdapter.RequireReceive(Game1.player,item);
         if(Math.Abs(Game1.player.TilePoint.X-lostTile.X)+Math.Abs(Game1.player.TilePoint.Y-lostTile.Y)>1) {
             if(ownedController==null)Walk(Approach(lostTile,true));else MonitorWalk();return;
         }

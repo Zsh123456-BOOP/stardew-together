@@ -27,6 +27,7 @@ public sealed partial class PlayerExecutor {
     public Func<bool>? ApplyNightPolicy {get;set;}
     public Action<string,JsonElement>? ValidateOperation {get;set;}
     public Action<int>? NativeSleepRequested {get;set;}
+    public Action<PlayerAction>? NativeFinished {get;set;}
     public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
     public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu or LevelUpMenu {isProfessionChooser:false});
@@ -588,7 +589,7 @@ public sealed partial class PlayerExecutor {
             var after=TileState(target);Current.effects.Add(new{before=actionTargetBefore,after,effect_observed=AgentJson.Encode(actionTargetBefore)!=AgentJson.Encode(after)});actionTargetBefore=null;
         }
         Current.effects.Add(new{kind="navigation_summary",path_searches=pathSearches,path_search_ms=pathSearchMs,path_retries=pathRetries,active_seconds=activeSeconds});
-        StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;
+        StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {
         foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp.TargetName=="VolcanoEntrance"?new Warp(warp.X,warp.Y,NormalizeWarpTarget(warp.TargetName),warp.TargetX,warp.TargetY,false):warp;

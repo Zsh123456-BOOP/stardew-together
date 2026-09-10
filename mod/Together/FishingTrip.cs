@@ -29,7 +29,7 @@ public sealed partial class ModEntry {
         j.gained=Math.Max(0,FishingRules.Caught(j.Item)-j.FishBaseline);
         if(j.gained>=j.requested){StopSemanticWork(j,"native_target_catches_verified",true);return;}
         if(Game1.timeOfDay>=j.Until||(DateTime.UtcNow-j.Started).TotalMinutes>=35||j.Attempts>=200){StopSemanticWork(j,"fishing_trip_time_or_attempt_budget");return;}
-        if(j.Storing||!OperationsPolicy.CapacityReady(Game1.player.freeSpotsInInventory(),j.RequiredSlots)){j.Storing=true;TickWorkStorage(j);return;}
+        if(j.Storing||!CapacityAdapter.HasSlots(Game1.player,1)){j.Storing=true;TickWorkStorage(j);return;}
         if(Game1.player.Stamina<j.Reserve+10||Game1.player.health<35){if(TryWorkFood(j))return;StopSemanticWork(j,"fishing_trip_supply_reserve");return;}
         var location=FishingLocations(j.Item,j.FishLocation).FirstOrDefault(l=>!j.Excluded.Contains("fish:"+l.NameOrUniqueName));
         if(location==null){StopSemanticWork(j,"target_fish_no_current_reachable_conditions_or_sites");return;}

@@ -24,11 +24,66 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "preparation_probe":
+                PauseAutoplay("lab_preparation_probe");Settings.Autonomy=false;
+                Data.Business.Enabled=false;Data.FarmInvestment.Enabled=false;Data.Maintenance.Enabled=false;Data.Autoplay.Routine.Enabled=false;
+                Data.Autoplay=new(){Goal="原生整备与面板验证",Status="running",StartDay=Game1.Date.TotalDays,RunId=Guid.NewGuid().ToString("N")};
+                Data.Autoplay.Routine.Enabled=false;Data.Autoplay.Campaign.Enabled=false;Data.Maintenance.Orders.Clear();foreach(var goal in Data.SharedGoals)goal.AutoExecute=false;
+                Data.Autoplay.Survival.NativePlayerOnly=true;agentLabProbe=true;agentNeedsDecision=false;agentStarting=false;agentNext=DateTime.UtcNow.AddHours(1);agentWakeReasons.Clear();
+                return JsonSerializer.Serialize(AgentPlanRead());
+            case "pickup_block_probe":playerExecutor.LabPickupBlock=()=>Settings.EnableLab&&Context.IsWorldReady&&Game1.player.Name=="AgentLab";return AgentJson.Encode(new{armed=true,trigger="next real loose drop observed",kind="lab fault injection"});
+            case "preparation_resume":
+                StartAutoplay(Data.Autoplay.Goal);Settings.Autonomy=false;agentLabProbe=true;agentNeedsDecision=false;agentStarting=false;agentNext=DateTime.UtcNow.AddHours(1);agentWakeReasons.Clear();return AgentJson.Encode(AgentPlanRead());
+            case "preparation_near_full":return AgentJson.Encode(LabPackNearFull());
+            case "preparation_fault":
+                if(Arg("code") is not ("loadout_stock_changed" or "loadout_storage_busy" or "loadout_native_capacity_changed"))throw new InvalidOperationException("unsupported_fault_probe");
+                labLoadoutFault=Arg("code");return AgentJson.Encode(new{armed=labLoadoutFault,after_native_transfer=1});
+            case "preparation_shape": {
+                var task=new ScheduledAgentTask{spec=new(){id="lab-shape-"+Guid.NewGuid().ToString("N"),actor="player",tool=Arg("tool"),args=root.GetProperty("args").Clone(),day=Game1.Date.TotalDays}};
+                var before=Body(Game1.player);
+                try{bool ready=PrepareTaskKit(task);return AgentJson.Encode(new{ready,before,after=Body(Game1.player)});}
+                catch(Exception ex){return AgentJson.Encode(new{error=ex.Message,before,after=Body(Game1.player),constraints=Data.Autoplay.Capacity.Constraints});}
+            }
+            case "preparation_read":return JsonSerializer.Serialize(new{preparationSummary,active=preparation!=null,body=Body(Game1.player),stores=SharedStorage().Select(s=>new{location=s.Location.NameOrUniqueName,tile=new[]{(int)s.Tile.X,(int)s.Tile.Y},items=KitInventoryEvidence(s.Chest)}),overlay=new{overlayTitle,overlayOffset,overlayVisible,bounds=new[]{overlayBounds.X,overlayBounds.Y,overlayBounds.Width,overlayBounds.Height},lines=overlayLines,overlayBuildMs,overlayWheelEvents,overlayWheelHandled,cursor=new[]{overlayLastCursor.X,overlayLastCursor.Y},selected_slot=Game1.player.CurrentToolIndex},autoplay=AutoplayDiagnostics()});
+            case "overlay_capture":capturePath=Path.Combine(Helper.DirectoryPath,"screenshots","panel.png");return JsonSerializer.Serialize(new{requested=true});
+            case "capacity_constraints":
+                Settings.Autonomy=false;
+                if(Arg("mode")=="block") {
+                    if(CapacityAdapter.HasSlots(Game1.player,1))throw new InvalidOperationException("probe_requires_real_full_bag");
+                    RecordCapacityConstraint("capacity_no_free_slot");
+                }
+                if(Arg("mode")=="guard") {
+                    try{GuardCapacity("player",Arg("tool"),root.GetProperty("args"));return JsonSerializer.Serialize(new{blocked=false});}
+                    catch(InvalidOperationException e){return JsonSerializer.Serialize(new{blocked=true,reason=e.Message});}
+                }
+                RefreshCapacityVersion();return JsonSerializer.Serialize(Data.Autoplay.Capacity);
+            case "capacity_native_sleep":return JsonSerializer.Serialize(playerExecutor.Start("player.sleep",JsonSerializer.SerializeToElement(new{})));
+            case "capacity_stack_audit": {
+                var variants=new[]{ItemRegistry.Create("(O)388"),ItemRegistry.Create("(O)388",1,2),ItemRegistry.Create("(BC)130"),ItemRegistry.Create("(O)342"),ItemRegistry.Create("(O)342")};
+                variants[3].modData["Together/lab-variant"]="left";variants[4].modData["Together/lab-variant"]="right";
+                return JsonSerializer.Serialize(CapacityAdapter.StackAudit(Game1.player.Items.Where(i=>i!=null).Concat(variants)));
+            }
+            case "capacity_read": {
+                var outputs=new[]{ItemRegistry.Create("(O)388"),ItemRegistry.Create("(O)388",1,2),ItemRegistry.Create("(BC)130")};
+                var adapter=new CapacityAdapter(Game1.player,outputs);
+                var recipe=new CraftingRecipe("Chest",false);
+                return JsonSerializer.Serialize(new{body=Body(Game1.player),capacity=adapter.Snapshot,adapter.NativeComparisons,adapter.ConservativeSplits,
+                    chest=recipe.doesFarmerHaveIngredientsInInventory()?CapacityAdapter.After(Game1.player,CapacityAdapter.Ingredients(Game1.player,recipe),recipe.createItem()):null,
+                    action=playerExecutor.Current,menu=Game1.activeClickableMenu?.GetType().Name});
+            }
             case "dual_body_start":return StartDualBodyProbe(Arg("chain"));
             case "dual_body_read":return ReadDualBodyProbe();
             case "dual_body_metadata":return JsonSerializer.Serialize(DualBodyMetadata());
             case "agent_tool":return JsonSerializer.Serialize(agentTools.Execute(Arg("tool"),root.GetProperty("args")));
             case "agent_start":StartAutoplay(Arg("goal"));break;
+            case "survival_start":
+                StartAutoplay(Arg("goal"));SetResumeConsent(true);Data.Autoplay.Survival.NativePlayerOnly=true;
+                Settings.Autonomy=false;SurvivalRecord("survival_acceptance_started",new{day=Game1.Date.TotalDays,scope="native_farmer_only_until_stage_b",clock_rate=1});break;
+            case "survival_failure_probe":
+                if(Arg("kind")=="model")ModelUnavailable(new InvalidOperationException("lab_invalid_reply"),null,false);
+                else if(Arg("kind")=="local")RecordAgentFailure("lab_path_failed","player");
+                else throw new InvalidOperationException("unsupported_survival_probe");
+                return AgentJson.Encode(Data.Autoplay.Survival);
             case "agent_pause":PauseAutoplay("lab_pause");break;
             case "agent_ui":
                 // A watchdog may stop during a native dialogue. Replacing that menu

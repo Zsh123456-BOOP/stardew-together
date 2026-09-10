@@ -6,6 +6,7 @@ namespace Together;
 
 public sealed partial class PlayerExecutor {
     internal sealed record LooseDrop(Debris Source,Vector2 Pixel,Item Item);
+    internal Func<bool>? LabPickupBlock;
     private Debris? pickupTarget;
     private DateTime pickupProgressAt;
     private int pickupLastCount=-1,pickupWalks;
@@ -44,15 +45,16 @@ public sealed partial class PlayerExecutor {
         var observed=LooseDrops(Game1.currentLocation).ToArray();
         foreach(var drop in observed.Where(d=>centers.Any(p=>Vector2.DistanceSquared(d.Pixel,p.ToVector2()*64+new Vector2(32))<=320*320)))pickupTracked.Add(drop.Source);
         var drops=observed.Where(d=>pickupTracked.Contains(d.Source)).ToArray();
+        if(drops.Length>0&&LabPickupBlock?.Invoke()==true){LabPickupBlock=null;StopWalk();Current!.effects.Add(new{kind="lab_injected_pickup_block",remaining=drops.Length,positions=drops.Select(d=>d.Pixel).ToArray(),note="fault injection, not a claim of measured path failure"});throw new InvalidOperationException("pickup_unreachable");}
         if(drops.Length==0) {
             StopWalk();Current!.effects.Add(new{kind="pickup_verified",remaining=0,walks=pickupWalks});return false;
         }
         if(drops.Length!=pickupLastCount){pickupLastCount=drops.Length;pickupProgressAt=DateTime.UtcNow;pickupBestDistance.Clear();pickupVisited.Clear();pickupRepositions=0;}
         // Native magnetism assigns a farmer using the centre of an entire Debris
         // group, not the nearest individual chunk of a felled tree.
-        var available=drops.Where(d=>Game1.player.couldInventoryAcceptThisItem(d.Item)).GroupBy(d=>d.Source)
+        var available=drops.Where(d=>CapacityAdapter.CanReceive(Game1.player,d.Item)).GroupBy(d=>d.Source)
             .Select(g=>new LooseDrop(g.Key,g.Key.Chunks.Aggregate(Vector2.Zero,(sum,c)=>sum+c.position.Value+new Vector2(32))/g.Key.Chunks.Count,g.First().Item)).ToArray();
-        if(available.Length==0)throw new InvalidOperationException("pickup_inventory_full");
+        if(available.Length==0)throw new InvalidOperationException("capacity_no_stackable_room");
         if(pickupWalking) {
             if(!drops.Any(d=>d.Source==pickupTarget)){StopWalk();pickupWalking=false;}
             else if(!AtWalkTarget){MonitorWalk();return true;}

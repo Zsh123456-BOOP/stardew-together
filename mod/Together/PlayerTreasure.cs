@@ -20,7 +20,7 @@ public sealed partial class PlayerExecutor {
         var items=treasureChest.GetItemsForPlayer().Where(i=>i!=null).ToArray();
         treasureSpecial=items.OfType<SpecialItem>().Select(i=>i.which.Value).ToArray();
         treasureExpected=items.Where(i=>i is not SpecialItem).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
-        if(Game1.player.Items.Count(i=>i==null)<items.Count(i=>i is not SpecialItem&&i.QualifiedItemId!="(O)434"))throw new InvalidOperationException("treasure_return_inventory_space_required");
+        CapacityAdapter.RequireReceiveAll(Game1.player,items.Where(i=>i is not SpecialItem&&i.QualifiedItemId!="(O)434"));
         treasureInventory=Game1.player.Items.Where(i=>i!=null).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));treasureStamina=Game1.player.MaxStamina;
         Current!.phase="treasure_walk";treasureDeadline=DateTime.UtcNow.AddSeconds(90);
     }

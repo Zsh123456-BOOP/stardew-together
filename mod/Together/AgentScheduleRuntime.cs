@@ -65,13 +65,18 @@ public sealed partial class ModEntry {
         return new{status="queued",task_id=task.id,actor,revision=Data.Autoplay.Schedule.Revision};
     }
     private void RecordAgentFailure(string code,string actor="decision") {
-        if(agentFailures.Failed(actor,code))PauseAutoplay("同一角色无成功进展期间反复失败6次，计划已保留："+code);
+        if(SurvivalState.Fatal(code)){PauseAutoplay(code);return;}
+        if(CapacityState.IsConstraint(code)){RecordCapacityConstraint(code,actor);return;}
+        if(RecoveryPolicy.CanWait(code))return;
+        SurvivalRecord("local_failure",new{actor,code,day=Game1.Date.TotalDays});
+        if(agentFailures.Failed(actor,code))EnterSurvival("sleep","repeated_failure_six:"+actor+":"+code);
     }
     private void CompleteScheduled(ScheduledAgentTask task,JsonElement result) {
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
         if(state!="succeeded" && state!="cancelled")state="failed";
         var outcome=OperationsPolicy.Outcome(task.spec.tool,result);
+        if(CapacityState.IsConstraint(error))RecordCapacityConstraint(error!,task.spec.actor);
         if(!RecoveryPolicy.CanWait(error))LearnActionResult(task,state,error);
         LearnServiceConstraint(task,state,error);
         Data.Autoplay.Operations.LastOutcomes[task.spec.intent_id]=AgentJson.Encode(outcome);
@@ -84,9 +89,10 @@ public sealed partial class ModEntry {
             }
         }
         Data.Autoplay.Schedule.Finish(task,state,error,AgentJson.Encode(result));
+        if(state=="failed"&&!RecoveryPolicy.CanWait(error))Data.Autoplay.Survival.Abandoned.Add(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText()));
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
-        Data.Autoplay.Record("task_finished",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,state,error}));
+        Data.Autoplay.Record("task_finished",AgentJson.Encode(new{id=task.spec.id,actor=task.spec.actor,state,error,command_id=task.command_id,capacity_version=Data.Autoplay.Capacity.Version}));
         if(state=="succeeded") {
             bool emptyWork=result.TryGetProperty("deferred",out var deferred)&&deferred.ValueKind==JsonValueKind.True || task.spec.tool=="work.run"&&new[]{"completed","gained","deposited","refills"}.All(k=>!result.TryGetProperty(k,out var n)||n.GetInt32()==0);
             if(outcome.BusinessProgress){agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;}
@@ -102,6 +108,7 @@ public sealed partial class ModEntry {
         }
     }
     private void TickAgentSchedule() {
+        if(TickTaskPreparation())return;
         var schedule=Data.Autoplay.Schedule;
         foreach(var task in schedule.Tasks.Where(t=>t.state=="running").ToArray()) {
             JsonElement result;
@@ -123,6 +130,7 @@ public sealed partial class ModEntry {
             bool purchasing=PlayerExecutor.AcceptsNativeMenu(task.spec.tool);
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
+                if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
                 if(task.spec.actor=="player"&&ToolLocationContract.RequiresObservedLocation(task.spec.tool)&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
                 if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player")) {
                     if(task.wait_reason!="companion_finishing_before_sleep")Data.Autoplay.Record("intent_deferred",AgentJson.Encode(new{task.spec.id,reason="companion_finishing_before_sleep",resume_when="companion_active_work_finished"}));
@@ -130,9 +138,10 @@ public sealed partial class ModEntry {
                 }
                 if(task.wait_reason=="companion_finishing_before_sleep")task.wait_reason=null;
                 if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
-                if(Data.Business.Enabled&&task.spec.tool is "player.ship" or "player.ship_items"&&!task.spec.id.StartsWith("closing-")&&Game1.timeOfDay<1700&&Game1.player.freeSpotsInInventory()>0) {
+                if(Data.Business.Enabled&&task.spec.tool is "player.ship" or "player.ship_items"&&!task.spec.id.StartsWith("closing-")&&Game1.timeOfDay<1700&&CapacityAdapter.Of(Game1.player).FreeSlots>0) {
                     CompleteScheduled(task,JsonSerializer.SerializeToElement(new{status="succeeded",deferred=true,note="未出货、未移动；可售物品留到晚间或收工统一交付，不重复请求"}));continue;
                 }
+                if(!PrepareTaskKit(task))continue;
                 if(!AdmitOperation(task))continue;
                 CheckKnownFailure(task);
                 var result=JsonSerializer.SerializeToElement(agentTools.Execute(task.spec.tool,task.spec.args),AgentJson.Options);

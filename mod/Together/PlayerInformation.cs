@@ -32,7 +32,7 @@ public sealed partial class PlayerExecutor {
             if(letter.page<letter.mailMessage.Count-1){var page=letter.forwardButton.bounds;letter.receiveLeftClick(page.Center.X,page.Center.Y);return;}
             var gift=letter.itemsToGrab.FirstOrDefault(c=>c.item!=null);
             if(gift?.item is {} item) {
-                if(!Game1.player.couldInventoryAcceptThisItem(item))throw new InvalidOperationException("mail_gift_inventory_full_menu_preserved");
+                CapacityAdapter.RequireReceive(Game1.player,item);
                 string id=item.QualifiedItemId;int amount=item.Stack,quality=item.Quality;
                 int before=Game1.player.Items.Where(i=>i?.QualifiedItemId==id&&i.Quality==quality).Sum(i=>i.Stack);
                 letter.receiveLeftClick(gift.bounds.Center.X,gift.bounds.Center.Y);

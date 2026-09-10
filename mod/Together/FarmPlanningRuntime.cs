@@ -49,12 +49,12 @@ public sealed partial class ModEntry {
         if(fertilizer.Length>0) {
             fertilizer=ItemRegistry.QualifyItemId(fertilizer)??throw new InvalidOperationException("invalid_fertilizer_id");
             if(fertilizer is not ("(O)368" or "(O)369" or "(O)919" or "(O)370" or "(O)371" or "(O)920" or "(O)465" or "(O)466" or "(O)918"))throw new InvalidOperationException("crop_fertilizer_required");
-            max=Math.Min(max,Game1.player.Items.Where(i=>i?.QualifiedItemId==fertilizer).Sum(i=>i.Stack));
+            max=Math.Min(max,Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.QualifiedItemId==fertilizer).Sum(i=>i.Stack));
             if(max==0)throw new InvalidOperationException("planned_fertilizer_not_carried");
         }
         int manual=Math.Clamp(AgentToolRegistry.Number(args,"max_daily_manual_water",24),0,96);
         bool protectedOnly=args.TryGetProperty("require_scarecrow",out var protect)&&protect.ValueKind==JsonValueKind.True;
-        var owned=Game1.player.Items.Where(i=>i?.Category==-74).GroupBy(i=>i!.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
+        var owned=Game1.player.Items.Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74).GroupBy(i=>i!.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
         var irrigated=l.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();
         var scares=l.objects.Pairs.Where(x=>x.Value.IsScarecrow()).ToArray();
         var anchors=PlayerExecutor.Exits(l).Select(e=>new FarmCell(e.X,e.Y)).ToList();
@@ -109,7 +109,7 @@ public sealed partial class ModEntry {
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
-        return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),evaluated_seeds=options.Count,zoning=zoning.GroupBy(z=>z.Value).Select(g=>new{reason=g.Key,reserved_tiles=g.Count()}),limitations=new[]{"仅已持有种子；采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","先规划连片田地，清完区域内杂草/树枝/小石头再翻土播种；保留现有作物、树木、设备与通道","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
+        return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),evaluated_seeds=options.Count,zoning=zoning.GroupBy(z=>z.Value).Select(g=>new{reason=g.Key,reserved_tiles=g.Count()}),limitations=new[]{"仅背包及授权仓库已有种子；入库种子由任务整备取回，采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","先规划连片田地，清完区域内杂草/树枝/小石头再翻土播种；保留现有作物、树木、设备与通道","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
     }
     private Dictionary<FarmCell,string> ApplyFarmZoning(GameLocation l,List<LayoutCell> grid,List<FarmCell> anchors) {
         if(l.IsGreenhouse)return new();

@@ -32,7 +32,7 @@ public sealed class FailureKnowledge {
         }catch(JsonException){}
         return Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
     }
-    public static string Family(string reason)=>reason.StartsWith("material_target_")||reason.StartsWith("no_approved_material_")?"material_policy":
+    public static string Family(string reason)=>CapacityState.IsCapacity(reason)?"capacity":reason.StartsWith("material_target_")||reason.StartsWith("no_approved_material_")?"material_policy":
         reason is "no_matching_targets" or "no_eligible_targets_check_capability_path_or_cargo" or "remaining_targets_unreachable"?"targets":
         reason is "inventory_contains_only_protected_items" or "companion_needs_reachable_shared_capacity_or_expansion_budget"?"capacity":"transient";
     public static string ConditionKey(string actor,string tool,string args,string location="") {

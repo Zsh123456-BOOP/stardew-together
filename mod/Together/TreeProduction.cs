@@ -31,7 +31,7 @@ public sealed partial class PlayerExecutor {
         if(l.objects.TryGetValue(tile.ToVector2(),out var machine)) {
             var output=machine.heldObject.Value;
             if(!machine.readyForHarvest.Value||output?.QualifiedItemId!=tappingOutput)throw new InvalidOperationException("tapper_not_ready");
-            if(!Game1.player.couldInventoryAcceptThisItem(output))throw new InvalidOperationException("machine_output_inventory_full");
+            CapacityAdapter.RequireReceive(Game1.player,output);
             int before=Game1.player.Items.Where(i=>i?.QualifiedItemId==tappingOutput).Sum(i=>i.Stack),expected=output.Stack;
             machine.checkForAction(Game1.player);
             int gained=Game1.player.Items.Where(i=>i?.QualifiedItemId==tappingOutput).Sum(i=>i.Stack)-before;

@@ -30,6 +30,7 @@ public sealed partial class ModEntry {
             var actors=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).Append("player").ToHashSet();
             foreach(string goal in new[]{"cooking_tv","mail","clear_dead","harvest","water","feed","pet","animal_collect","milk","shear","orchard","crab_pots"}) {
                 if(!policy.Assignments.TryGetValue(goal,out string? actor))continue;
+                if(Data.Autoplay.Survival.NativePlayerOnly)actor="player";
                 if(!actors.Contains(actor)){skips.Add(new{goal,reason="assigned_companion_not_available_fallback_to_player"});actor="player";}
                 if(goal=="crab_pots") {
                     foreach(var location in PlayerExecutor.CrabPots().Where(t=>t.Pot.readyForHarvest.Value||t.Pot.NeedsBait(Game1.player)).Select(t=>t.Location.NameOrUniqueName).Distinct().Take(6))tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-crab-{tasks.Count}",actor="player",tool="player.crab_pots",args=JsonSerializer.SerializeToElement(new{mode="tend",location,count=0}),purpose="收蟹笼并补充真实鱼饵",day=Game1.Date.TotalDays,deadline=1800});

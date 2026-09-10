@@ -38,7 +38,7 @@ public sealed partial class PlayerExecutor {
         var candidates=new List<Point>();feedHopper=!p.Items.Any(i=>i?.QualifiedItemId=="(O)178");
         if(feedHopper) {
             if(house.GetRootLocation().piecesOfHay.Value<=0)throw new InvalidOperationException("hay_supply_empty_purchase_or_cut_grass");
-            if(p.freeSpotsInInventory()==0)throw new InvalidOperationException("hay_inventory_space_required");
+            CapacityAdapter.RequireReceive(p,ItemRegistry.Create("(O)178"),Math.Min(999,Missing(house)));
             candidates.AddRange(house.objects.Pairs.Where(o=>o.Value.QualifiedItemId=="(BC)99").Select(o=>o.Key.ToPoint()));
         } else for(int y=0;y<house.Map.Layers[0].LayerHeight;y++)for(int x=0;x<house.Map.Layers[0].LayerWidth;x++)
             if(house.doesTileHaveProperty(x,y,"Trough","Back")!=null&&!house.objects.ContainsKey(new Vector2(x,y)))candidates.Add(new(x,y));

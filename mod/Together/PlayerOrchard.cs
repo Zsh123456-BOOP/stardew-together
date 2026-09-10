@@ -61,7 +61,7 @@ public sealed partial class PlayerExecutor {
         }
         if(location.terrainFeatures.GetValueOrDefault(selected.ToVector2()) is not FruitTree harvest||harvest.fruit.Count==0){orchardVisited.Add(selected);orchardTile=null;return;}
         orchardHarvest=harvest.fruit.GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
-        if(Game1.player.Items.Count(i=>i==null)<orchardHarvest.Count)throw new InvalidOperationException("fruit_inventory_space_required");
+        CapacityAdapter.RequireSlots(Game1.player,harvest.fruit.Sum(i=>i.Stack)); // Native shake may change quality: reserve distinct output slots conservatively.
         orchardBefore=orchardHarvest.Keys.ToDictionary(id=>id,id=>Game1.player.Items.Where(i=>i?.QualifiedItemId==id).Sum(i=>i.Stack));
         harvest.performUseAction(selected.ToVector2());
         if(harvest.fruit.Count>0)throw new InvalidOperationException("native_fruit_shake_not_ready");orchardVisited.Add(selected);

@@ -75,7 +75,7 @@ public sealed partial class ModEntry {
         var carried=stock.Select(i=>new{i.item,count=Math.Min(i.count,Game1.player.Items.Where(b=>b?.QualifiedItemId==i.item).Sum(b=>b.Stack))}).Where(i=>i.count>0).ToArray();
         if(carried.Length>0)return new(){("player.ship_items",new{items=carried})};
         if(stock.Length==0)return new();
-        if(Game1.player.freeSpotsInInventory()==0)return new(){("work.run",new{goal="store",required_free_slots=1,until=2500})};
+        if(CapacityAdapter.Of(Game1.player).FreeSlots==0)return new(){("work.run",new{goal="store",required_free_slots=1,until=2500})};
         foreach(var item in stock) {
             // One exact-quality stack per bounded batch fits one genuinely free
             // slot. Recompute stock after each native sale instead of preloading
@@ -88,7 +88,7 @@ public sealed partial class ModEntry {
     }
     private bool RunBusinessShipping() {
         // The bin pays only overnight. Small drops should not each cause a trip.
-        if(Game1.timeOfDay<1700&&Game1.player.freeSpotsInInventory()>0)return false;
+        if(Game1.timeOfDay<1700&&CapacityAdapter.Of(Game1.player).FreeSlots>0)return false;
         var actions=BusinessShipment();
         return actions.Count>0&&QueueBusiness("shipping-batch",actions,"集中交付当天可售产品，保留经营材料；只记原生次日收入");
     }

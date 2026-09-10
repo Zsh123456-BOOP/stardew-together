@@ -44,6 +44,9 @@ public sealed partial class ModEntry {
         return (open,close,reason,conditions);
     }
     private void PrepareOperation(AgentTaskSpec spec) {
+        GuardCapacity(spec.actor,spec.tool,spec.args);
+        if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(spec.actor,spec.tool,spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
+        if(Data.Autoplay.Survival.NativePlayerOnly&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);
         if(spec.id.StartsWith("routine-")){spec.source="daily_care";spec.priority=80;}
         else if(spec.id.StartsWith("cleanup-")){spec.source="farm_cleanup";spec.priority=20;}
@@ -84,11 +87,12 @@ public sealed partial class ModEntry {
             var w=ServiceWindow(subject);var blocked=Data.Autoplay.Operations.Blocking(subject,w.Conditions,Game1.Date.TotalDays,Game1.timeOfDay);
             if(Game1.timeOfDay<w.Open||Game1.timeOfDay>=w.Close||blocked!=null){task.wait_reason=blocked?.Reason??"service_window";task.spec.not_before=Math.Max(Game1.timeOfDay,w.Open);return false;}
         }
-        Data.Autoplay.Record("lease_acquired",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,task.spec.actor,task.spec.purpose,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},Game1.player.Stamina,free_slots=Game1.player.freeSpotsInInventory()}));
+        Data.Autoplay.Record("lease_acquired",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,task.spec.actor,task.spec.purpose,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},Game1.player.Stamina,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots}));
         return true;
     }
     private void ValidateNativeOperation(string tool,JsonElement args) {
         if(!AutoplayRunning)return;
+        GuardCapacity("player",tool,args);
         if(tool is "player.buy" or "player.procure") {
             string intent=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running"&&t.spec.actor=="player")?.spec.intent_id??launchingIntent;
             int budget=AgentToolRegistry.Number(args,"budget",0),unit=AgentToolRegistry.Number(args,"max_unit_price",budget),count=AgentToolRegistry.Number(args,"count",1);

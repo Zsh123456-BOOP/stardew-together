@@ -28,7 +28,7 @@ public sealed partial class PlayerExecutor {
         if(beachMode=="pendant") {
             if(beachBudget<5000||p.Money-5000<beachKeep)throw new InvalidOperationException("pendant_budget_insufficient");
             if(p.isMarriedOrRoommates()||p.isEngaged()||!p.hasAFriendWithHeartLevel(10,datablesOnly:true)||p.HouseUpgradeLevel<1)throw new InvalidOperationException("pendant_native_relationship_or_house_requirement");
-            if(!p.couldInventoryAcceptThisItem(ItemRegistry.Create("(O)460")))throw new InvalidOperationException("pendant_inventory_full");
+            CapacityAdapter.RequireReceive(p,ItemRegistry.Create("(O)460"));
             return;
         }
         int remaining=300;var used=new Dictionary<Item,int>();foreach(var item in p.Items.Where(i=>i?.QualifiedItemId=="(O)388")){int n=Math.Min(remaining,item.Stack);if(n>0)used[item]=n;remaining-=n;}

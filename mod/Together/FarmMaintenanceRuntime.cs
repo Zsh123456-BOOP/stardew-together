@@ -113,9 +113,9 @@ public sealed partial class ModEntry {
         if(args.TryGetProperty("scopes",out var raw)&&(raw.ValueKind!=JsonValueKind.Array||raw.EnumerateArray().Any(v=>v.ValueKind!=JsonValueKind.String)))throw new InvalidOperationException("cleanup_scopes_array_required");
         var scopes=raw.ValueKind==JsonValueKind.Array?raw.EnumerateArray().Select(v=>v.GetString()??"").Distinct().ToList():new(){"roads","courtyard","fields","general"};
         if(scopes.Count is <1 or >8||scopes.Any(s=>s is not("all" or "roads" or "courtyard" or "fields" or "general")&&!Data.Maintenance.Zones.Any(z=>s=="zone:"+z.Id)))throw new InvalidOperationException("unknown_cleanup_scope");
-        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",30),until=AgentToolRegistry.Number(args,"until",1800),limit=AgentToolRegistry.Number(args,"daily_limit",30);
+        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",30),until=AgentToolRegistry.Number(args,"until",1800),limit=AgentToolRegistry.Number(args,"daily_limit",0);
         bool remove=false;if(args.TryGetProperty("remove_trees",out var trees)){if(trees.ValueKind is not(JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("cleanup_boolean_required");remove=trees.GetBoolean();}
-        if(reserve is <15 or >270||until is <600 or >2200||until%100>59||limit is <1 or >120)throw new InvalidOperationException("invalid_cleanup_budget");
+        if(reserve is <15 or >270||until is <600 or >2200||until%100>59||limit is <0 or >120)throw new InvalidOperationException("invalid_cleanup_budget");
         if(old!=null) {
             if(!old.Scopes.OrderBy(x=>x).SequenceEqual(scopes.OrderBy(x=>x))||old.RemoveTrees!=remove||old.ReserveStamina!=reserve||old.Until!=until||old.DailyLimit!=limit)throw new InvalidOperationException("cleanup_request_id_reused_with_different_policy");
             if(old.Status=="paused"){old.Status="active";old.RetryAt=0;maintenanceAt=DateTime.MinValue;}return new{order=old,idempotent=true};
@@ -199,8 +199,9 @@ public sealed partial class ModEntry {
         }
         if(FarmCleanupRules.RemainingBudget(order)==0){StopSemanticWork(job,"cleanup_daily_budget_reached",true);return;}
         var allowance=CleanupAllowanceFor(order);job.Reserve=allowance.Reserve;
-        bool priorityWork=Data.Autoplay.Schedule.Tasks.Any(t=>!t.Terminal&&t.spec.actor=="player"&&t.spec.id!=order.TaskId&&!(t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="cleanup"));
-        if(priorityWork||allowance.Available==0){order.Reason=priorityWork?"cleanup_yield_to_production":allowance.Reason;Data.Autoplay.Record("cleanup_yield",AgentJson.Encode(new{order.Id,order.Reason,allowance}));StopSemanticWork(job,order.Reason,true);return;}
+        var owner=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.command_id==job.command_id);
+        bool priorityWork=Data.Autoplay.Schedule.Tasks.Any(t=>t.state=="queued"&&t.spec.actor=="player"&&t.spec.id!=owner?.spec.id&&t.spec.day==Game1.Date.TotalDays&&t.spec.not_before<=Game1.timeOfDay&&t.spec.deadline>=Game1.timeOfDay&&t.wait_reason==null&&t.spec.priority>(owner?.spec.priority??20)&&t.spec.after.All(id=>Data.Autoplay.Schedule.Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded"))&&!(t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="cleanup"));
+        if(priorityWork||allowance.Available==0){order.Reason=priorityWork?"cleanup_yield_to_production":allowance.Reason;Data.Autoplay.Record("cleanup_yield",AgentJson.Encode(new{order.Id,order.Reason,allowance}));StopSemanticWork(job,order.Reason);return;}
         string reason="cleanup_no_reachable_frontier";
         var candidates=new Dictionary<FarmCell,(CleanupTarget Target,int Slot)>();
         foreach(var target in targets) {
@@ -230,7 +231,7 @@ public sealed partial class ModEntry {
             WorkChild(job,"player.work",new{skill="clear",slot=batch[0].Slot,tiles=batch.Select(t=>new{x=t.Target.Tile.X,y=t.Target.Tile.Y}),
                 steps=batch.Select((t,i)=>new{skill=t.Target.Kind=="tree"?"chop":t.Target.Kind=="seedling"?"prune":"clear",slot=t.Slot,stand=new{x=route[i].Stand.X,y=route[i].Stand.Y}})},"cleanup_labor",$"{batch[0].Target.Tile.X},{batch[0].Target.Tile.Y}");return;
         }
-        if(candidates.Count>0&&candidates.Values.All(c=>c.Target.Energy>allowance.Available)){order.Reason="cleanup_insufficient_remaining_allowance";StopSemanticWork(job,order.Reason,true);return;}
+        if(candidates.Count>0&&candidates.Values.All(c=>c.Target.Energy>allowance.Available)){order.Reason="cleanup_insufficient_remaining_allowance";StopSemanticWork(job,order.Reason);return;}
         if(candidates!=allCandidates){order.Patch=null;job.phase="replan_frontier";return;}
         order.Reason=reason;StopSemanticWork(job,reason);
     }

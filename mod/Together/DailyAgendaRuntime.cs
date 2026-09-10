@@ -72,7 +72,7 @@ public sealed partial class ModEntry {
             return owned<Data.Operating.MaterialTargets.GetValueOrDefault(item);
         }
         var result=new List<DayOption>();
-        bool inventoryRoom=p.Items.Any(i=>i==null);
+        bool inventoryRoom=CapacityAdapter.HasSlots(p,1);
         foreach(var c in candidates.OrderBy(c=>c.Skill is "water" or "harvest"?0:Useful(c.Skill,c.Item)?1:2).ThenBy(c=>Vector2.DistanceSquared(c.Tile.ToVector2(),p.Tile)).Take(24)) {
             if(AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)||c.Skill=="clear"&&MaintenanceProtects(l,c.Tile))continue;
             Point? stand=null;int count=0;
@@ -85,7 +85,7 @@ public sealed partial class ModEntry {
             if(stand==null)continue;
             int minutes=Math.Max(10,(int)Math.Ceiling((count*64/Math.Max(1,p.getMovementSpeed())/60.0+4+c.Energy)*10/7/10)*10);
             result.Add(new(c.Skill,c.Slot,c.Tile.X,c.Tile.Y,stand.Value.X,stand.Value.Y,c.Item,c.Purpose,count,minutes,c.Energy,Useful(c.Skill,c.Item),
-                (inventoryRoom || c.Skill=="water" || p.Items.Any(i=>i?.QualifiedItemId==c.Item && i.Stack<i.maximumStackSize())) && DailyBudget.Fits(Game1.timeOfDay,p.Stamina,ReturnReserve(),minutes,c.Energy)));
+                (c.Skill=="water" || (c.Item.Length>0?CapacityAdapter.CanReceive(p,ItemRegistry.Create(c.Item)):inventoryRoom)) && DailyBudget.Fits(Game1.timeOfDay,p.Stamina,ReturnReserve(),minutes,c.Energy)));
             if(result.Count>=12)break;
         }
         return result;

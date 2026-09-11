@@ -6,7 +6,14 @@ using System.Text.Json;
 namespace Together;
 public static class AutoplayModel {
     private static readonly HttpClient Client=new(){Timeout=TimeSpan.FromSeconds(60)};
-    public static async Task<ModelReply> Ask(string file,string model,string context,CancellationToken cancellation) {
+    public static async Task<ModelReply> Ask(string file,string model,string context,CancellationToken cancellation,string? tracePath=null) {
+        string callId=Guid.NewGuid().ToString("N");
+        async Task Trace(string kind,object payload) {
+            if(tracePath==null)return;
+            try{Directory.CreateDirectory(Path.GetDirectoryName(tracePath)!);await File.AppendAllTextAsync(tracePath,JsonSerializer.Serialize(new{utc=DateTime.UtcNow,call_id=callId,kind,payload})+Environment.NewLine);}
+            catch(IOException){throw new InvalidOperationException("logging_failed_model_trace");}
+            catch(UnauthorizedAccessException){throw new InvalidOperationException("logging_failed_model_trace");}
+        }
         string? key=File.Exists(file)?File.ReadLines(file).Where(s=>s.StartsWith("DEEPSEEK_API_KEY=",StringComparison.Ordinal)).Select(s=>s.Split('=',2)[1].Trim().Trim('"','\'')).FirstOrDefault():null;
         if(string.IsNullOrWhiteSpace(key))throw new InvalidOperationException("missing_model_key");
         const string prompt=@"你通过工具控制真实星露谷Farmer，按context.active_actors列出的可执行角色经营农场；单玩家阶段只有player，小禾不在场，不向伙伴派单。正常时间、原生操作；不修改资源/进度，不招募村民。经营目标看context.goal。
@@ -23,9 +30,16 @@ plan.submit可以安排多步，只能排动作；after必须声明真实依赖�
         using var request=new HttpRequestMessage(HttpMethod.Post,"https://api.deepseek.com/chat/completions");
         request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
         request.Content=new StringContent(JsonSerializer.Serialize(new{model,messages=new[]{new{role="system",content=prompt+"\n固定工具定义："+AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog))},new{role="user",content=context}},response_format=new{type="json_object"},thinking=new{type="disabled"},max_tokens=3000,stream=false}),Encoding.UTF8,"application/json");
-        using var response=await ModelRequestBudget.SendAsync(Client,request,cancellation);
+        // Only the JSON body is retained. Authorization headers and key-file contents never enter the trace.
+        await Trace("request",new{model,body=await request.Content.ReadAsStringAsync(cancellation)});
+        HttpResponseMessage received;
+        try{received=await ModelRequestBudget.SendAsync(Client,request,cancellation);}
+        catch(Exception e){await Trace("transport_failure",new{type=e.GetType().Name,cancelled=cancellation.IsCancellationRequested});throw;}
+        using var response=received;
+        string raw=await response.Content.ReadAsStringAsync(cancellation);
+        await Trace("response",new{status=(int)response.StatusCode,body=raw});
         if(!response.IsSuccessStatusCode)throw new InvalidOperationException("model_http_"+(int)response.StatusCode);
-        using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
+        using var body=JsonDocument.Parse(raw);
         var choice=body.RootElement.GetProperty("choices")[0];
         if(choice.GetProperty("finish_reason").GetString()!="stop")throw new InvalidOperationException("model_reply_incomplete");
         var usage=body.RootElement.GetProperty("usage");

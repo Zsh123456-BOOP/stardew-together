@@ -217,7 +217,8 @@ public sealed partial class ModEntry {
         // Key-file IO, request encoding and budget ledger IO must not run on
         // the game thread before the first HTTP await. Only immutable values cross.
         var token=agentCancellation.Token;string model=Settings.Model;
-        agentPending=Task.Run(()=>{var packing=Stopwatch.StartNew();string serialized=ContextCompression.Pack(frozen,18000);agentLastContextCharacters=serialized.Length;agentLastPackMs=packing.Elapsed.TotalMilliseconds;return AutoplayModel.Ask(file,model,serialized,token);},token);
+        string? trace=Settings.RecordModelTrace?Path.Combine(Helper.DirectoryPath,"logs",Game1.uniqueIDForThisGame.ToString(),agentSaveEpoch,"model-"+Data.Autoplay.RunId+".jsonl"):null;
+        agentPending=Task.Run(()=>{var packing=Stopwatch.StartNew();string serialized=ContextCompression.Pack(frozen,18000);agentLastContextCharacters=serialized.Length;agentLastPackMs=packing.Elapsed.TotalMilliseconds;return AutoplayModel.Ask(file,model,serialized,token,trace);},token);
         FrameStage("decision_dispatch",ref stage);
     }
     internal (GameLocation Location,Point Tile) AgentMapOrigin(string actorId) {

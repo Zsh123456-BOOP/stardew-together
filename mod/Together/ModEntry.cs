@@ -20,6 +20,7 @@ public sealed class Config {
     public string Model {get;set;}="deepseek-flash";
     public bool Autonomy {get;set;}=true;
     public bool SinglePlayerAutoplay {get;set;}=true;
+    public bool RecordModelTrace {get;set;}
     public int AutoIntervalSeconds {get;set;}=90;
     public int MaxCallsPerDay {get;set;}=24;
     public bool AllowTrialRecruitment {get;set;}=true;

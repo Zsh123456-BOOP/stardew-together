@@ -8,6 +8,15 @@ public sealed partial class ModEntry {
     internal object StartManagedWork(JsonElement args) {
         string goal=AgentToolRegistry.Text(args,"goal");
         string actor=AgentToolRegistry.Text(args,"actor_id","player");
+        string dependency=AgentToolRegistry.Text(args,"goal_id");
+        if(dependency.Length>0) {
+            RefreshFacts(true);
+            var owner=Data.SharedGoals.FirstOrDefault(g=>g.Id==dependency&&g.Status=="active")??throw new InvalidOperationException("active_dependency_goal_required");
+            string material=AgentToolRegistry.Text(args,"item");int requested=AgentToolRegistry.Number(args,"count",0);
+            int dependencyMissing=owner.Nodes.Where(n=>n.Kind=="gather"&&n.Item==material).Sum(n=>n.ToPrepare);
+            if(requested<1||requested>dependencyMissing)throw new InvalidOperationException("dependency_quantity_changed_replan");
+            return StartSemanticWork(args);
+        }
         if(Data.Business.Enabled&&goal=="store"&&actor=="player"&&CapacityAdapter.Of(Game1.player).FreeSlots>=Math.Max(1,AgentToolRegistry.Number(args,"required_free_slots",0))&&Game1.timeOfDay<1800) {
             var skipped=(SemanticJob)StartSemanticWork(args);StopSemanticWork(skipped,"storage_not_required_capacity_available",true);return skipped;
         }

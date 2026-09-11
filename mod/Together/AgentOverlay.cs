@@ -68,6 +68,12 @@ public sealed partial class ModEntry {
             Add("接下来");
             foreach(var task in next)Add("  · "+(task.spec.tool=="work.run"?OverlayWork(AgentToolRegistry.Text(task.spec.args,"goal")):OverlayTool(task.spec.tool)));
         }
+        var dependency=Data.SharedGoals.FirstOrDefault(g=>g.AutoExecute&&g.Status=="active");
+        if(dependency!=null) {
+            Add("目标  "+dependency.Title);
+            foreach(var n in dependency.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).Take(3))Add("还需  "+n.Name+" × "+n.ToPrepare);
+            if(dependency.AutoBlockedReason.Length>0)Add("前置受阻  "+OverlayBlock(dependency.AutoBlockedReason));
+        }
         // Only the model's explicit short explanation is eligible. Technical
         // payloads, error codes, receipts and IDs stay in the diagnostic logs.
         string reason=OverlaySentence(Data.Autoplay.Plan,110);
@@ -75,7 +81,7 @@ public sealed partial class ModEntry {
         var blocked=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>t.state=="failed"||t.wait_reason!=null);
         if(!AutoplayRunning)Add("暂停中，等待你继续");
         else if(preparation==null&&work==null&&!playerExecutor.Busy&&blocked!=null)Add("暂时受阻  "+OverlayBlock(blocked.error??blocked.wait_reason));
-        if(Data.Partner.Enabled)Add(Data.Autoplay.Survival.NativePlayerOnly?"小禾陪着你，暂不参与劳动":"伙伴状态以实际行动为准");
+        if(!SinglePlayerMode&&Data.Partner.Enabled)Add("伙伴状态以实际行动为准");
         overlayLines=lines.ToArray();
         int available=Math.Max(112,Math.Min(360,Game1.uiViewport.Height-y-100));
         int height=compact?38:Math.Min(available,Math.Max(136,64+overlayLines.Length*25));
@@ -96,7 +102,7 @@ public sealed partial class ModEntry {
     };
     private static string OverlayBlock(string? code) {
         code??="";
-        if(code.Contains("capacity")||code.Contains("inventory"))return "背包或仓库装不下，正在等待腾出空间";
+        if(code.Contains("capacity")||code.Contains("inventory"))return "容量不足，需要可行的存货、生产消耗或仓储前置；不会自行腾空";
         if(code.Contains("loadout_missing"))return "还缺这次劳动需要的工具或材料";
         if(code.Contains("path")||code.Contains("unreachable"))return "暂时走不到目标位置";
         if(code.Contains("stamina")||code.Contains("energy"))return "体力不足，需要补给或休息";

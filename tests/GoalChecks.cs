@@ -61,5 +61,29 @@ public static class GoalChecks {
         check(g.Nodes.Single(n=>n.Item=="wood").Required==20,"batch output rounds up ingredient requirements");
         var save=JsonSerializer.Deserialize<SaveData>(JsonSerializer.Serialize(new SaveData{SharedGoals=new(){g}}))!;
         check(save.SchemaVersion==6 && save.SharedGoals[0].Count==3,"new goal state persists under downgrade-protected save version");
+
+        var alternatives=new Dictionary<string,GoalRecipe>{
+            ["costly"]=new(){Id="costly",Item="device",Known=true,Inputs=new(){new(){Item="unavailable",Count=80}}},
+            ["available"]=new(){Id="available",Item="device",Known=true,Inputs=new(){new(){Item="material",Count=3}}}
+        };
+        g=new(){Entity="device",Item="device"};GoalPlanner.Rebuild(g,alternatives,Ledger(("material",3)),1,x=>x);
+        check(g.Nodes[0].Recipe=="available"&&g.Nodes[0].Status=="player_step","route choice uses available resources instead of alphabetical recipe order");
+        var renamed=alternatives.ToDictionary(p=>"renamed:"+p.Key,p=>new GoalRecipe{Id="renamed:"+p.Key,Item="new-device",Known=true,Inputs=p.Value.Inputs.Select(i=>new Requirement{Item="new-"+i.Item,Count=i.Count}).ToList()});
+        var transformed=new SharedGoal{Entity="new-device",Item="new-device"};GoalPlanner.Rebuild(transformed,renamed,Ledger(("new-material",3)),1,x=>x);
+        check(transformed.Nodes[0].Recipe=="renamed:"+g.Nodes[0].Recipe&&transformed.Nodes.Select(n=>n.Required).SequenceEqual(g.Nodes.Select(n=>n.Required)),"renaming all recipe/material identities preserves planning decisions");
+        g=new(){Entity="available",Item="device",Completion="placed"};GoalPlanner.Rebuild(g,alternatives,Ledger(("device",1)),1,x=>x);
+        check(g.Status=="active"&&g.Nodes[0].Kind=="place"&&g.Nodes[0].Status=="player_step","carrying a facility cannot satisfy a placed goal");
+        GoalPlanner.Rebuild(g,alternatives,Ledger(),1,x=>x,placed:1);
+        check(g.Status=="fulfilled","observed placement satisfies its own predicate without fake inventory");
+        var shared=new Dictionary<string,GoalRecipe>{
+            ["final"]=new(){Id="final",Item="final",Known=true,Inputs=new(){new(){Item="left",Count=1},new(){Item="right",Count=1}}},
+            ["left"]=new(){Id="left",Item="left",Known=true,Inputs=new(){new(){Item="intermediate",Count=1}}},
+            ["right"]=new(){Id="right",Item="right",Known=true,Inputs=new(){new(){Item="intermediate",Count=1}}},
+            ["batch"]=new(){Id="batch",Item="intermediate",Output=2,Known=true,Inputs=new(){new(){Item="raw",Count=3}}}
+        };
+        g=new(){Entity="final",Item="final"};GoalPlanner.Rebuild(g,shared,Ledger(("raw",3)),1,x=>x);
+        check(g.Nodes.Count(n=>n.Item=="raw")==1&&g.Nodes.Any(n=>n.Planned==1&&n.Status=="planned")&&g.Status=="active","shared intermediate surplus is a dependency, not duplicate gathering or fictional ownership");
+        var copy=Ledger(("material",3));GoalRoutes.Select(alternatives.Values,alternatives,copy,1,false);
+        check(copy.Take("material",3)==3,"alternative evaluation cannot spend the authoritative planning ledger");
     }
 }

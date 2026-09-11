@@ -9,6 +9,14 @@ namespace Together;
 public sealed partial class ModEntry {
     private const string PartnerName="Together_Partner";
     private DateTime partnerCheck;
+    internal bool SinglePlayerMode=>Settings.SinglePlayerAutoplay||Data.Autoplay.Survival.NativePlayerOnly;
+    private IEnumerable<string> ActiveActors=>SinglePlayerMode?new[]{"player"}:agentKnownActors;
+    private void SuspendCustomPartner() {
+        var npc=api?.GetCharacter(PartnerName);if(npc==null)return;
+        SaveCustomPartner();Data.Partner.SuspendedData=npc.modData.Pairs.ToDictionary(p=>p.Key,p=>p.Value);
+        if(api?.SuspendCustomCompanion(PartnerName)!=true)throw new InvalidOperationException("custom_partner_suspend_unverified");
+        bubbles.Remove(PartnerName);agentKnownActors.RemoveWhere(a=>a.EndsWith(":"+PartnerName));
+    }
     private void SetupCustomPartner() {
         Helper.Events.Content.AssetRequested+=(_,e)=>{
             if(e.NameWithoutLocale.IsEquivalentTo("Data/Characters"))e.Edit(asset=>{
@@ -33,6 +41,7 @@ public sealed partial class ModEntry {
         return new{partner=p,identity=PartnerName,note="独立自定义NPC；外观暂引用原生素材，不招募对应村民。关闭停止自动入队，不删除角色或货袋。"};
     }
     private void EnsureCustomPartner(bool restore=false) {
+        if(Context.IsWorldReady&&SinglePlayerMode){SuspendCustomPartner();return;}
         if(!Context.IsWorldReady||Context.IsMultiplayer||!Data.Partner.Enabled||api==null)return;
         var p=Data.Partner;
         var npc=Game1.getCharacterFromName(PartnerName);
@@ -46,6 +55,7 @@ public sealed partial class ModEntry {
             }
             npc=new NPC(new AnimatedSprite("Characters/"+p.Appearance,0,16,32),at.ToVector2()*64,"Farm",2,PartnerName,false,Game1.content.Load<Texture2D>("Portraits/"+p.Appearance));
             npc.modData["stardewagent.together/custom-partner"]="1";farm.characters.Add(npc);p.Created=true;
+            foreach(var pair in p.SuspendedData)npc.modData[pair.Key]=pair.Value;
         }
         // Restore only at save load, never to recover a failed runtime route.
         if(restore&&Game1.getLocationFromName(p.Location) is {} saved&&PlayerExecutor.Passable(saved,new(p.X,p.Y))) {

@@ -46,12 +46,13 @@ public sealed partial class ModEntry {
     private void PrepareOperation(AgentTaskSpec spec) {
         GuardCapacity(spec.actor,spec.tool,spec.args);
         if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(spec.actor,spec.tool,spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
-        if(Data.Autoplay.Survival.NativePlayerOnly&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
+        if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);
         if(spec.id.StartsWith("routine-")){spec.source="daily_care";spec.priority=80;}
         else if(spec.id.StartsWith("cleanup-")){spec.source="farm_cleanup";spec.priority=20;}
         else if(spec.id.StartsWith("farm-")||spec.id.StartsWith("invest-")){spec.source="investment";spec.priority=60;}
         else if(spec.id.StartsWith("business-")){spec.source="production";spec.priority=65;}
+        if(spec.source=="goal")spec.priority=70;
         if(spec.tool=="player.sleep")spec.priority=90;
         if(spec.actor!="player"&&spec.tool=="work.run"&&AgentToolRegistry.Text(spec.args,"goal")=="harvest"&&FarmerHarvestCreditNeeded()) {
             var args=spec.args.Deserialize<Dictionary<string,JsonElement>>()!;args["actor_id"]=JsonSerializer.SerializeToElement("player");spec.args=JsonSerializer.SerializeToElement(args);spec.actor="player";

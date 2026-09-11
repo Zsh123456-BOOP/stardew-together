@@ -7,6 +7,7 @@ using StardewValley;
 namespace Together;
 public sealed partial class ModEntry {
     private string RecruitForAgent(string name) {
+        if(SinglePlayerMode)throw new InvalidOperationException("single_player_actor_required");
         var result=Request(name,"recruit");if(result.GetProperty("status").GetString()!="succeeded")throw new InvalidOperationException("native_companion_recruitment_failed");
         var actor=Actor(World(),name)??throw new InvalidOperationException("recruited_companion_not_observed");
         string id=actor.GetProperty("id").GetString()!;Person(name).DailyCompanion=true;agentKnownActors.Add(id);
@@ -35,7 +36,7 @@ public sealed partial class ModEntry {
     private bool agentStarting;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){NativeFinished=a=>{try{ObserveQualityReceipt(a);OnNativeWorkFinished(a.command_id);}catch(Exception e){PauseAutoplay("quality_evidence_failed:"+e.Message);}},ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=menu=>ApplyProfessionPolicy(menu)||SurvivalProfession(menu),ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=CaptureQualitySleep,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){NativeFinished=a=>{try{ObserveQualityReceipt(a);OnNativeWorkFinished(a.command_id);}catch(Exception e){PauseAutoplay("quality_evidence_failed:"+e.Message);}},ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=menu=>ApplyProfessionPolicy(menu)||SurvivalProfession(menu),ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=CaptureQualitySleep,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected,FacilityPlaced=GoalFacilityPlaced,FacilityCosts=GoalFacilityCosts};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         ArcadeInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
@@ -76,11 +77,12 @@ public sealed partial class ModEntry {
         if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Operations=Data.Autoplay.Operations,Failures=Data.Autoplay.Failures,Capacity=Data.Autoplay.Capacity,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine,Campaign=Data.Autoplay.Campaign};
         AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");Data.Autoplay.Survival.NewDay(Game1.Date.TotalDays);
+        if(Settings.SinglePlayerAutoplay)Data.Autoplay.Survival.NativePlayerOnly=true;
         Data.Autoplay.Record("new_run","开始新的接管片段。只有本片段的 tool_result 和 action_result 才是你实际调用工具的证据，目标文字不是完成记录。");
         Data.Autoplay.Schedule.Prepare=PrepareOperation;
         Data.Autoplay.Goal=goal;Data.Autoplay.Status="running";Data.Autoplay.Detail="DeepSeek 接管；F10 或方向键随时暂停。";
         EnsureCustomPartner();
-        agentKnownActors.Clear();agentKnownActors.Add("player");foreach(var actor in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(actor.GetProperty("id").GetString()!);agentIdleSignature="";
+        agentKnownActors.Clear();agentKnownActors.Add("player");if(!SinglePlayerMode)foreach(var actor in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(actor.GetProperty("id").GetString()!);agentIdleSignature="";
         agentStarting=true;WakeAgent("start_or_resume");agentNext=DateTime.UtcNow;Notice=Data.Autoplay.Detail;
     }
     public void PauseAutoplay(string reason) {
@@ -116,7 +118,7 @@ public sealed partial class ModEntry {
             string skill=AgentToolRegistry.Text(t.spec.args,"skill",t.spec.tool);
             return skill switch {"water"=>"浇水","clear_dead"=>"清枯苗","clear"=>"清理采集","mine"=>"挖矿","plant"=>"播种","till"=>"翻土","forage"=>"拾取资源","harvest"=>"收获","player.travel" or "travel"=>"赶路","player.move"=>"走向目标","player.sleep"=>"回家过夜",_=>"执行任务"};
         }
-        return (agentPending!=null?$"思考中 {agentWatch.Elapsed.TotalSeconds:0}秒 · ":"执行中 · ")+$"玩家：{Lane(true)} · 队友：{(agentKnownActors.Count<=1?"未招募":Lane(false))} · F10 暂停";
+        return (agentPending!=null?$"思考中 {agentWatch.Elapsed.TotalSeconds:0}秒 · ":"执行中 · ")+$"玩家：{Lane(true)}"+(SinglePlayerMode?"":$" · 队友：{Lane(false)}")+" · F10 暂停";
     }
     private object AgentSnapshot()=>new{day=Game1.Date.TotalDays,date=Game1.Date.ToString(),time=Game1.timeOfDay,clock_rate_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate),game_minutes_per_real_second_while_idle=AutoplaySpeed.Clock(Settings.AutoplayClockRate)*10/7,night_warning=Game1.timeOfDay>=2200?"接近深夜，优先安排返家；不要等待到凌晨两点":null,location=Game1.currentLocation.NameOrUniqueName,
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
@@ -133,10 +135,11 @@ public sealed partial class ModEntry {
         TickCustomPartner();TickAgentSchedule();FrameStage("schedule",ref stage);
         if(SurvivalOwnsDay)return;
         TickDailyAutomation();FrameStage("daily",ref stage);
+        TickGoalAutomation();FrameStage("goal_dependencies",ref stage);
         TickFarmBusiness();TickCooperativeBusiness();FrameStage("business",ref stage);
         TickFarmInvestment();FrameStage("investment",ref stage);
         TickFarmCleanup();FrameStage("cleanup",ref stage);
-        TickProgressCampaign();TickGoalAutomation();FrameStage("goals",ref stage);
+        TickProgressCampaign();FrameStage("goals",ref stage);
         ObserveAgentEvents();TickOperationTelemetry();TickBusinessTelemetry();FrameStage("telemetry",ref stage);
         if(playerExecutor.Busy && playerExecutor.Current?.skill is "player.beach" or "player.crab_pots" or "player.craft" or "player.cook" or "player.buy" or "player.claim_reward" or "player.collect_reward" or "player.donate_museum" or "player.build" or "player.bundle" or "player.treasure" or "player.collect_home_gifts" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.ship_items" or "player.order_donate" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house")return;
         // Queue polling/dispatch above continues during HTTP; neither actor waits for the other.
@@ -145,11 +148,11 @@ public sealed partial class ModEntry {
             string? unappliedReply=null;bool applying=false;
             try {
                 var reply=task.GetAwaiter().GetResult();Data.Autoplay.Record("context_packed",AgentJson.Encode(new{characters=agentLastContextCharacters,background_ms=agentLastPackMs}));unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
-                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || DecisionBasisChanged()) {
+                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || agentRequestQueueRevision!=Data.Autoplay.Schedule.Revision || DecisionBasisChanged()) {
                     Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
                     var turn=AgentTurn.Parse(reply.Json);applying=true;Data.Autoplay.Survival.ModelFailures=0;Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
-                    Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0)Say(Selected,turn.speech);
+                    Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0&&!SinglePlayerMode)Say(Selected,turn.speech);
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
                     int turnRevision=Data.Autoplay.Schedule.Revision;
@@ -175,12 +178,12 @@ public sealed partial class ModEntry {
                     agentModelNotBefore=DateTime.UtcNow.AddSeconds(delay);
                     agentNext=DateTime.UtcNow.AddMilliseconds(AutoplaySpeed.DecisionDelay(Settings.AutoplayDecisionDelayMs));
                     if(agentRequestedWait>agentNext)agentNext=agentRequestedWait;
-                    TickAgentSchedule();
+                    decisionIntent="";TickAgentSchedule();
                 }
-            }catch(Exception e){ModelUnavailable(e,unappliedReply,applying);}
+            }catch(Exception e){ModelUnavailable(e,unappliedReply,applying);}finally{decisionIntent="";}
         }
         if(!AutoplayRunning || SurvivalOwnsDay || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
-        if(agentNeedsDecision&&agentWakeReasons.Count>0&&agentWakeReasons.All(AgentDecisionPacing.RoutineWake)&&AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision))return;
+        if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!agentWakeReasons.Contains("danger"))return;
         if(DateTime.UtcNow<agentModelNotBefore&&!NeedsAgentMenuDecision&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
@@ -203,13 +206,13 @@ public sealed partial class ModEntry {
         var opportunities=OperatingOpportunities();
         WriteBusinessLog("operating_candidates",AgentJson.Encode(opportunities));
         var context=new{operating_candidates=opportunities,commitments=OperationCommitments(),run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=Data.Business.Enabled?(object)new{details="progress.read按需查询，经营不逐轮发送全成就"}:AgentProgression(),business=new{production,policy=Data.Business,pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
-            recent=RecentAgentContext(),persona=Current.Profile,memories=Current.Memories.TakeLast(4),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
+            recent=RecentAgentContext(),active_actors=ActiveActors.ToArray(),goals=GoalContext(),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
         FrameStage("decision_context",ref stage);
         // Freeze on the game thread; no game objects or deferred enumeration cross the boundary.
         var frozen=JsonSerializer.SerializeToElement(context,AgentJson.Options);FrameStage("decision_snapshot",ref stage);
         WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
-        agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
+        agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
         // Key-file IO, request encoding and budget ledger IO must not run on
         // the game thread before the first HTTP await. Only immutable values cross.
@@ -224,7 +227,7 @@ public sealed partial class ModEntry {
         var location=Game1.getLocationFromName(actor.GetProperty("location").GetString()!)??throw new InvalidOperationException("actor_location_unavailable");
         var tile=actor.GetProperty("tile");return (location,new(tile[0].GetInt32(),tile[1].GetInt32()));
     }
-    private object RecruitmentOptions()=>new {
+    private object RecruitmentOptions()=>SinglePlayerMode?(object)new{enabled=false,note="当前只控制玩家；原生村民仅用于正常社交，不可招募派工。"}:new {
         selected=Selected,selected_is_not_proof_of_recruitment=true,
         outdoors=Game1.locations.Where(l=>l.IsOutdoors).SelectMany(l=>l.characters.Where(n=>Game1.characterData.ContainsKey(n.Name)&&!n.IsMonster&&!n.IsInvisible&&!n.isSleeping.Value)
             .Select(n=>new{npc=n.Name,location=l.NameOrUniqueName,x=n.TilePoint.X,y=n.TilePoint.Y}))
@@ -232,7 +235,7 @@ public sealed partial class ModEntry {
         note="真实室外人物位置供邀请参考，不保证满足Squad好感/人数门槛。招募成功并出现在companions后才能派工；被锁门挡住就先做农务，按开放时间再访。"
     };
     private object[] AgentCompanions(bool compact=false) {
-        if(Data.Autoplay.Survival.NativePlayerOnly)return Array.Empty<object>();
+        if(SinglePlayerMode)return Array.Empty<object>();
         var world=World();
         if(!world.TryGetProperty("actors",out var actors))return Array.Empty<object>();
         return actors.EnumerateArray().Select(a=>{
@@ -254,7 +257,7 @@ public sealed partial class ModEntry {
     }
     internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),recruitment=RecruitmentOptions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
-        if(Data.Autoplay.Survival.NativePlayerOnly)throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
+        if(SinglePlayerMode)throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");
         RefreshFacts(true);
         string? contract=AgentCallContract.CompanionError(args);

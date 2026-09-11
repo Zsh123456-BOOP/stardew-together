@@ -17,16 +17,16 @@ public sealed partial class ModEntry {
     private int AccessibleStock(string item)=>Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.QualifiedItemId==item).Sum(i=>i.Stack);
     private static int CargoItem(JsonElement actor,string item)=>actor.GetProperty("cargo").EnumerateObject().Where(v=>v.Name.StartsWith(item+":",StringComparison.Ordinal)).Sum(v=>v.Value.GetInt32());
     private object ReadOperatingLedger() {
-        var actors=World().GetProperty("actors").EnumerateArray().ToArray();var p=Data.Operating;
-        return new{policy=p,partner=Data.Partner,capabilities=new{player="完整Farmer工具",partner=new[]{"water","harvest","forage","wood:twigs_only","fiber","stone","resource","store","pet"}},
+        var actors=SinglePlayerMode?Array.Empty<JsonElement>():World().GetProperty("actors").EnumerateArray().ToArray();var p=Data.Operating;
+        return new{policy=p,active_actors=ActiveActors.ToArray(),partner=SinglePlayerMode?null:Data.Partner,capabilities=new{player="完整Farmer工具",partner=SinglePlayerMode?Array.Empty<string>():new[]{"water","harvest","forage","wood:twigs_only","fiber","stone","resource","store","pet"}},
             seed_cash_available=OperatingMath.CashForSeeds(Game1.player.Money,Data.Business.KeepGold,Data.Business.DailyBudget,Data.Business.ReservedToday+Data.FarmInvestment.ReservedToday,p.DevelopmentCashHeld),
             materials=p.MaterialTargets.Select(t=>new{item=t.Key,target=t.Value,accessible=AccessibleStock(t.Key),in_transit=actors.Sum(a=>CargoItem(a,t.Key)),to_gather=OperatingMath.GatherDeficit(t.Value,AccessibleStock(t.Key),actors.Sum(a=>CargoItem(a,t.Key))),to_deliver=OperatingMath.DeliveredDeficit(t.Value,AccessibleStock(t.Key))}),
-            note="伙伴货袋在送达前不可制作消费；储備是目标不授予物品。NPC劳动预算不是Farmer体力。"};
+            note=SinglePlayerMode?"只使用玩家和可达仓库的真实库存；目标与预测不授予物品。":"伙伴货袋在送达前不可制作消费；储備是目标不授予物品。NPC劳动预算不是Farmer体力。"};
     }
     private void UpdateOperatingTargets() {
         var p=Data.Operating;var b=Data.Business;p.MaterialTargets.Clear();p.DevelopmentCashHeld=0;
         // Storage is an explicit production prerequisite, not an unlimited timber quota.
-        if(!SharedStorage().Any())p.MaterialTargets["(O)388"]=50;
+        if(!SinglePlayerMode&&!SharedStorage().Any())p.MaterialTargets["(O)388"]=50;
         if(b.PendingAsset.Length>0) {
             var option=BusinessDevelopmentOptions().FirstOrDefault(o=>o.Id==b.PendingAsset);
             if(option!=null&&option.Gaps.Length==0) {
@@ -37,7 +37,7 @@ public sealed partial class ModEntry {
         foreach(var group in Data.SharedGoals.Where(g=>g.Status=="active").SelectMany(g=>g.Nodes).Where(n=>n.Kind=="gather"&&n.ToPrepare>0).GroupBy(n=>n.Item))p.MaterialTargets[group.Key]=Math.Max(p.MaterialTargets.GetValueOrDefault(group.Key),group.Sum(n=>n.ToPrepare)+AccessibleStock(group.Key));
     }
     private void TickCooperativeBusiness() {
-        if(Data.Autoplay.Survival.NativePlayerOnly)return;
+        if(SinglePlayerMode)return;
         try {TickCooperativeCore();}
         catch(Exception e){Data.Operating.PartnerReason="cooperation_blocked:"+e.Message;cooperationAt=DateTime.UtcNow.AddSeconds(30);Data.Autoplay.Record("cooperation_error",Data.Operating.PartnerReason);WakeAgent("cooperation_requires_review");}
     }

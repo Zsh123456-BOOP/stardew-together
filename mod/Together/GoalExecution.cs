@@ -5,9 +5,10 @@ namespace Together;
 public sealed partial class ModEntry {
     internal object AgentGoalCreate(JsonElement args) {
         RefreshFacts(true);ReadGoalRecipes();
+        bool run=args.TryGetProperty("run",out var auto)&&auto.ValueKind==JsonValueKind.True;
         string request=AgentToolRegistry.Text(args,"request_id"),entity=AgentToolRegistry.Text(args,"entity");
         string completion=AgentToolRegistry.Text(args,"completion","owned");
-        if(completion is not ("owned" or "crafted" or "cooked"))throw new InvalidOperationException("invalid_completion_predicate");
+        if(completion is not ("owned" or "crafted" or "cooked" or "placed"))throw new InvalidOperationException("invalid_completion_predicate");
         bool allowFacilities=args.TryGetProperty("allow_new_facilities",out var facilities)&&facilities.GetBoolean();
         int count=AgentToolRegistry.Number(args,"count",1),quality=AgentToolRegistry.Number(args,"quality",0);
         if(quality is not (0 or 1 or 2 or 4)||quality>0&&completion!="owned")throw new InvalidOperationException("quality_requires_owned_goal_and_native_quality_tier");
@@ -16,14 +17,16 @@ public sealed partial class ModEntry {
         var old=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);
         if(old!=null) {
             if(old.Entity!=entity||old.Count!=count||old.Completion!=completion||old.MinimumQuality!=quality||old.AllowNewFacilities!=allowFacilities)throw new InvalidOperationException("goal_request_id_reused");
+            if(run&&old.Status=="active"){old.AutoExecute=true;goalAutomationAt=DateTime.MinValue;}
             return old;
         }
         if(Data.SharedGoals.Count(g=>g.Status is "active" or "paused")>=16)throw new InvalidOperationException("active_goal_limit");
         string item=goalRecipes.TryGetValue(entity,out var recipe)?recipe.Item:entity;
         if(completion=="cooked"&&recipe?.Kind!="cook")throw new InvalidOperationException("cooked_goal_requires_native_cooking_recipe");
         if(completion=="crafted"&&recipe?.Kind!="craft")throw new InvalidOperationException("crafted_goal_requires_native_crafting_recipe");
+        if(completion=="placed"&&ItemRegistry.Create(item) is not StardewValley.Object {bigCraftable.Value:true})throw new InvalidOperationException("placed_goal_requires_supported_facility");
         var definition=ItemRegistry.GetDataOrErrorItem(item);if(definition.IsErrorItem)throw new InvalidOperationException("known_item_or_recipe_required");
-        var goal=new SharedGoal{AllowNewFacilities=allowFacilities,Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,MinimumQuality=quality,CreatedDay=Facts.Day,Completion=completion,
+        var goal=new SharedGoal{AutoExecute=run,AllowNewFacilities=allowFacilities,Id=id,Entity=entity,Item=item,Title=definition.DisplayName,Count=count,MinimumQuality=quality,CreatedDay=Facts.Day,Completion=completion,Purpose=AgentToolRegistry.Text(args,"purpose",definition.DisplayName),
             BaselineCrafts=recipe?.Kind=="craft"?Game1.player.craftingRecipes.GetValueOrDefault(recipe.Id[6..]):0};
         goal.BaselineCrafts=NativeGoalCount(goal);Data.SharedGoals.Add(goal);UpdateProjects();return goal;
     }
@@ -45,9 +48,12 @@ public sealed partial class ModEntry {
         var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==AgentToolRegistry.Text(args,"id"))??throw new InvalidOperationException("shared_goal_not_found");
         var tasks=new List<AgentTaskSpec>();var gaps=new List<object>();
         void Add(string tool,object arguments,string purpose) {
-            tasks.Add(new(){id="goal-"+Guid.NewGuid().ToString("N"),actor="player",tool=tool,args=JsonSerializer.SerializeToElement(arguments),purpose=purpose,goal_id=goal.Id,day=Game1.Date.TotalDays,deadline=2200});
+            tasks.Add(new(){id="goal-"+Guid.NewGuid().ToString("N"),actor="player",source="goal",intent_id="goal:"+goal.Id,tool=tool,args=JsonSerializer.SerializeToElement(arguments),purpose=purpose,goal_id=goal.Id,day=Game1.Date.TotalDays,deadline=2200});
         }
         if(goal.Status=="active") {
+            var placement=goal.Nodes.FirstOrDefault(n=>n.Kind=="place"&&n.Status=="player_step");
+            if(placement!=null){Add("player.place_facility",new{item=placement.Item,location=goal.Location,goal_id=goal.Id},"原生放置"+placement.Name);return new(goal,Data.Autoplay.Schedule.Revision,tasks,gaps);}
+
             var facilityNode=goal.Nodes.FirstOrDefault(n=>n.Kind=="process"&&n.Status=="locked"&&goalRecipes.TryGetValue(n.Recipe,out var r)&&r.Facility.Length>0&&goal.Nodes.Any(child=>child.Item==r.Facility&&child.Owned>0));
             if(facilityNode!=null&&goalRecipes.TryGetValue(facilityNode.Recipe,out var facilityRecipe)) {
                 if(!Game1.player.Items.Any(i=>i?.QualifiedItemId==facilityRecipe.Facility))Add("work.run",new{goal="withdraw",item=facilityRecipe.Facility,count=1},"取出已制作的加工设备");
@@ -65,19 +71,8 @@ public sealed partial class ModEntry {
                     if(machines==null){gaps.Add(new{node=ready.Id,reason="processing_facility_busy_or_missing"});batches=0;}
                     else {machineLocation=machines.Key;batches=Math.Min(batches,machines.Count());}
                 }
-                var carried=new GoalLedger(Game1.player.Items.Where(i=>i!=null).Select(i=>new GoalStock{Item=i.QualifiedItemId,Count=i.Stack,Quality=i.Quality,Category=i.Category}));
-                var stored=SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().Where(i=>i!=null)).ToArray();
-                var storedLedger=new GoalLedger(stored.Select(i=>new GoalStock{Item=i.QualifiedItemId,Count=i.Stack,Quality=i.Quality,Category=i.Category}));
-                foreach(var need in recipe.Inputs) {
-                    int required=need.Count*batches,missing=required-carried.Take(need.Item,required,need.Quality);
-                    if(missing<=0)continue;
-                    bool category=int.TryParse(need.Item.Replace("(O)",""),out int cat)&&cat<0;
-                    foreach(var group in stored.Where(i=>i.Quality>=need.Quality&&(i.QualifiedItemId==need.Item||category&&i.Category==cat)).GroupBy(i=>i.QualifiedItemId).OrderBy(g=>g.Min(i=>i.Quality))) {
-                        int take=storedLedger.Take(group.Key,missing,need.Quality);if(take==0)continue;
-                        Add("work.run",new{goal="withdraw",item=group.Key,count=take,quality=need.Quality},"为"+goal.Title+"取材料");missing-=take;if(missing==0)break;
-                    }
-                    if(missing>0)gaps.Add(new{node=ready.Id,reason="ingredients_not_in_designated_shared_storage",need.Item,missing});
-                }
+                // Submit the whole production request. TaskPreparation validates
+                // all ingredients and the single-storage shape before any transfer.
                 if(gaps.Count==0) {
                     if(recipe.Kind=="process")Add("player.machine",new{mode="load",location=machineLocation,machine=recipe.Facility,item=recipe.Inputs[0].Item,count=batches,goal_id=goal.Id,output=recipe.Item},"投料加工"+ready.Name+"，等待原生出炉");
                     else Add(recipe.Kind=="cook"?"player.cook":"player.craft",new{recipe=ready.Recipe[(recipe.Kind=="cook"?5:6)..],count=batches,goal_id=goal.Id},"完成"+ready.Name+"并核验原生制作计数");
@@ -86,23 +81,14 @@ public sealed partial class ModEntry {
                 var product=GoalMachines().FirstOrDefault(m=>m.Object.readyForHarvest.Value&&m.Object.heldObject.Value is {} output&&goal.Nodes.Any(n=>n.Item==output.QualifiedItemId&&n.Missing>0));
                 if(product.Object!=null)Add("player.machine",new{mode="collect",location=product.Location.NameOrUniqueName,machine=product.Object.QualifiedItemId,count=1},"领取目标真实加工产物");
                 foreach(var node in goal.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0&&tasks.Count==0)) {
-                    string skill=node.Item switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber","(O)709"=>"hardwood",_=>ResourceRules.Nodes.Values.Contains(node.Item)?"resource":""};
-                    string? resourceLocation=skill is "resource" or "hardwood"?FindGoalResourceLocation(node.Item,skill):"Farm";
-                    if(skill.Length>0&&resourceLocation!=null&&node.Quality==0){Add("work.run",new{goal=skill,item=node.Item,count=Math.Min(node.ToPrepare,999),location=resourceLocation,include_trees=skill=="wood"},"为"+goal.Title+"收集"+node.Name);break;}
-                    if(skill=="resource"&&node.Quality==0&&resourceLocation==null&&Game1.Date.TotalDays>=5) {
-                        int desired=node.Item switch{"(O)378"=>10,"(O)382"=>20,"(O)380"=>50,"(O)384"=>90,_=>0};
-                        if(desired>0) {
-                            int reached=Math.Min(115,Game1.player.deepestMineLevel/5*5),start=Math.Min(reached,Math.Max(0,desired-5));
-                            Add("work.run",new{goal="mine_trip",item=node.Item,start_level=start,target_level=Math.Min(120,start+10),until=2100},"为生产材料走真实矿层，优先目标矿石，未解锁时逐段推进");break;
-                        }
-                    }
+                    if(PrepareResourceMaterial(goal,node,Add))break;
                     if(node.Quality==0&&FishingLocations(node.Item).FirstOrDefault() is {} fishLocation) {
                         Add("work.run",new{goal="fish",item=node.Item,count=Math.Min(10,node.ToPrepare),location=fishLocation.NameOrUniqueName},"定向准备"+node.Name+"，按原生捕获与真实库存续接");break;
                     }
                     if(PrepareLivingMaterial(goal,node,Add,out string livingWait)) {if(livingWait.Length>0)gaps.Add(new{node=node.Id,item=node.Item,reason=livingWait});break;}
                     gaps.Add(new{node=node.Id,item=node.Item,node.Quality,reason="acquisition_route_requires_choice_or_missing_executor",node.ToPrepare});
                 }
-                foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process")))gaps.Add(new{node=node.Id,node.Status,node.Reason});
+                foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process" or "place")))gaps.Add(new{node=node.Id,node.Status,node.Reason});
             }
         }
         if(tasks.Count>24)throw new InvalidOperationException("goal_batch_too_large_split_required");

@@ -79,7 +79,11 @@ public sealed partial class ModEntry {
                 // than promising a lower-quality output or eating the last unit.
                 if(cooking)Id("(O)917",Game1.player.Items.Where(i=>i?.QualifiedItemId=="(O)917").Sum(i=>i.Stack));
             }else if(tool=="player.machine") {
-                if(AgentToolRegistry.Text(a,"mode","collect")=="load"){Id(AgentToolRegistry.Text(a,"item"),count);plan.KeepUnknown=true;}else plan.Outputs=true;
+                if(AgentToolRegistry.Text(a,"mode","collect")=="load") {
+                    var recipe=goalRecipes.Values.FirstOrDefault(r=>r.Kind=="process"&&r.Facility==AgentToolRegistry.Text(a,"machine")&&r.Item==AgentToolRegistry.Text(a,"output")&&r.Inputs.FirstOrDefault()?.Item==AgentToolRegistry.Text(a,"item"));
+                    if(recipe!=null)foreach(var need in recipe.Inputs)Id(need.Item,checked(need.Count*count));
+                    else {Id(AgentToolRegistry.Text(a,"item"),count);plan.KeepUnknown=true;}
+                }else plan.Outputs=true;
             }else if(tool is "player.buy" or "player.procure") {
                 plan.Outputs=true;plan.ExpectedOutput=AgentToolRegistry.Text(a,"item") is {Length:>0} id?ItemRegistry.Create(id,count):null;
                 Id(AgentToolRegistry.Text(a,"trade_item"),AgentToolRegistry.Number(a,"trade_budget",0));

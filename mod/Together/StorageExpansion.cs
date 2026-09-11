@@ -47,6 +47,7 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("storage_support_requested",AgentJson.Encode(new{companion=job.actor,work=job.command_id,helper=helper.command_id,goal=helper.goal}));return true;
     }
     private bool TryStartStorageExpansion(SemanticJob job) {
+        if(SinglePlayerMode&&AutoplayRunning&&!agentLabProbe){EnsureStorageGoal(true);return false;}
         var policy=Data.Storage;
         if(!policy.AutoExpand||SharedStorage().Count()>=Math.Clamp(policy.MaxSharedChests,0,32))return false;
         if(Game1.currentLocation!=Game1.getFarm()){WorkChild(job,"player.travel",new{location="Farm"},"storage_expansion_travel");return true;}

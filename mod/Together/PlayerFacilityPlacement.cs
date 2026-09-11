@@ -5,6 +5,8 @@ using StardewValley;
 namespace Together;
 public sealed partial class PlayerExecutor {
     public Func<string,Point,bool>? PlacementProtected {get;set;}
+    public Action<string,GameLocation,Point>? FacilityPlaced {get;set;}
+    public Func<GameLocation,Item,IReadOnlyList<LayoutCell>,IReadOnlyDictionary<FarmCell,int>>? FacilityCosts {get;set;}
     private string facilityItem="",facilityGoal="";
     private Point? facilitySite;
     private void StartFacilityPlacement(JsonElement args) {
@@ -30,13 +32,14 @@ public sealed partial class PlayerExecutor {
                 if(PlacementProtected?.Invoke(destination,tile)==true&&passable)anchors.Add(new(x,y));
             }
             var start=new FarmCell(Game1.player.TilePoint.X,Game1.player.TilePoint.Y);
+            var costs=FacilityCosts?.Invoke(location,item,grid);
             int IrrigationGain(LayoutCell cell) {
                 if(!item.IsSprinkler())return 0;
                 var probe=(StardewValley.Object)item.getOne();probe.TileLocation=new Vector2(cell.Tile.X,cell.Tile.Y);
                 var covered=location.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();
                 return probe.GetSprinklerTiles().Count(at=>!covered.Contains(at)&&location.terrainFeatures.TryGetValue(at,out var feature)&&feature is StardewValley.TerrainFeatures.HoeDirt {crop:not null})*10;
             }
-            foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start).OrderByDescending(IrrigationGain).ThenBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y)).ThenBy(c=>c.Tile.Y).ThenBy(c=>c.Tile.X)) {
+            foreach(var cell in grid.Where(c=>c.Passable&&c.Tile!=start&&(costs?.GetValueOrDefault(c.Tile,0)??0)<100000).OrderByDescending(IrrigationGain).ThenBy(c=>costs?.GetValueOrDefault(c.Tile,0)??0).ThenBy(c=>Math.Abs(c.Tile.X-start.X)+Math.Abs(c.Tile.Y-start.Y)).ThenBy(c=>c.Tile.Y).ThenBy(c=>c.Tile.X)) {
                 var tile=new Point(cell.Tile.X,cell.Tile.Y);var vector=tile.ToVector2();
                 if(anchors.Contains(cell.Tile)||PlacementProtected?.Invoke(destination,tile)==true||location.objects.ContainsKey(vector)||location.terrainFeatures.ContainsKey(vector)||location.doesTileHaveProperty(tile.X,tile.Y,"Action","Buildings")!=null||location.doesTileHaveProperty(tile.X,tile.Y,"TouchAction","Back")!=null||!item.canBePlacedHere(location,vector))continue;
                 try {
@@ -53,6 +56,7 @@ public sealed partial class PlayerExecutor {
         ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},facilityGoal,facilityItem);Game1.player.CurrentToolIndex=slot;Game1.player.netItemStowed.Value=false;
         int before=Game1.player.Items.Where(i=>i?.QualifiedItemId==facilityItem).Sum(i=>i.Stack);
         if(!Utility.tryToPlaceItem(location,item,selected.X*64,selected.Y*64)||!location.objects.TryGetValue(at,out var placed)||placed.QualifiedItemId!=facilityItem||before-Game1.player.Items.Where(i=>i?.QualifiedItemId==facilityItem).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_facility_placement_not_verified");
+        FacilityPlaced?.Invoke(facilityGoal,location,selected);
         Current!.effects.Add(new{kind="native_facility_placed",item=facilityItem,location=destination,x=selected.X,y=selected.Y,consumed=1});Current.completed=1;Finish("succeeded");
     }
 }

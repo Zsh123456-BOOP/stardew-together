@@ -8,4 +8,5 @@ public sealed class CustomPartner {
     public int X {get;set;}=64;
     public int Y {get;set;}=16;
     public bool Created {get;set;}
+    public Dictionary<string,string> SuspendedData {get;set;}=new();
 }

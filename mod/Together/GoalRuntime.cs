@@ -79,7 +79,7 @@ public sealed partial class ModEntry {
         foreach(var need in Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).OrderByDescending(n=>n.Quality))ledger.Take(need.Item,need.Count,need.Quality);
         var processing=new GoalLedger(processingStock);
         foreach(var goal in Data.SharedGoals)GoalPlanner.Rebuild(goal,goalRecipes,ledger,Facts.Day,
-            id=>KnowledgeCatalog.IngredientName(id.StartsWith("(O)-")?id[3..]:id),NativeGoalCount(goal),processing);
+            id=>KnowledgeCatalog.IngredientName(id.StartsWith("(O)-")?id[3..]:id),NativeGoalCount(goal),processing,Game1.getLocationFromName(goal.Location)?.objects.Values.Count(o=>o.QualifiedItemId==goal.Item)??0);
     }
     private static int NativeGoalCount(SharedGoal goal)=>goal.Entity.StartsWith("craft:")?Game1.player.craftingRecipes.GetValueOrDefault(goal.Entity[6..]):goal.Entity.StartsWith("cook:")?Game1.player.recipesCooked.GetValueOrDefault(goal.Item.StartsWith("(O)")?goal.Item[3..]:goal.Item):0;
     public void OpenGoals() {if(Context.IsWorldReady){RefreshFacts(true);Game1.activeClickableMenu=new SharedGoalsMenu(this);}}

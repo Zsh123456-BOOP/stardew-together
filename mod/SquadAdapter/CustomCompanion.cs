@@ -2,6 +2,23 @@ using StardewValley;
 using StardewModdingAPI;
 namespace TheStardewSquad;
 public sealed partial class CompanionControl {
+    // Remove only our custom body from runtime membership. Global inventories
+    // remain native save data; no cargo transfer/destruction happens here.
+    public bool SuspendCustomCompanion(string name) {
+        var npc=GetCharacter(name);if(npc==null)return true;
+        if(!npc.modData.ContainsKey("stardewagent.together/custom-partner"))return false;
+        var mate=Members.FirstOrDefault(m=>m.Npc==npc);
+        if(mate!=null) {
+            string id=Id(mate);
+            foreach(var r in records.Values.Where(r=>r.Actor==id&&r.Status=="running").ToArray())Finish(r,"cancelled","single_player_mode");
+            mod.FollowerManager.ClearMateTaskAndReset(mate);mate.Halt();keepDismissalPosition.Add(npc);
+            try{mod.RecruitmentManager.Dismiss(mate,isSilent:true,warpBehavior:TheStardewSquad.Framework.Behaviors.DismissalWarpBehavior.RoamHere);}
+            finally{keepDismissalPosition.Remove(npc);}
+            managed.Remove(id);stay.Remove(id);
+        }
+        npc.Halt();npc.controller=null;npc.currentLocation?.characters.Remove(npc);
+        return !Members.Any(m=>m.Npc==npc);
+    }
     public bool AttachCustomCompanion(string name) {
         if(Context.IsMultiplayer)return false;
         var npc=Game1.getCharacterFromName(name);

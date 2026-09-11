@@ -32,7 +32,7 @@ public sealed partial class ModEntry {
         service_constraints=Data.Autoplay.Operations.Constraints.Where(e=>e.Day==Game1.Date.TotalDays).ToArray(),
         recent_failure_rules=Data.Autoplay.Failures.Entries.Where(e=>e.Day==Game1.Date.TotalDays).OrderByDescending(e=>e.UntilChanged).ThenByDescending(e=>e.Attempts).Take(12).Select(e=>new{e.Tool,e.Actor,e.Reason,e.Day,e.RetryAfterMinute,e.Attempts,e.TaskEvidence,e.UntilChanged,family=FailureKnowledge.Family(e.Reason),invalidates=e.UntilChanged?"仅相关前置变化或次日解除；改数量/措辞、走动或无关体力变化不解除。材料看批准用途和库存；目标看目标区域/能力；容量看货袋与仓储。":"空间/瞬时故障按实际相关状态复查，有界冷却。"}),
         unfinished=Data.SharedGoals.Where(g=>g.Status=="active").Select(g=>new{g.Id,g.Title,g.Summary}).Take(8),
-        promises=Data.People.SelectMany(kv=>kv.Value.Job is {Status:"active" or "waiting" or "paused"} j?new[]{new{actor=kv.Key,j.Id,j.Title,j.Status,j.Index,j.DoneInStep}}:Array.Empty<object>()).Take(8),
+        promises=(SinglePlayerMode?Enumerable.Empty<KeyValuePair<string,Companion>>():Data.People).SelectMany(kv=>kv.Value.Job is {Status:"active" or "waiting" or "paused"} j?new[]{new{actor=kv.Key,j.Id,j.Title,j.Status,j.Index,j.DoneInStep}}:Array.Empty<object>()).Take(8),
         note="事实以本轮原生状态为准；memory.search 可检索归档回执。当前承诺保存在结构化计划，未因摘要窗口删除。"
     };
 }

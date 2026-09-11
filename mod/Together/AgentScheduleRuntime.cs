@@ -8,6 +8,7 @@ public sealed partial class ModEntry {
     private readonly List<string> agentWakeReasons=new();
     private long agentRequestEpoch;
     private int agentRequestDay;
+    private int agentRequestQueueRevision;
     private bool agentNeedsDecision=true;
     private string agentEventSignature="";
     private DateTime agentObserveAt;
@@ -16,7 +17,7 @@ public sealed partial class ModEntry {
     private string agentIdleSignature="";
     private bool AgentActorHasWork(string actor)=>OperationActorOccupied(actor);
     private bool AgentPlayerCovered()=>AgentActorHasWork("player")||Data.FarmInvestment.Enabled&&Data.FarmInvestment.Phase=="planning";
-    private bool AgentWorkCovered()=>AgentPlayerCovered()&&agentKnownActors.Where(a=>a!="player").All(a=>AgentActorHasWork(a)||Data.Business.Enabled&&Data.Partner.Enabled&&a.EndsWith(":"+PartnerName));
+    private bool AgentWorkCovered()=>AgentPlayerCovered()&&ActiveActors.Where(a=>a!="player").All(AgentActorHasWork);
     private void WakeAgent(string reason) {
         if(!agentWakeReasons.Contains(reason))agentWakeReasons.Add(reason);
         if(agentWakeReasons.Count>16)agentWakeReasons.RemoveAt(0);
@@ -32,6 +33,7 @@ public sealed partial class ModEntry {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
         if(list==null)throw new InvalidOperationException("tasks_required");
         foreach(var spec in list.Where(s=>s!=null)) {
+            if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("single_player_actor_required");
             if(spec.tool=="companion.assign" || spec.tool=="work.run"&&spec.actor!="player") {
                 // All NPC task lanes must name an actor actually observed in this save.
                 if(!World().GetProperty("actors").EnumerateArray().Any(a=>a.GetProperty("id").GetString()==spec.actor))throw new InvalidOperationException("actor_not_recruited");
@@ -44,6 +46,7 @@ public sealed partial class ModEntry {
         var ids=args.TryGetProperty("ids",out var raw)?JsonSerializer.Deserialize<List<string>>(raw.GetRawText()):null;
         if(ids==null||ids.Count is <1 or >48)throw new InvalidOperationException("task_ids_required");
         var tasks=ids.Distinct().Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)??throw new InvalidOperationException("unknown_task_id")).ToArray();
+        if(decisionIntent.Length>0&&tasks.Any(t=>t.state=="running")&&!agentWasInDanger)throw new InvalidOperationException("active_plan_requires_changed_precondition_or_user_cancellation");
         foreach(var t in tasks.Where(t=>t.state=="running")) {
             var result=JsonSerializer.SerializeToElement(AgentReceipt(t.command_id!,true),AgentJson.Options);
             if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"){t.error="cancellation_pending_native_action";continue;}
@@ -72,6 +75,7 @@ public sealed partial class ModEntry {
         if(agentFailures.Failed(actor,code))EnterSurvival("sleep","repeated_failure_six:"+actor+":"+code);
     }
     private void CompleteScheduled(ScheduledAgentTask task,JsonElement result) {
+        if(task.spec.goal_id.Length>0)goalAutomationAt=DateTime.MinValue;
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
         if(state!="succeeded" && state!="cancelled")state="failed";
@@ -84,7 +88,7 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("goal_progress",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,task.spec.source,task.spec.actor,outcome}));
         if(state!="succeeded"&&task.spec.goal_id.Length>0) {
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==task.spec.goal_id);
-            if(goal!=null){goal.AutoExecute=RecoveryPolicy.CanWait(error);goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;
+            if(goal!=null){goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;
                 if(goal.AutoExecute){RefreshFacts(true);goal.AutoBlockedConditions=GoalCondition(goal);goal.AutoReviewDay=Game1.Date.TotalDays;goal.AutoReviewMinute=DailyBudget.Minutes(Game1.timeOfDay);}
             }
         }
@@ -153,7 +157,7 @@ public sealed partial class ModEntry {
     }
     private void ObserveAgentEvents() {
         if(DateTime.UtcNow<agentObserveAt)return;agentObserveAt=DateTime.UtcNow.AddSeconds(1);
-        string idle=string.Join(",",agentKnownActors.OrderBy(x=>x).Where(actor=>!AgentActorHasWork(actor)));
+        string idle=string.Join(",",ActiveActors.OrderBy(x=>x).Where(actor=>!AgentActorHasWork(actor)));
         if(idle!=agentIdleSignature){agentIdleSignature=idle;if(idle.Length>0)WakeAgent("idle_actors:"+idle);}
         bool danger=Game1.player.health<35;
         if(danger&&!agentWasInDanger){agentGeneration++;WakeAgent("danger");} // Discard an in-flight plan based on a previously safe state.

@@ -29,8 +29,9 @@ public sealed partial class ModEntry {
                 Data.Business.Enabled=false;Data.FarmInvestment.Enabled=false;Data.Maintenance.Enabled=false;Data.Autoplay.Routine.Enabled=false;
                 Data.Autoplay=new(){Goal="原生整备与面板验证",Status="running",StartDay=Game1.Date.TotalDays,RunId=Guid.NewGuid().ToString("N")};
                 Data.Autoplay.Routine.Enabled=false;Data.Autoplay.Campaign.Enabled=false;Data.Maintenance.Orders.Clear();foreach(var goal in Data.SharedGoals)goal.AutoExecute=false;
-                Data.Autoplay.Survival.NativePlayerOnly=true;agentLabProbe=true;agentNeedsDecision=false;agentStarting=false;agentNext=DateTime.UtcNow.AddHours(1);agentWakeReasons.Clear();
+                Data.Autoplay.Survival.NativePlayerOnly=true;agentLabProbe=true;agentNeedsDecision=false;agentStarting=false;agentNext=DateTime.UtcNow.AddHours(1);agentWakeReasons.Clear();AttachMemoryArchive();
                 return JsonSerializer.Serialize(AgentPlanRead());
+            case "goal_infrastructure_probe":return AgentJson.Encode(EnsureStorageGoal()??throw new InvalidOperationException("no_authorized_infrastructure_goal"));
             case "pickup_block_probe":playerExecutor.LabPickupBlock=()=>Settings.EnableLab&&Context.IsWorldReady&&Game1.player.Name=="AgentLab";return AgentJson.Encode(new{armed=true,trigger="next real loose drop observed",kind="lab fault injection"});
             case "preparation_resume":
                 StartAutoplay(Data.Autoplay.Goal);Settings.Autonomy=false;agentLabProbe=true;agentNeedsDecision=false;agentStarting=false;agentNext=DateTime.UtcNow.AddHours(1);agentWakeReasons.Clear();return AgentJson.Encode(AgentPlanRead());
@@ -100,7 +101,7 @@ public sealed partial class ModEntry {
             case "agent_reply_probe": {
                 if(!agentLabProbe || !AutoplayRunning)throw new InvalidOperationException("schedule_probe_required");
                 operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
-                agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
+                agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentWatch.Restart();
                 agentPending=Task.FromResult(new ModelReply(Arg("reply"),0));return JsonSerializer.Serialize(new{synthetic_reply=true});
             }
             case "business_recovery_fixture": {

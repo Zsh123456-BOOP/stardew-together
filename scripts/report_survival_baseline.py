@@ -31,6 +31,8 @@ def report(logroot,run):
   moves=[e for e in of('loadout_transferred')]
   stores=[e for e in of('task_started') if e['payload'].get('result',{}).get('goal')=='store']
   days.append(dict(day=day,complete=bool(end and bed),A=dict(transport_minutes=bed.get("TransportMinutes",{}) if bed else {},transport_wall_seconds=bed.get("TransportWallSeconds",{}) if bed else {},sleep_time=bed['SleepTime'] if bed else None,available_minutes=available,minutes=minutes,percent={k:100*v/available for k,v in minutes.items()} if available else {},sum_minutes=sum(minutes.values()),wall_seconds=bed['WallSecondsByState'] if bed else {},wall_detail_seconds=bed.get('WallDetailSeconds',{}) if bed else {},awake_labor_ratio=end.get('awake_labor_ratio') if end else None),B=dict(declaration_failure_counts=dict(declarations),native_storage_visits=len(deposits),native_items_stored=sum(e['payload'].get('moved',0) for e in deposits),failed_tasks=sum(roots.values()),root_counts=dict(roots),repeated_roots={k:v for k,v in roots.items() if v>1},store_tasks=len(stores),loadout_transfers=len(moves),early_sleep_before_1800=bool(bed and bed['SleepTime']<1800),degradations=[e['payload'] for e in of('survival_transition')],note='early sleep flag is observational, not an invented G3 threshold; repeats are counts, not assumed identical causes'),C=dict(start=starts[0]['payload']['ledger'] if starts else None,before_sleep=bed.get('ledger') if bed else None,settled=end),D=dict(responses=len(calls),input_tokens=inp,output_tokens=sum(e.get('output_tokens',0) for e in calls),cache_hit_tokens=hit,cache_hit_rate=hit/inp if inp else None,model_failures=len(of('model_unavailable')),model_latency_ms=stats([e['latency_ms'] for e in calls]),recoverable_transfer_interruptions=sum(e['payload'].get('disposition')=='abandon_replan_actual_stock' for e in failures)),E=dict(shape_rejections=dict(shapes),same_version_rejections=sum(e['payload'].get('repeat',False) for e in of('loadout_shape_rejected')))))
+ for row in days:
+  row['tool_calls']=dict(collections.Counter(e['payload'].get('tool','unknown') for e in events if e['day']==row['day'] and e['kind']=='tool_result'))
  tools=collections.Counter(e['payload'].get('tool','unknown') for e in events if e['kind']=='tool_result')
  groups={name:{tool:tools.get(tool,0) for tool in names} for name,names in {
   'purchase_business':['shop.read','player.buy','player.procure','farm.economy','farm.autonomy','farm.business','day.routine'],
@@ -51,11 +53,24 @@ def report(logroot,run):
    last_visit[key]=crossing
   last=e
  segments=[e for e in events if e['kind']=='route_segment']
- route_report=dict(sampled_transport_wall_seconds=dict(transport),accounting='observed movement intervals; storage takes precedence; not clock-time G3. Unproductive reversal requires manual cause review.',invalid_reversal_seconds=None,crossings=crossings,revisits=revisits,cleanup_segments=[e for e in segments if any(w.get('goal')=='cleanup' for w in e['payload'].get('work',[]))],segments=segments)
+ route_report=dict(sampled_transport_wall_seconds=dict(transport),accounting='observed movement intervals; storage takes precedence; not clock-time G3. Unproductive reversal requires manual cause review.',invalid_reversal_seconds=None,crossings=crossings,revisits=revisits,cleanup_segments=[e for e in segments if any(w.get('goal')=='cleanup' for w in e['payload'].get('work',[]))],cleanup_target_sequences=[e for e in events if e['kind']=='cleanup_route'],segments=segments)
+ owners={}
+ for e in events:
+  if e['kind']=='action_result':
+   parent=e['payload'].get('command_id')
+   for child in e['payload'].get('evidence',[]):
+    if isinstance(child,dict) and child.get('command_id'):owners[child['command_id']]=parent
+  if e['kind']=='route_segment' and len(e['payload'].get('work',[]))==1:
+   owners[e['payload']['route']['command_id']]=e['payload']['work'][0]['command_id']
+ handoff_groups=collections.defaultdict(list)
+ for e in events:
+  if e['kind']=='work_handoff':
+   h=e['payload'];owner=owners.get(h['from']);group='unclassified' if owner is None else 'within_same_parent' if owner==h['command_id'] else 'between_parent_tasks'
+   handoff_groups[group].append(h['delay_ms'])
  handoffs=[e['payload']['delay_ms'] for e in events if e['kind']=='work_handoff'];nav=[]
  for e in events:
   if e['kind']=='native_action_timing':nav.extend(e['payload']['navigation'])
- return dict(run=run,events=len(events),tool_calls=dict(tools),tool_groups=groups,idle_rejections=len(idle),stale_responses=sum(e["kind"]=="stale_decision" for e in events),transport=route_report,days=days,performance=dict(action_handoff_ms=stats(handoffs),model_wait_ms=stats([e['payload']['latency_ms'] for e in events if e['kind']=='model_usage']),path_search_ms_per_action=stats([n['path_search_ms'] for n in nav]),path_searches=sum(n['path_searches'] for n in nav),frame_measurements=[dict(day=e['day'],**e['payload']['performance']) for e in events if e['kind']=='quality_bedtime'],slow_frames=[e for e in events if e['kind']=='slow_frame']),evidence_files=sorted(set(e['source'].rsplit(':',1)[0] for e in events)))
+ return dict(run=run,events=len(events),tool_calls=dict(tools),tool_groups=groups,idle_rejections=len(idle),stale_responses=sum(e["kind"]=="stale_decision" for e in events),transport=route_report,days=days,performance=dict(action_handoff_ms=stats(handoffs),action_handoff_by_parent_ms={k:stats(v) for k,v in handoff_groups.items()},model_wait_ms=stats([e['payload']['latency_ms'] for e in events if e['kind']=='model_usage']),path_search_ms_per_action=stats([n['path_search_ms'] for n in nav]),path_searches=sum(n['path_searches'] for n in nav),frame_measurements=[dict(day=e['day'],**e['payload']['performance']) for e in events if e['kind']=='quality_bedtime'],slow_frames=[e for e in events if e['kind']=='slow_frame']),evidence_files=sorted(set(e['source'].rsplit(':',1)[0] for e in events)))
 
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('--logroot',type=Path,required=True);p.add_argument('--run',required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args()

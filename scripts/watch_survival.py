@@ -134,7 +134,9 @@ def main():
                         stop=root_watch.observe(ev)
                         if stop:
                             write('repeated-root-stop.json',dict(**stop,autoplay=last))
-                            raise RuntimeError('same_capacity_root_three_actual_failures')
+                            scenario('agent_pause')
+                            write('repeated-root-paused.json',bridge.request('GET','/lab/together'))
+                            raise RuntimeError('same_root_three_distinct_attempts')
                     log_offsets[str(path)]=f.tell()
             if a['RunId']!=run_id:raise RuntimeError('run_identity_changed')
             for task in a.get('Schedule',{}).get('Tasks',[]):

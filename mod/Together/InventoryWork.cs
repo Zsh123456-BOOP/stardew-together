@@ -85,6 +85,8 @@ public sealed partial class ModEntry {
     private object InventoryPlanning() {
         var processing=BusinessRawReserves();
         return new{
+        slot_count=Game1.player.MaxItems,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,occupied=Game1.player.MaxItems-CapacityAdapter.Of(Game1.player).FreeSlots,
+        capacity_release_conditions="实际背包/仓储/保护预留/批准用途版本变化才解除；换日、换措辞不解除",
         capacity_constraints=Data.Autoplay.Capacity.Constraints,capacity_version=Data.Autoplay.Capacity.Version,
         preparation=preparationSummary,
         player_free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,
@@ -148,7 +150,7 @@ public sealed partial class ModEntry {
                 var stand=WorkStand(Game1.currentLocation,tile);if(!stand.HasValue)throw new InvalidOperationException("selected_storage_unreachable");
                 WorkChild(j,"player.move",new{x=stand.Value.X,y=stand.Value.Y},"storage_move");return;
             }
-            StorePlayerAt(tile,j);j.ReliefAction="";j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
+            StorePlayerAt(tile,j);j.ReliefDepth=0;j.ReliefAction="";j.Excluded.Add("storage:"+j.StorageLocation+":"+tile.X+":"+tile.Y);j.StorageTile=null;
             if(j.goal!="store"&&!PlayerNeedsWorkStorage(j)&&(!j.PickupPending||CapacityAdapter.Of(Game1.player).FreeSlots>0)){j.Storing=false;j.Excluded.RemoveWhere(x=>x.StartsWith("storage:"));return;}
         }
         StartCapacityRelief(j);

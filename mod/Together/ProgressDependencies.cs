@@ -23,6 +23,7 @@ public sealed partial class ModEntry {
             if(nodes.ContainsKey(id))return;
             if(nodes.Count>=limit||level>depth){truncated.Add(id);return;}
             var node=new ProgressDependency{id=id,title=id};nodes[id]=node;
+            if(id=="capability:fishing"){nodes[id]=FishingAcquisition();return;}
             if(native.TryGetValue(id,out var definition)) {
                 node.title=definition.title;node.kind=definition.kind;node.state=definition.completed==true?"complete":"unmet";node.evidence=definition.requirements;
                 if(definition.completed==true)return;

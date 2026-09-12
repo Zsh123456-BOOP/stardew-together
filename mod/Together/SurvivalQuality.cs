@@ -5,6 +5,8 @@ public sealed class QualityDay {
     public int? SleepTime {get;set;}
     public int ActualAwakeMinutes {get;set;}
     public Dictionary<string,double> TimeBreakdownMinutes {get;set;}=new();
+    public Dictionary<string,double> TransportMinutes {get;set;}=new();
+    public Dictionary<string,double> TransportWallSeconds {get;set;}=new();
     public Dictionary<string,double> WallDetailSeconds {get;set;}=new();
     public Dictionary<string,double> WallSecondsByState {get;set;}=new();
     public double? AwakeLaborRatio=>SleepTime.HasValue&&ActualAwakeMinutes>0?TimeBreakdownMinutes.GetValueOrDefault("labor")/ActualAwakeMinutes:null;

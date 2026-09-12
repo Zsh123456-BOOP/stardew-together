@@ -17,6 +17,7 @@ public sealed partial class ModEntry {
             WriteBusinessLog("actor_route",AgentJson.Encode(new{actor,location,tile=new[]{tile.X,tile.Y},phase,task_id=task?.spec.id,intent_id=task?.spec.intent_id,purpose=task?.spec.purpose,
                 observed_delta=distance,event_type=!had?"first":old.Location!=location?"map_transition":distance>2?"sample_gap":distance>0?"move":"waiting_or_animation",
                 elapsed_since_sample=had?(double?)(DateTime.UtcNow-old.At).TotalSeconds:null,
+                route_context=new{native_skill=actor=="player"?playerExecutor.Current?.skill:null,child_kind=work?.ChildKind,storage=work?.Storing??false,preparation=preparation?.Phase,origin=preparation?.Origin,previous_location=had?old.Location:null,previous_tile=had?new[]{old.X,old.Y}:null},
                 work=work==null?null:new{work.goal,work.completed,work.gained,work.deposited,work.requested,work.child_id},
                 waiting=task==null?Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.actor==actor&&t.state=="queued").Take(4).Select(t=>new{t.spec.id,t.wait_reason,t.spec.not_before,t.spec.after}):null}));
             operationPositions[actor]=(location,tile.X,tile.Y,phase,DateTime.UtcNow);

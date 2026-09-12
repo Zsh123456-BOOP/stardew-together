@@ -245,7 +245,7 @@ public sealed partial class ModEntry {
             }
             if(ok&&j.CleanupId.Length>0&&j.ChildKind is "cleanup_labor" or "pickup_recovery")Data.Maintenance.Orders.FirstOrDefault(o=>o.Id==j.CleanupId)?.PendingPickup.Clear();
             if(j.ChildKind=="capacity_relief") {
-                if(!ok){StopSemanticWork(j,"capacity_all_candidates_infeasible");return;}
+                if(!ok){StopSemanticWork(j,"relief_prerequisite_failed");return;}
                 j.ReliefDepth=0;j.ReliefAction="";j.Storing=true;
             }
             if(!ok) {
@@ -261,7 +261,7 @@ public sealed partial class ModEntry {
                 }
                 else if(j.goal=="mine_trip"&&j.ChildKind!="mine_exit") {if(j.ChildKind=="mine_stone"&&error is "no_path" or "path_stalled" or "resource_no_longer_present")j.Excluded.Add(j.Target);else if(j.ChildKind=="mine_combat"&&error=="current_area_clear_before_requested_kills"){}else j.MineReturnReason="mine_interrupted:"+error;}
                 else if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
-                else if(error.StartsWith("capacity_")&&j.ReliefDepth>0){StopSemanticWork(j,"capacity_all_candidates_infeasible");return;}
+                else if(error.StartsWith("capacity_")&&j.ReliefDepth>0){StopSemanticWork(j,"relief_prerequisite_failed:"+error);return;}
                 else if(error.StartsWith("capacity_")&&j.actor=="player"&&j.PickupTiles.Count>0) {j.PickupPending=true;j.Storing=true;j.phase="storage_for_pickup";}
                 else if(j.ChildKind is "labor" or "cleanup_labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}

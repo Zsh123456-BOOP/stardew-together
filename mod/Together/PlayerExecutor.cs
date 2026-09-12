@@ -28,6 +28,7 @@ public sealed partial class PlayerExecutor {
     public Action<string,JsonElement>? ValidateOperation {get;set;}
     public Action<int>? NativeSleepRequested {get;set;}
     public Action<PlayerAction>? NativeFinished {get;set;}
+    public Action<object>? RouteObserved {get;set;}
     public Action<IReadOnlyDictionary<Item,int>,string,string>? ValidateConsumption {get;set;}
     public bool Busy=>Current?.status=="running";
     public bool NeedsMenuChoice=>Busy && Current!.skill=="player.sleep" && Current.phase=="overnight" && Game1.activeClickableMenu is not (null or ShippingMenu or SaveGameMenu or LevelUpMenu {isProfessionChooser:false});
@@ -268,6 +269,7 @@ public sealed partial class PlayerExecutor {
         StopWalk();target=p;
         var path=approachPath!=null&&approachLocation==Game1.currentLocation&&approachStart==Game1.player.TilePoint&&approachEnd==p?approachPath:MeasuredPath(p);
         approachPath=null;
+        RouteObserved?.Invoke(new{command_id=Current?.command_id,skill=Current?.skill,phase=Current?.phase,location=Game1.currentLocation.NameOrUniqueName,from=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},to=new[]{p.X,p.Y},path_tiles=path?.Count,planned_path=path?.Select(t=>new[]{t.X,t.Y}).ToArray(),destination});
         var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p);
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
         // Native stow only during our walk. Restore before using the selected item,
@@ -306,6 +308,7 @@ public sealed partial class PlayerExecutor {
         if(gap>2)lastProgress=now; // Suspended app frames are not failed path attempts.
         if(Game1.game1.IsActive||!Game1.options.pauseWhenOutOfFocus)activeSeconds+=Math.Clamp(Game1.currentGameTime.ElapsedGameTime.TotalSeconds,0,.1);
         try {
+            TryRoutePickup();
             if(cancelAfterImpact) {
                 if(Game1.player.UsingTool)return;
                 if(Current!.phase=="work_impact")TickWork();

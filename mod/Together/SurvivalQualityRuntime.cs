@@ -9,6 +9,7 @@ public sealed partial class ModEntry {
     private string qualityLocation="",qualityRun="";
     private long qualityLastTick;
     private readonly Dictionary<string,double> qualityInterval=new();
+    private readonly Dictionary<string,double> transportInterval=new();
     private string QualityCategory(bool moved,bool completed) {
         if(moved)return "transport";
         if(Game1.player.UsingTool||completed)return "labor";
@@ -21,7 +22,8 @@ public sealed partial class ModEntry {
         double total=qualityInterval.Values.Sum();
         if(total>0)foreach(var entry in qualityInterval)row.TimeBreakdownMinutes[entry.Key]=row.TimeBreakdownMinutes.GetValueOrDefault(entry.Key)+delta*entry.Value/total;
         else row.TimeBreakdownMinutes["blocked"]=row.TimeBreakdownMinutes.GetValueOrDefault("blocked")+delta;
-        qualityInterval.Clear();
+        if(total>0)foreach(var entry in transportInterval)row.TransportMinutes[entry.Key]=row.TransportMinutes.GetValueOrDefault(entry.Key)+delta*entry.Value/total;
+        qualityInterval.Clear();transportInterval.Clear();
     }
     private void CaptureQualitySleep(int day) {
         Data.Autoplay.NativeSleepRequestedDay=day;if(!AutoplayRunning)return;
@@ -29,7 +31,7 @@ public sealed partial class ModEntry {
         row.SleepTime=Game1.timeOfDay;row.ActualAwakeMinutes=Math.Max(0,DailyBudget.Minutes(Game1.timeOfDay)-360);
         foreach(string state in new[]{"labor","transport","waiting_model","waiting_natural_growth","blocked"})row.TimeBreakdownMinutes.TryAdd(state,0);
         double missing=row.ActualAwakeMinutes-row.TimeBreakdownMinutes.Values.Sum();if(missing>0)row.TimeBreakdownMinutes["blocked"]+=missing;
-        RefreshFacts(true);Data.Autoplay.Record("quality_bedtime",AgentJson.Encode(new{day,row.SleepTime,row.ActualAwakeMinutes,row.TimeBreakdownMinutes,row.WallSecondsByState,row.WallDetailSeconds,ledger=ReadBusinessLedger(),performance=Performance()}));
+        RefreshFacts(true);Data.Autoplay.Record("quality_bedtime",AgentJson.Encode(new{day,row.SleepTime,row.ActualAwakeMinutes,row.TimeBreakdownMinutes,row.WallSecondsByState,row.WallDetailSeconds,row.TransportMinutes,row.TransportWallSeconds,ledger=ReadBusinessLedger(),performance=Performance()}));
     }
     private long NativeAssetValue() {
         long Price(Item? item)=>item is StardewValley.Object o?(long)Math.Max(0,o.sellToStorePrice())*o.Stack:0;
@@ -43,7 +45,7 @@ public sealed partial class ModEntry {
         int day=Game1.Date.TotalDays,minute=DailyBudget.Minutes(Game1.timeOfDay);
         var q=Data.Autoplay.Quality;
         if(qualityDay!=day||qualityRun!=Data.Autoplay.RunId) {
-            qualityDay=day;qualityRun=Data.Autoplay.RunId;qualityMinute=minute;qualityProgress=false;qualityLastTick=0;qualityInterval.Clear();ResetDayPerformance();
+            qualityDay=day;qualityRun=Data.Autoplay.RunId;qualityMinute=minute;qualityProgress=false;qualityLastTick=0;qualityInterval.Clear();transportInterval.Clear();ResetDayPerformance();
             RefreshFacts(true);Data.Autoplay.Record("quality_day_start",AgentJson.Encode(new{day,time=Game1.timeOfDay,ledger=ReadBusinessLedger()}));
             q.Current(day,Game1.player.Money,NativeAssetValue());
         }
@@ -55,6 +57,11 @@ public sealed partial class ModEntry {
         var row=q.Current(day);
         if(!row.SleepTime.HasValue&&seconds>0){qualityInterval[accountingState]=qualityInterval.GetValueOrDefault(accountingState)+seconds;row.WallSecondsByState[accountingState]=row.WallSecondsByState.GetValueOrDefault(accountingState)+seconds;}
         if(!row.SleepTime.HasValue&&seconds>0){string detail=Game1.player.UsingTool?"normal_tool_animation":moved?"moving":Game1.eventUp?"native_event":Game1.activeClickableMenu!=null?"native_menu":agentPending!=null&&!playerExecutor.Busy?"model_wait":playerExecutor.Busy?"action_pending_no_motion":"idle_no_action";row.WallDetailSeconds[detail]=row.WallDetailSeconds.GetValueOrDefault(detail)+seconds;}
+        if(!row.SleepTime.HasValue&&seconds>0&&accountingState=="transport") {
+            var work=semanticJobs.Values.FirstOrDefault(j=>j.actor=="player"&&j.status=="running");
+            string reason=work?.Storing==true||preparation!=null?"storage_roundtrip":action?.skill=="player.travel"||Game1.currentLocation.NameOrUniqueName!=qualityLocation?"cross_map":Game1.currentLocation.IsFarm?"within_farm":"other_local";
+            transportInterval[reason]=transportInterval.GetValueOrDefault(reason)+seconds;row.TransportWallSeconds[reason]=row.TransportWallSeconds.GetValueOrDefault(reason)+seconds;
+        }
         qualityPosition=Game1.player.Position;qualityLocation=Game1.currentLocation.NameOrUniqueName;qualityCompleted=action?.completed??0;
         if(minute<=qualityMinute)return;
         string category=qualityProgress?"progressing_work":Game1.eventUp||Game1.activeClickableMenu!=null?"native_interaction":agentPending!=null?"waiting_model":Data.Autoplay.Survival.Mode=="sleep"?"returning_or_resting":Game1.player.UsingTool?"native_animation_pending":playerExecutor.Busy?"task_without_observed_progress":Data.Autoplay.Schedule.Tasks.Any(t=>t.state=="queued"&&t.wait_reason is "crop_not_mature" or "machine_not_ready")?"waiting_natural_growth":"business_stall_no_progress";
@@ -70,7 +77,7 @@ public sealed partial class ModEntry {
             Data.Autoplay.Record("survival_day_quality",AgentJson.Encode(new{day=day.Day,effective_labor_minutes=day.EffectiveLaborMinutes,available_minutes=day.AvailableMinutes,observed_awake_minutes=day.ObservedAwakeMinutes,verified_actions_delta=day.VerifiedActionsDelta,
                 degradation_time=day.DegradationTime,degradation_reason=day.DegradationReason,capacity_constraints_active=Data.Autoplay.Capacity.Constraints,
                 blocked_work=Data.Autoplay.Schedule.Tasks.Where(t=>t.state is "blocked" or "failed").Select(t=>new{t.spec.id,t.spec.tool,t.error}),cash_delta=day.CashEnd-day.CashStart,asset_delta=day.AssetsEnd-day.AssetsStart,inventory_turnover=day.InventoryTurnover,
-                actual_sleep_time=day.SleepTime,actual_awake_minutes=day.ActualAwakeMinutes,time_breakdown_minutes=day.TimeBreakdownMinutes,wall_seconds=day.WallSecondsByState,awake_labor_ratio=day.AwakeLaborRatio,accounting="clock interval allocated by observed wall-time states; UI/animation without observed work is blocked, detail in native events; legacy denominator retained separately",
+                actual_sleep_time=day.SleepTime,actual_awake_minutes=day.ActualAwakeMinutes,time_breakdown_minutes=day.TimeBreakdownMinutes,wall_seconds=day.WallSecondsByState,transport_minutes=day.TransportMinutes,transport_wall_seconds=day.TransportWallSeconds,awake_labor_ratio=day.AwakeLaborRatio,accounting="clock interval allocated by observed wall-time states; UI/animation without observed work is blocked, detail in native events; legacy denominator retained separately",
                 minute_states=day.MinutesByState,g1=q.G1,g2=q.G2,g3=day.LaborRatio,g3_threshold=(double?)null,valuation="native sale-value floor; excludes immature crops, buildings and unsellable tools"}));
         }
         foreach(var item in q.PendingSale.ToArray()) {

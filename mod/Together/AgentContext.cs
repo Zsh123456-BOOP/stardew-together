@@ -1,13 +1,13 @@
 using System.Text.Json;
 namespace Together;
 public sealed partial class ModEntry {
-    private object ModelToolObservation(string tool,JsonElement result) {
-        if(result.ValueKind!=JsonValueKind.Object||result.TryGetProperty("error",out _))return result;
-        if(tool=="plan.read")return AgentPlanRead(true);
-        if(tool is "day.read" or "day.plan" or "progress.roadmap")return new{status="observed",current_context=tool=="progress.roadmap"?"progression":"day"};
-        if(tool=="action.status")return ReceiptSummary(result.GetRawText());
-        if(tool=="world.read")return new{status="observed",current_context="本轮now/inventory/day/companions与实时经营状态；过去库存不能覆盖新快照"};
-        return result;
+    private void RecordToolAttempt(AgentCall call,JsonElement observed) {
+        string attemptId=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("task_id",out var taskId)?taskId.GetString()!:Guid.NewGuid().ToString("N");
+        string actor=AgentToolRegistry.Text(call.args,"actor_id","player");
+        string? cause=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String?error.GetString():null;
+        if(cause?.StartsWith("known_failure_conditions_unchanged:capacity:")==true||cause?.StartsWith("known_failure_conditions_unchanged:capacity_relief:")==true)
+            cause=Data.Autoplay.Capacity.Constraints.Where(c=>c.Actor==actor&&c.CapacityVersion==Data.Autoplay.Capacity.Version&&CapacityState.IsCapacity(c.RootCause)).OrderByDescending(c=>c.RootCause=="capacity_all_candidates_infeasible").Select(c=>c.RootCause).FirstOrDefault()??cause;
+        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{attempt_id=attemptId,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,tool=call.tool,result=observed}));
     }
     private static object ReceiptSummary(string? text) {
         if(string.IsNullOrEmpty(text))return new{};
@@ -25,7 +25,7 @@ public sealed partial class ModEntry {
             var data=JsonSerializer.Deserialize<JsonElement>(e.Text);
             if(e.Kind=="tool_result"&&data.TryGetProperty("tool",out var t)) {
                 string? tool=t.GetString();
-                if(tool is "day.read" or "day.plan" or "plan.read" or "progress.roadmap" && data.TryGetProperty("result",out var result) && result.ValueKind==JsonValueKind.Object && !result.TryGetProperty("error",out _))return (object)new{kind=e.Kind,tool,result="读取成功；最新完整结果见本轮day/schedule/progression字段"};
+
                 if(tool=="action.status")return new{kind=e.Kind,tool,result=ReceiptSummary(data.GetProperty("result").GetRawText())};
             }
             return new{kind=e.Kind,data};

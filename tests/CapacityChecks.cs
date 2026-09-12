@@ -27,7 +27,7 @@ public static class CapacityChecks {
         var relief=CapacityRelief.Choose(Bag(51),new[]{new CapacityCandidate("craft",1,0,true,"",plan),new CapacityCandidate("sell",7,0,false,"",new CapacityOp[]{new TakeOp(wood,51)})},0);
         check(relief.Selected==null&&relief.Candidates.Count==2&&relief.Candidates.All(c=>!c.Eligible),"all exclusions retained; unauthorized sale never selected");
         var recursive=CapacityRelief.Choose(Bag(50),new[]{new CapacityCandidate("store",5,0,true,"",new CapacityOp[]{new TakeOp(wood,50)})},1);
-        check(recursive.Selected==null&&recursive.Candidates[0].Reason=="relief_depth_limit","capacity relief cannot recursively resolve its own prerequisite");
+        check(recursive.RootCause=="relief_depth_limit"&&!CapacityState.IsConstraint(recursive.RootCause)&&recursive.Selected==null&&recursive.Candidates[0].Reason=="relief_depth_limit","capacity relief cannot recursively resolve its own prerequisite");
         var facts=new CapacityState();facts.Observe("same_bag_and_storage");facts.Block("player","capacity_no_free_slot",4,630);long version=facts.Version;
         var survival=new SurvivalState();survival.NewDay(5);facts.Observe("same_bag_and_storage");
         check(facts.Version==version&&facts.Blocked("player"),"date alone does not release actor/root capacity constraint");

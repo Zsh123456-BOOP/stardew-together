@@ -101,6 +101,7 @@ public sealed partial class ModEntry {
         // allowed food; never take a quest/bundle reservation as travel food.
         var food=Game1.player.Items.OfType<StardewValley.Object>().Where(i=>i.Edibility>0&&CanConsumeOne(i)&&!Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(m=>m.Item==i.QualifiedItemId))).OrderByDescending(i=>i.staminaRecoveredOnConsumption()).FirstOrDefault();
         if(food!=null)Id(food.QualifiedItemId,Math.Min(food.Stack,(int)Math.Ceiling((plan.Departure?80:40)/(double)Math.Max(1,food.staminaRecoveredOnConsumption()))));
+        plan.Departure=plan.Departure||trip.Any(t=>AgentToolRegistry.Text(t.spec.args,"location") is {Length:>0} location&&location!=plan.Origin);
         return plan;
     }
     private Dictionary<Item,int> AllocateKit(KitPlan plan,IEnumerable<Item> sources,out List<string> missing) {
@@ -115,12 +116,13 @@ public sealed partial class ModEntry {
         return keep;
     }
     private static bool KitStorable(Item item)=>item is Tool||item is StardewValley.Object o&&!o.questItem.Value&&!o.IsRecipe;
+    private bool KitProtected(Item item)=>ConsumptionRequirements(protectProgress:true).Any(r=>r.Quality<=item.Quality&&(r.Item==item.QualifiedItemId||r.Item==item.Category.ToString()));
     private (PackingResult Result,List<KitTransfer> Transfers) PackKit(KitPlan plan,Chest chest) {
         var bag=Game1.player.Items.Where(i=>i!=null).ToArray();var stored=chest.GetItemsForPlayer().Where(i=>i!=null).ToArray();
         var keep=AllocateKit(plan,bag.Concat(stored),out var missing);
         if(missing.Count>0)return(new(false,Array.Empty<PackingMove>(),"loadout_missing:"+string.Join(";",missing)),new());
         var transfers=new List<KitTransfer>();
-        foreach(var item in bag)if(!plan.KeepUnknown&&KitStorable(item)&&item.Stack>keep.GetValueOrDefault(item))transfers.Add(new(item,item.Stack-keep.GetValueOrDefault(item),false));
+        foreach(var item in bag)if(!plan.KeepUnknown&&KitStorable(item)&&!KitProtected(item)&&item.Stack>keep.GetValueOrDefault(item))transfers.Add(new(item,item.Stack-keep.GetValueOrDefault(item),false));
         foreach(var item in stored)if(keep.GetValueOrDefault(item)>0)transfers.Add(new(item,keep[item],true));
         var a=new CapacityAdapter(Game1.player,stored);
         var other=new CapacitySnapshot(chest.GetActualCapacity(),stored.Select(i=>(a.Key(i),i.Stack,a.Limit(i),false)));
@@ -154,10 +156,13 @@ public sealed partial class ModEntry {
         if(task.spec.tool is "player.craft" or "player.cook"&&missing.Count==0)shortage=CapacityAdmission(task.spec.tool,task.spec.args) is {Feasible:false};
         // Proximity is not a reason to unload. Continue a fully equipped task
         // while its predicted output fits; ordinary work owns any later full-bag detour.
-        if(missing.Count==0&&!shortage){preparedTasks.Add(task.spec.id);return true;}
+        var needed=AllocateKit(plan,bag,out _);
+        bool unload=plan.Departure&&!plan.KeepUnknown&&bag.Any(i=>i is not Tool&&KitStorable(i)&&!KitProtected(i)&&i.Stack>needed.GetValueOrDefault(i));
+        if(missing.Count==0&&!shortage&&!unload){preparedTasks.Add(task.spec.id);return true;}
         var candidates=new List<(GameLocation Location,Vector2 Tile,Chest Chest,int Cost)>();
         var excluded=new List<string>();
         foreach(var s in SharedStorage()) {
+            if(unload&&missing.Count==0&&!shortage&&s.Location.NameOrUniqueName!=plan.Origin)continue;
             if(s.Chest.GetMutex().IsLocked()){excluded.Add("storage_busy");continue;}
             var pack=PackKit(plan,s.Chest);if(!pack.Result.Feasible){excluded.Add(pack.Result.Reason);continue;}
             if(pack.Transfers.Count==0)continue;
@@ -174,7 +179,7 @@ public sealed partial class ModEntry {
         }
         var best=candidates.OrderBy(c=>c.Cost).First();plan.StorageLocation=best.Location.NameOrUniqueName;plan.ChestTile=best.Tile.ToPoint();plan.Phase="to_storage";preparation=plan;
         preparationSummary="整备：去仓库存无关物资、取本次所需";
-        Data.Autoplay.Record("loadout_started",AgentJson.Encode(new{task.spec.id,origin=plan.Origin,storage=plan.StorageLocation,tile=plan.ChestTile,needs=plan.Needs.Select(n=>new{n.Label,n.Count}),missing,shortage,estimated_path=best.Cost,excluded}));
+        Data.Autoplay.Record("loadout_started",AgentJson.Encode(new{task.spec.id,origin=plan.Origin,storage=plan.StorageLocation,tile=plan.ChestTile,needs=plan.Needs.Select(n=>new{n.Label,n.Count}),missing,shortage,unload,estimated_path=best.Cost,excluded}));
         return false;
     }
     private bool TickTaskPreparation() {
@@ -191,6 +196,7 @@ public sealed partial class ModEntry {
             if(Game1.activeClickableMenu!=null||Game1.fadeToBlack||!Game1.player.CanMove)return true;
             void Move(string skill,object args){var r=JsonSerializer.SerializeToElement(playerExecutor.Start(skill,JsonSerializer.SerializeToElement(args)),AgentJson.Options);p.Child=r.GetProperty("command_id").GetString()!;}
             if(p.Phase=="return") {
+                if(p.Departure){preparedTasks.Add(p.Task.spec.id);preparation=null;preparationSummary="出行整备完成，从仓库继续原行程";Data.Autoplay.Record("loadout_completed",AgentJson.Encode(new{p.Task.spec.id,departure=true}));return false;}
                 if(Game1.currentLocation.NameOrUniqueName!=p.Origin){Move("player.travel",new{location=p.Origin});return true;}
                 if(Game1.player.TilePoint!=p.OriginTile){Move("player.move",new{x=p.OriginTile.X,y=p.OriginTile.Y});return true;}
                 preparedTasks.Add(p.Task.spec.id);preparation=null;preparationSummary="整备完成，继续原任务";Data.Autoplay.Record("loadout_completed",AgentJson.Encode(new{p.Task.spec.id}));return false;

@@ -149,6 +149,14 @@ public static class AutonomyDevelopmentChecks {
         var flow=Together.Shared.ResourceFlow.Allocate(new[]{new Together.Shared.ResourceFlow.Stock("(O)24",-75,2,2),new Together.Shared.ResourceFlow.Stock("(O)188",-75,0,1)},
             new[]{new Together.Shared.ResourceFlow.Demand("-75",0,1),new Together.Shared.ResourceFlow.Demand("(O)24",2,2)});
         check(flow.StockUsed.SequenceEqual(new[]{2,1})&&flow.DemandFilled.SequenceEqual(new[]{1,2}),"shared player and companion allocator reserves each physical quality unit once");
+        var capacityContext=ContextCompression.Pack(new{inventory_plan=new{slot_count=12,free_slots=0,occupied=12,capacity_constraints=new[]{"full"},capacity_release_conditions="version changes",storable=new string('x',2000)},recent=new[]{new{data=new{tool="world.read",result=new{inventory_plan=new{free_slots=0},payload=new string('z',1000)}}}}},100);
+        using(var packed=JsonDocument.Parse(capacityContext)) {
+            var packedRoot=packed.RootElement;
+            check(packedRoot.GetProperty("inventory_plan").GetProperty("free_slots").GetInt32()==0&&packedRoot.GetProperty("inventory_plan").GetProperty("occupied").GetInt32()==12,"essential capacity scalars survive forced compression");
+            check(packedRoot.GetProperty("recent")[0].GetProperty("data").GetProperty("result").GetProperty("inventory_plan").GetProperty("free_slots").GetInt32()==0,"degraded world read returns real result instead of circular pointer");
+        }
+        var earlyQuery=ContextCompression.Pack(new{inventory_plan=new{free_slots=0},recent=new object[]{new{data=new{tool="world.read",result=new{observed="full_real_world",detail=new string('q',900)}}},new{okay="later1"},new{okay="later2"},new{okay="later3"}}},100);
+        check(earlyQuery.Contains("full_real_world"),"explicit query is retained even before the last two tool observations");
         var context=ContextCompression.Pack(new{recent=new object[]{new{error="unresolved",detail=new string('x',1000)},new{okay="old",detail=new string('y',1000)},new{okay="new"},new{okay="latest"}},schedule=new{active="must_survive"}},500);
         check(context.Contains("unresolved")&&context.Contains("must_survive")&&!context.Contains(new string('y',1000)),"context pressure drops old successes while retaining unresolved errors and active plan");
     }

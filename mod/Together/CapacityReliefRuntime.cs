@@ -95,7 +95,7 @@ public sealed partial class ModEntry {
         Exclude("sale",7,"requires_explicit_surplus_sale_task",false);Exclude("backpack_upgrade",8,"requires_explicit_purchase_budget_and_keep_gold",false);
         var choice=CapacityRelief.Choose(bag.Snapshot,candidates,job.ReliefDepth);
         job.evidence.Add(new{kind="capacity_relief_plan",choice});Data.Autoplay.Record("capacity_relief_plan",AgentJson.Encode(new{job.command_id,choice}));
-        if(choice.Selected==null){RecordCapacityConstraint(choice.RootCause,job.actor,choice.Candidates.Select(c=>c.Id+":"+c.Reason).ToArray());StopSemanticWork(job,choice.RootCause);return true;}
+        if(choice.Selected==null){if(choice.RootCause!="relief_depth_limit")RecordCapacityConstraint(choice.RootCause,job.actor,choice.Candidates.Select(c=>c.Id+":"+c.Reason).ToArray());StopSemanticWork(job,choice.RootCause);return true;}
         execute[choice.Selected]();return true;
     }
 }

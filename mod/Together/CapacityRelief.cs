@@ -14,6 +14,6 @@ public static class CapacityRelief {
             rows.Add(new(c.Id,reason.Length==0,reason,verdict?.FreeSlotsAtEnd??start.FreeSlots,c.Cost));
         }
         var selected=candidates.Where(c=>rows.Any(r=>r.Id==c.Id&&r.Eligible)).OrderBy(c=>c.Priority).ThenBy(c=>c.Cost).FirstOrDefault();
-        return new(selected?.Id,selected==null?"capacity_all_candidates_infeasible":"",rows);
+        return new(selected?.Id,selected==null?(depth>=1?"relief_depth_limit":"capacity_all_candidates_infeasible"):"",rows);
     }
 }

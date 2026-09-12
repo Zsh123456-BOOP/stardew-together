@@ -24,6 +24,17 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "round2_observation": {
+                var world=AgentWorld();var raw=new{inventory_plan=InventoryPlanning(),day=AgentDay(true),schedule=AgentPlanRead(true),recent=new[]{new{data=new{tool="world.read",result=world}}}};
+                var rodCapability=FishingAcquisition();var bag=CapacityAdapter.Of(Game1.player);
+                var nested=CapacityRelief.Choose(bag,new[]{new CapacityCandidate("store",5,0,true,"",Array.Empty<CapacityOp>())},1);
+                return AgentJson.Encode(new{world,packed=ContextCompression.Pack(raw,100),candidates=OperatingOpportunities(),fishing_dependency=rodCapability,nested,nested_is_physical_constraint=CapacityState.IsConstraint(nested.RootCause)});
+            }
+            case "round2_declaration": {
+                var call=new AgentCall{tool=Arg("tool"),args=root.GetProperty("args").Clone()};object result;
+                try{result=QueueLegacyAction(call);}catch(InvalidOperationException e){result=new{status="failed",error=e.Message};}
+                var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);RecordToolAttempt(call,observed);return AgentJson.Encode(result);
+            }
             case "preparation_probe":
                 PauseAutoplay("lab_preparation_probe");Settings.Autonomy=false;
                 Data.Business.Enabled=false;Data.FarmInvestment.Enabled=false;Data.Maintenance.Enabled=false;Data.Autoplay.Routine.Enabled=false;

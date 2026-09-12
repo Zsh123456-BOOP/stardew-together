@@ -15,7 +15,7 @@ public sealed partial class ModEntry {
         if(quoteEpoch!=agentSaveEpoch){seedQuotes.Clear();quoteEpoch=agentSaveEpoch;}
         if(menu.currency==0)foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {Category:-74,IsRecipe:false} item&&pair.Value.TradeItem==null&&pair.Value.ActionsOnPurchase?.Count is not >0&&pair.Value.Price>=0&&pair.Value.Stock>0&&item.CanBuyItem(Game1.player))
             seedQuotes[menu.ShopId+":"+item.QualifiedItemId]=new(item.QualifiedItemId,menu.ShopId,Game1.currentLocation.NameOrUniqueName,Game1.Date.TotalDays,pair.Value.Price,pair.Value.Stock,item.Stack);
-        return result;
+        Data.Autoplay.Record("shop_quote_observed",AgentJson.Encode(new{source="shop.read_or_native_service",quote=result}));return result;
     }
     internal object PlanFarmEconomy(JsonElement args) {
         RefreshFacts(true);var l=PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location","Farm"))??throw new InvalidOperationException("unknown_farm_location");var p=Game1.player;

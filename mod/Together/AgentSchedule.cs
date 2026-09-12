@@ -92,16 +92,16 @@ public sealed class AgentSchedule {
         var copy=args.Deserialize<Dictionary<string,JsonElement>>()!;copy["expected_revision"]=JsonSerializer.SerializeToElement(currentRevision);
         return JsonSerializer.SerializeToElement(copy);
     }
-    public List<ScheduledAgentTask> Ready(int day,int time) {
+    public List<ScheduledAgentTask> Ready(int day,int time,Func<IEnumerable<ScheduledAgentTask>,IEnumerable<ScheduledAgentTask>>? order=null) {
         foreach(var t in Tasks.Where(t=>t.state=="queued")) {
             if(t.spec.day<day || t.spec.day==day&&time>t.spec.deadline){t.state="blocked";t.error="task_window_expired_replan";EventVersion++;}
             else if(t.spec.after.Any(id=>Tasks.FirstOrDefault(x=>x.spec.id==id) is not {} d || d.state is "failed" or "blocked" or "cancelled" or "needs_review")){t.state="blocked";t.error="dependency_not_completed_replan";EventVersion++;}
         }
         var busy=Tasks.Where(t=>t.state is "running" or "needs_review").Select(t=>t.spec.actor).ToHashSet();
-        return Tasks.Where(t=>t.state=="queued"&&!busy.Contains(t.spec.actor)&&t.spec.day==day&&time>=t.spec.not_before&&t.spec.after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded")))
+        IEnumerable<ScheduledAgentTask> eligible=Tasks.Where(t=>t.state=="queued"&&!busy.Contains(t.spec.actor)&&t.spec.day==day&&time>=t.spec.not_before&&t.spec.after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded")))
             .OrderByDescending(t=>t.spec.priority)
-            .ThenByDescending(t=>Tasks.Any(p=>p.spec.intent_id==t.spec.intent_id&&p.state=="succeeded"))
-            .GroupBy(t=>t.spec.actor).Select(g=>g.First()).ToList();
+            .ThenByDescending(t=>Tasks.Any(p=>p.spec.intent_id==t.spec.intent_id&&p.state=="succeeded"));
+        return (order==null?eligible:order(eligible)).GroupBy(t=>t.spec.actor).Select(g=>g.First()).ToList();
     }
     public void Started(ScheduledAgentTask t,string command){t.state="running";t.command_id=command;t.error=null;t.wait_reason=null;EventVersion++;}
     public void Finish(ScheduledAgentTask t,string status,string? error,string receipt){t.state=status;t.error=error;t.receipt=receipt;EventVersion++;}

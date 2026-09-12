@@ -5,6 +5,7 @@ using StardewValley.Menus;
 
 namespace Together;
 public sealed partial class PlayerExecutor {
+    public Action? ShopOpened {get;set;}
     private string service="",serviceShop="",serviceAction="";
     private Point? serviceTile;
     private bool serviceSelected;
@@ -34,6 +35,7 @@ public sealed partial class PlayerExecutor {
                 "upgrade_house"=>serviceSelected&&menu is DialogueBox {isQuestion:true},
                 "claim_tool"=>Game1.player.toolBeingUpgraded.Value==null&&Game1.player.Items.OfType<Tool>().Any(t=>t.QualifiedItemId==serviceAction),_=>false
             };
+            if(ready&&menu is ShopMenu)ShopOpened?.Invoke();
             if(ready&&Current.skill=="player.upgrade_house"){Current.phase="house_confirm";return;}
             if(ready&&Current.skill=="player.acquire_animal"){StartLivestockPurchase(procurementArgs);return;}
             if(ready&&Current.skill=="player.procure"){StartPurchase(procurementArgs);return;}

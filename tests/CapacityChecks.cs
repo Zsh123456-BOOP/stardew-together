@@ -6,6 +6,10 @@ public static class CapacityChecks {
         foreach(var code in new[]{"loadout_stock_changed","loadout_storage_busy","loadout_native_capacity_changed"})check(!LoadoutSafety.MustStop(code,true)&&LoadoutSafety.MustStop(code,false)&&LoadoutSafety.MustStop(code,null)&&RecoveryPolicy.CanWait(code),"transfer interruption requires verified conservation: "+code);
         check(LoadoutSafety.MustStop("loadout_conservation_failed",true),"explicit conservation failure remains fatal");
         check(RecoveryPolicy.CanWait("loadout_shape_unsupported:multiple_storage")&&CapacityState.IsConstraint("loadout_shape_unsupported:multiple_storage")&&!CapacityState.IsCapacity("loadout_shape_unsupported:multiple_storage"),"shape constraint cannot globally block unrelated capacity-feasible work");
+        var clicks=new MenuEffectWatch();
+        check(clicks.Observe("a","c12",false)==1&&clicks.Observe("a","c12",false)==2&&clicks.Observe("a","c12",false)==3,"third same native no-effect is synchronous");
+        check(clicks.Observe("b","c12",false)==1&&clicks.Observe("a","c13",false)==1,"different token or target not the same no-effect");
+        check(clicks.Observe("a","c12",true)==0&&clicks.Observe("a","c12",false)==1,"verified native progress resets no-effect run");
         var wood=new StackKey("wood",0,"");var chest=new StackKey("chest",0,"");
         CapacitySnapshot Bag(int woodCount,bool protect=false)=>new(2,new[]{(new StackKey("axe",0,""),1,1,false),(wood,woodCount,999,protect)});
         var plan=new CapacityOp[]{new TakeOp(wood,50),new PutOp(chest,1,1)};

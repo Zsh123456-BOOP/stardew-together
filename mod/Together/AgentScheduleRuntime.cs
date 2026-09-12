@@ -32,6 +32,7 @@ public sealed partial class ModEntry {
     internal object AgentPlanSubmit(JsonElement args) {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
         if(list==null)throw new InvalidOperationException("tasks_required");
+        if(list.Any(s=>s?.tool=="plan.submit"))return new{status="failed",error="invalid_plan_task_nested_submit",template=new{tool="player.procure",args=new{location="observed location",shop="observed shop id",item="quoted QID",count=1,max_unit_price="observed price",budget="explicit allowance",keep_gold="explicit reserve"}},note="tasks 中放实际执行工具，不能把 plan.submit 再嵌套为动作；先 player.service→shop.read 取得真实报价"};
         foreach(var spec in list.Where(s=>s!=null)) {
             if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("single_player_actor_required");
             if(spec.tool=="companion.assign" || spec.tool=="work.run"&&spec.actor!="player") {
@@ -124,7 +125,7 @@ public sealed partial class ModEntry {
         PrepareServiceWindows();
         if(!AutoplayRunning || Game1.eventUp || Game1.fadeToBlack || Game1.locationRequest!=null)return;
         long version=schedule.EventVersion;
-        var ready=schedule.Ready(Game1.Date.TotalDays,Game1.timeOfDay);
+        var ready=schedule.Ready(Game1.Date.TotalDays,Game1.timeOfDay,SpatialOrder);
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
@@ -148,6 +149,7 @@ public sealed partial class ModEntry {
                 if(!PrepareTaskKit(task))continue;
                 if(!AdmitOperation(task))continue;
                 CheckKnownFailure(task);
+                RecordSpatialDispatch(task);
                 var result=JsonSerializer.SerializeToElement(agentTools.Execute(task.spec.tool,task.spec.args),AgentJson.Options);
                 Data.Autoplay.Record("task_started",AgentJson.Encode(new{id=task.spec.id,task.spec.intent_id,task.spec.source,task.spec.purpose,actor=task.spec.actor,tool=task.spec.tool,result}));
                 if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"&&result.TryGetProperty("command_id",out var id))schedule.Started(task,id.GetString()!);

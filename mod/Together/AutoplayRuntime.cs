@@ -36,7 +36,7 @@ public sealed partial class ModEntry {
     private bool agentStarting;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
-        playerExecutor=new(){OpportunisticItemAllowed=item=>!KitProtected(item),RouteObserved=route=>Data.Autoplay.Record("route_segment",AgentJson.Encode(new{route,task=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.tool,t.spec.purpose}),work=semanticJobs.Values.Where(j=>j.status=="running").Select(j=>new{j.command_id,j.goal,j.phase,j.ChildKind,j.Storing,j.location})})),NativeFinished=a=>{try{ObserveQualityReceipt(a);OnNativeWorkFinished(a.command_id);}catch(Exception e){PauseAutoplay("quality_evidence_failed:"+e.Message);}},ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=menu=>ApplyProfessionPolicy(menu)||SurvivalProfession(menu),ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=CaptureQualitySleep,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected,FacilityPlaced=GoalFacilityPlaced,FacilityCosts=GoalFacilityCosts};agentTools=new(this,playerExecutor);
+        playerExecutor=new(){OpportunisticItemAllowed=item=>!KitProtected(item),RouteObserved=route=>Data.Autoplay.Record("route_segment",AgentJson.Encode(new{route,task=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.tool,t.spec.purpose}),work=semanticJobs.Values.Where(j=>j.status=="running").Select(j=>new{j.command_id,j.goal,j.phase,j.ChildKind,j.Storing,j.location})})),NativeFinished=a=>{try{ObserveQualityReceipt(a);OnNativeWorkFinished(a.command_id);}catch(Exception e){PauseAutoplay("quality_evidence_failed:"+e.Message);}},ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=menu=>ApplyProfessionPolicy(menu)||SurvivalProfession(menu),ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=CaptureQualitySleep,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected,FacilityPlaced=GoalFacilityPlaced,FacilityCosts=GoalFacilityCosts,ShopOpened=()=>ObserveShop(JsonSerializer.SerializeToElement(new{}))};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         ArcadeInput.Install(ModManifest.UniqueID,playerExecutor);
         // Release our path controller before the next native update can trigger the same warp again.
@@ -92,7 +92,7 @@ public sealed partial class ModEntry {
         if(wasRunning && !reason.StartsWith("lab_")){agentToast="自主游玩已暂停："+FriendlyAgentReason(reason);agentToastUntil=DateTime.UtcNow.AddSeconds(8);}
     }
     private void ResetAgentRuntime() {
-        ResetPreparation();
+        ResetPreparation();labEarlyStorage=false;
         maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
         Data.Maintenance.WasWorking=false;Data.Maintenance.LastMinute=-1;
         agentModelNotBefore=DateTime.MinValue;decisionPacing.Reset();
@@ -132,7 +132,7 @@ public sealed partial class ModEntry {
         TickSurvivalQuality();TickBusinessTelemetry();if(!AutoplayRunning)return;
         try{if(TickAutomaticMenus())return;}catch(Exception e){EnterSurvival("sleep","automatic_menu_failed:"+e.Message);}
         if(TickSurvival())return;
-        TickCustomPartner();TickAgentSchedule();FrameStage("schedule",ref stage);
+        TickCustomPartner();TickDailyAutomation();TickGoalAutomation();TickAgentSchedule();FrameStage("schedule",ref stage);
         if(SurvivalOwnsDay)return;
         TickDailyAutomation();FrameStage("daily",ref stage);
         TickGoalAutomation();FrameStage("goal_dependencies",ref stage);

@@ -171,6 +171,9 @@ public sealed partial class ModEntry {
         foreach(var order in state.Orders.Where(o=>o.Status=="active").OrderBy(o=>o.Recurring)) {
             if(order.Recurring&&(agentPending!=null||Game1.currentLocation.NameOrUniqueName!="Farm"))continue;
             if(order.Recurring&&(!state.Enabled||!Data.Business.Enabled)||order.RetryAt>BusinessMinute||order.TaskId.Length>0)continue;
+            // A new trip starts where the actor is after committed care, not at
+            // yesterday's west-side anchor. Storage detours inside a parent keep it.
+            order.Patch=null;
             var remaining=CleanupTargets().Where(t=>CleanupMatches(order,t)).ToArray();
             if(remaining.Length==0&&order.PendingPickup.Count==0&&CleanupLoose(order).Length==0){order.Status="complete";order.Reason="current_scope_clear";order.RetryAt=BusinessMinute+60;Data.Autoplay.Record("cleanup_complete",AgentJson.Encode(order));continue;}
             if(Game1.timeOfDay>=order.Until||order.PendingPickup.Count==0&&remaining.Length>0&&FarmCleanupRules.RemainingBudget(order)==0){order.Reason="daily_budget_wait_next_day";continue;}

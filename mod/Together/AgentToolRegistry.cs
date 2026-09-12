@@ -9,7 +9,7 @@ public sealed class AgentToolRegistry {
     private readonly ModEntry mod;
     private readonly PlayerExecutor player;
     private readonly NativeMenuTools menus=new();
-    public AgentToolRegistry(ModEntry mod,PlayerExecutor player){this.mod=mod;this.player=player;menus.ProfessionSelected=mod.RememberProfession;}
+    public AgentToolRegistry(ModEntry mod,PlayerExecutor player){this.mod=mod;this.player=player;menus.ProfessionSelected=mod.RememberProfession;menus.ValidateRecipe=player.ValidateRecipe;menus.StartBusinessAction=player.Start;menus.Evidence=mod.RecordMenuEvidence;menus.Stop=mod.StopMenuNoEffect;}
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
@@ -144,7 +144,7 @@ public sealed class AgentToolRegistry {
         ["player.sleep"]="{reason:string,review?:string}: 先查看day.read；必要农务优先，傍晚低体力或20点后可说明替代活动收益不值得而收工。此动作连续负责返家、上床、结算、保存、次日，无需先单独travel回家；需选择的夜间菜单用menu工具",
         ["menu.read"]="{}: 原生菜单文本、可选响应、组件id、token、手持物；不使用截图",
         ["menu.open"]="{page:inventory|crafting|journal}: 打开相应原生菜单",
-        ["menu.choose"]="{token:string,id:string,right?:bool}: 点击刚读取的原生组件，过期token拒绝；返回菜单状态，不声称业务完成",
+        ["menu.choose"]="{token:string,id:string,right?:bool,goal_id?:string,purchase?:与player.buy相同的明确预算参数}: 原生菜单选择；locked不可用，制作复用player.craft/cook校验和执行，购买必须purchase与所选报价匹配并交player.buy。无效果返回menu_no_effect，同一token/id第三次执行层停机；手持物不得丢弃，业务菜单请用对应player工具。排队不代表完成",
         ["menu.scroll"]="{direction:up|down}: 原生菜单滚动一页",
         ["menu.close"]="{}: 仅当原生允许安全关闭且无手持物时关闭",
         ["companion.assign"]="{actor_id:string,skill:string,target_id?:string,destination?:string,seconds?:int}: travel 必须带 destination，只负责到达；mine/water/harvest/forage/clear/collect/pet/till/plant/feed/tend/buy/ship/gift/refill/deposit 必须带当前 world.read 候选的 target_id；劳动不能用 destination 代替目标。follow/stay 切换模式，guard/rest/fish 可带 seconds。跨图劳动分两轮：travel 成功→读取新候选→派劳动。",

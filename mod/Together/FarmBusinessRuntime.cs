@@ -10,7 +10,7 @@ public sealed partial class ModEntry {
     private DateTime businessAt;
     private int BusinessMinute=>Game1.Date.TotalDays*1440+DailyBudget.Minutes(Game1.timeOfDay);
     internal object ConfigureBusiness(JsonElement args) {
-        var b=Data.Business;
+        var b=Data.Business;bool wasEnabled=b.Enabled,wasRoutine=Data.Autoplay.Routine.Enabled;
         int budget=AgentToolRegistry.Number(args,"budget_per_day",b.DailyBudget),keep=AgentToolRegistry.Number(args,"keep_gold",b.KeepGold),animals=AgentToolRegistry.Number(args,"max_animals",b.MaxAnimals),machines=AgentToolRegistry.Number(args,"max_machines",b.MaxMachines),feed=AgentToolRegistry.Number(args,"feed_days",b.FeedDays);
         if(budget is <0 or >10000000||keep is <0 or >10000000||animals is <0 or >96||machines is <0 or >200||feed is <2 or >28)throw new InvalidOperationException("invalid_business_policy");
         foreach(string key in new[]{"enabled","expand"})if(args.TryGetProperty(key,out var flag)&&flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("business_boolean_required");
@@ -27,7 +27,7 @@ public sealed partial class ModEntry {
             Data.Autoplay.Schedule.CancelPending(b.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state!="running")).ToArray());
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==b.ChildGoal);if(goal is {Status:"active"})AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id,mode="pause"}));
         }
-        businessAt=DateTime.MinValue;Data.Autoplay.Record("business_policy",AgentJson.Encode(b));return new{policy=b,note="先维护，再生产与销售；投资遵循预算与工作量，模型可查询建议并调整方向。关闭不撤销已发生消费或中断原生保存。"};
+        businessAt=DateTime.MinValue;Data.Autoplay.Record("business_policy",AgentJson.Encode(new{policy=b,routine=Data.Autoplay.Routine,previous_enabled=wasEnabled,previous_routine=wasRoutine,source=agentLabProbe?"lab_explicit_configuration":"farm.business_explicit_call",time=Game1.timeOfDay}));return new{policy=b,note="先维护，再生产与销售；投资遵循预算与工作量，模型可查询建议并调整方向。关闭不撤销已发生消费或中断原生保存。"};
     }
     internal object ReadBusiness(JsonElement args) {RefreshFacts(true);return new{ledger=ReadBusinessLedger(),options=BusinessDevelopmentOptions().ToArray(),note="选项估值来自当前原生数据与可见供给；不是保证产量或全局最优。查看真实执行及等待原因后调整政策。"};}
     private bool QueueBusiness(string id,IEnumerable<(string Tool,object Args)> actions,string reason,int cost=0) {

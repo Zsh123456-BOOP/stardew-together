@@ -46,7 +46,7 @@ public static class FarmCleanupRules {
         :kind is "tree" or "seedling"&&removeTrees&&zoneAllowsTrees&&zone is "crop" or "production";
     public static int Priority(string scope)=>scope switch{"roads"=>0,"courtyard"=>1,"fields"=>2,_=>3};
     public static void NewDay(FarmCleanupOrder order,int day) {
-        if(order.Day==day)return;order.Day=day;order.CompletedToday=0;order.RetryAt=0;
+        if(order.Day==day)return;order.Day=day;order.CompletedToday=0;order.RetryAt=0;order.Patch=null;
         if(order.Recurring&&order.Status=="complete")order.Status="active";
     }
     public static int RemainingBudget(FarmCleanupOrder order)=>order.DailyLimit<=0?999:Math.Max(0,order.DailyLimit-order.CompletedToday);

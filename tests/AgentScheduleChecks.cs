@@ -7,6 +7,9 @@ public static class AgentScheduleChecks {
     public static void Run(Action<bool,string> check) {
         check(AgentPollingPolicy.Defer(true,false,new[]{"plan.submit","world.read","action.status"}),"busy actors do not trigger paid polling loops for redundant state reads");
         check(!AgentPollingPolicy.Defer(false,false,new[]{"world.read"})&&!AgentPollingPolicy.Defer(true,true,new[]{"action.status"})&&!AgentPollingPolicy.Defer(true,false,new[]{"knowledge.get"}),"idle actors, tool errors and new knowledge still wake model planning");
+        var spatial=new AgentSchedule();spatial.Submit("spatial",0,new(){Player("far"),Player("near"),Player("dependent","far")},0);
+        var selection=spatial.Ready(0,600,ready=>ready.OrderBy(t=>t.spec.id=="near"?0:1));
+        check(selection.Count==1&&selection[0].spec.id=="near","spatial policy sees all dependency-ready candidates before one-per-actor selection");
         var semantic=new AgentSchedule();
         var work=new AgentTaskSpec{id="wood",actor="player",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="wood",count=12})};
         var npcWork=new AgentTaskSpec{id="stone",actor="npc:Abigail",tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id="npc:Abigail",goal="stone",count=3})};

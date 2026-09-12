@@ -35,13 +35,13 @@ public sealed partial class ModEntry {
         var goal=(SharedGoal)AgentGoalCreate(JsonSerializer.SerializeToElement(new{request_id="storage-"+Guid.NewGuid().ToString("N"),entity=recipe.Id,count=Game1.getFarm().objects.Values.Count(o=>o.QualifiedItemId==recipe.Item)+1,completion="placed",purpose="policy:shared_storage"}));
         if(!owned)policy.WoodReserved+=cost;
         goal.AutoExecute=true;
-        Data.Autoplay.Record("infrastructure_goal",AgentJson.Encode(new{goal.Id,goal.Entity,goal.Count,goal.Purpose,authorized_cost=owned?0:cost,policy.WoodReserved}));
+        Data.Autoplay.Record("infrastructure_goal",AgentJson.Encode(new{goal.Id,goal.Entity,goal.Count,goal.Purpose,authorized_cost=owned?0:cost,policy.WoodReserved,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,trigger="authorized_storage_before_production"}));
         return goal;
     }
     private void GoalFacilityPlaced(string goalId,GameLocation location,Point tile) {
         if(Data.SharedGoals.FirstOrDefault(g=>g.Id==goalId) is not {Purpose:"policy:shared_storage"} goal)return;
         if(!location.objects.TryGetValue(tile.ToVector2(),out var item)||item is not Chest {playerChest.Value:true} chest)throw new InvalidOperationException("native_storage_placement_not_verified");
         chest.modData[WorkChestRole]="output";
-        Data.Autoplay.Record("goal_facility_verified",AgentJson.Encode(new{goal.Id,item=item.QualifiedItemId,location=location.NameOrUniqueName,tile,capability="shared_storage"}));
+        Data.Autoplay.Record("goal_facility_verified",AgentJson.Encode(new{goal.Id,item=item.QualifiedItemId,location=location.NameOrUniqueName,tile,capability="shared_storage",free_slots=CapacityAdapter.Of(Game1.player).FreeSlots}));
     }
 }

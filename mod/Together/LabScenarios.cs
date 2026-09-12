@@ -24,6 +24,7 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "round3":return AgentJson.Encode(Round3NativeFixture(Arg("mode","read")));
             case "round2_observation": {
                 var world=AgentWorld();var raw=new{inventory_plan=InventoryPlanning(),day=AgentDay(true),schedule=AgentPlanRead(true),recent=new[]{new{data=new{tool="world.read",result=world}}}};
                 var rodCapability=FishingAcquisition();var bag=CapacityAdapter.Of(Game1.player);

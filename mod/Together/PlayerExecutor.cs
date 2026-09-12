@@ -85,6 +85,7 @@ public sealed partial class PlayerExecutor {
     internal static bool AcceptsNativeMenu(string skill)=>skill=="player.forge"&&Game1.activeClickableMenu is ForgeMenu || skill=="player.read_mail"&&Game1.activeClickableMenu is LetterViewerMenu || skill=="player.joja"&&Game1.activeClickableMenu is JojaCDMenu || skill=="player.order_donate"&&Game1.activeClickableMenu is QuestContainerMenu || skill=="player.accept_quest"&&Game1.activeClickableMenu is (Billboard or SpecialOrdersBoard) || skill=="player.geodes"&&Game1.activeClickableMenu is GeodeMenu || skill=="player.buy_animal"&&Game1.activeClickableMenu is PurchaseAnimalsMenu || skill=="player.mine_access"&&Game1.activeClickableMenu is MineElevatorMenu || skill=="player.bundle"&&Game1.activeClickableMenu is JunimoNoteMenu || skill=="player.build"&&Game1.activeClickableMenu is CarpenterMenu || skill=="player.donate_museum"&&Game1.activeClickableMenu is MuseumMenu || skill=="player.buy"&&Game1.activeClickableMenu is ShopMenu || skill=="player.collect_reward"&&Game1.activeClickableMenu is ItemGrabMenu;
     public object Start(string skill,JsonElement args) {
         if(Busy)throw new InvalidOperationException("player_busy");
+        if(NativeMenuTools.HeldItem()!=null)throw new InvalidOperationException("production_output_pending_receive_before_next_action");
         ValidateOperation?.Invoke(skill,args);
         bool buying=AcceptsNativeMenu(skill);
         if(Game1.locationRequest!=null || Game1.fadeToBlack || Game1.activeClickableMenu!=null&&!buying || Game1.eventUp || Game1.currentMinigame!=null || !Game1.player.CanMove&&!buying || Game1.player.UsingTool)
@@ -585,12 +586,18 @@ public sealed partial class PlayerExecutor {
     }
     private void Finish(string status,string? error=null) {
         if(Current==null)return;
+        // Only close the exact menu owned by this executor, and never destroy
+        // an unfinished native output while reporting failure/cancellation.
+        if(status!="succeeded"&&productionMenu!=null&&Game1.activeClickableMenu==productionMenu&&productionMenu.heldItem==null&&productionMenu.readyToClose()) {
+            productionMenu.exitThisMenu();productionMenu=null;
+        }
         if(Current.skill=="player.fish"&&status!="succeeded"&&Context.IsWorldReady) {
             try{ReleaseFishing();}catch{error=(error??status)+":fishing_release_needs_review";}
         }
         if(actionTargetBefore!=null && Context.IsWorldReady && Game1.currentLocation.NameOrUniqueName==origin) {
             var after=TileState(target);Current.effects.Add(new{before=actionTargetBefore,after,effect_observed=AgentJson.Encode(actionTargetBefore)!=AgentJson.Encode(after)});actionTargetBefore=null;
         }
+        if(Context.IsWorldReady&&NativeMenuTools.HeldItem() is {} heldOutput)Current.effects.Add(new{kind="native_output_pending",item=AgentToolRegistry.ItemInfo(heldOutput),transaction=Current.command_id,recipe=productionRecipe,remaining=productionRemaining,already_crafted=Current.completed,resume="receive_via_native_menu_when_capacity_available",blocked="held_output_preserved; do_not_recollect_ingredients"});
         Current.effects.Add(new{kind="navigation_summary",path_searches=pathSearches,path_search_ms=pathSearchMs,path_retries=pathRetries,active_seconds=activeSeconds});
         StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
     }

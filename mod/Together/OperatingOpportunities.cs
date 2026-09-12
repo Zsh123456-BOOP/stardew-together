@@ -7,6 +7,7 @@ public sealed record OperatingOpportunity(string Id,string Purpose,string Tool,o
 public sealed partial class ModEntry {
     private List<OperatingOpportunity> OperatingOpportunities() {
         var rows=new List<OperatingOpportunity>();var player=Game1.player;
+        AddBusinessOpportunities(rows);
         if(Facts.RipeCrops>0)rows.Add(new("harvest","收获成熟作物并接入销售/加工","work.run",new{goal="harvest",location="Farm",count=0},$"ripe={Facts.RipeCrops}",0,20));
         if(Facts.DryCrops>0&&player.Items.Any(i=>i is WateringCan))rows.Add(new("water","完成今日照料；工具会自动补水","work.run",new{goal="water",location="Farm",count=0},$"dry={Facts.DryCrops}",Facts.DryCrops*2,30));
         if(Game1.mailbox.Count>0)rows.Add(new("mail","读取实际邮件，检查经营解锁","player.read_mail",new{},$"mail={Game1.mailbox.Count}",0,20));

@@ -24,6 +24,7 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "round4":return AgentJson.Encode(Round4NativeFixture(Arg("mode","read")));
             case "round3":return AgentJson.Encode(Round3NativeFixture(Arg("mode","read")));
             case "round2_observation": {
                 var world=AgentWorld();var raw=new{inventory_plan=InventoryPlanning(),day=AgentDay(true),schedule=AgentPlanRead(true),recent=new[]{new{data=new{tool="world.read",result=world}}}};
@@ -271,7 +272,7 @@ public sealed partial class ModEntry {
                 farm.objects[new(51,28)]=new StardewValley.Object("16",1){TileLocation=new(51,28),IsSpawnedObject=true};
                 farm.terrainFeatures[new(50,29)]=new HoeDirt(0,farm);
                 Game1.warpFarmer("Farm",45,27,false);Game1.player.Stamina=Game1.player.MaxStamina;
-                Game1.player.CurrentToolIndex=5;Game1.player.netItemStowed.Value=false;Game1.player.UpdateItemStow();
+                PlayerSelection.Set(Game1.player,5);Game1.player.netItemStowed.Value=false;Game1.player.UpdateItemStow();
                 break;
             }
             case "inventory_timing_read":return JsonSerializer.Serialize(new{

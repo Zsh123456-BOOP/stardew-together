@@ -127,6 +127,7 @@ public sealed partial class ModEntry {
     }
     private bool MaintenanceProtects(GameLocation location,Point tile)=>Data.FarmPolicy.Areas.Any(a=>a.Enabled&&a.Location==location.NameOrUniqueName&&tile.X>=a.X&&tile.X<a.X+a.Width&&tile.Y>=a.Y&&tile.Y<a.Y+a.Height)
         ||location.IsFarm&&Data.Maintenance.Zones.Any(z=>z.Contains(new(tile.X,tile.Y))&&z.Kind is "woodland" or "pasture" or "reserve");
+    private string laborReservationKey="";
     private CleanupAllowance CleanupAllowanceFor(FarmCleanupOrder order) {
         var state=Data.Maintenance;
         if(state.BudgetDay!=Game1.Date.TotalDays){state.BudgetDay=Game1.Date.TotalDays;state.EnergyCommitted=0;state.MinutesUsed=0;state.LastMinute=-1;state.WasWorking=false;}
@@ -137,15 +138,18 @@ public sealed partial class ModEntry {
         int dry=fields.Sum(l=>l.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop is not null&&!d.crop.dead.Value&&d.needsWatering()&&d.state.Value!=1));
         // Only submitted planting plans count; browsing alternative layouts does
         // not reserve the same seeds multiple times. Never trust an idle NPC to finish watering.
-        var planned=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant")
-            .Select(t=>AgentToolRegistry.Text(t.spec.args,"plan_id")).Distinct().Where(farmPlantPlans.ContainsKey).Select(id=>farmPlantPlans[id]);
-        int plots=planned.Where(p=>p.Day==Game1.Date.TotalDays&&p.Epoch==agentSaveEpoch)
-            .SelectMany(p=>p.Tiles.Select(t=>(p.Location,t))).Distinct().Count(p=>Game1.getLocationFromName(p.Location)?.terrainFeatures.GetValueOrDefault(new(p.t.X,p.t.Y)) is not HoeDirt {crop:not null});
+        var planned=ApprovedPlantingPlans();
+        int plots=planned.SelectMany(p=>p.Tiles.Select(t=>(p.Location,t))).Distinct().Count(p=>Game1.getLocationFromName(p.Location)?.terrainFeatures.GetValueOrDefault(new(p.t.X,p.t.Y)) is not HoeDirt {crop:not null});
         // Before the investment planner runs (e.g. before the shop opens), leave
         // room for the agreed expansion, bounded by its manual-care capacity.
         if(Data.FarmInvestment.Enabled&&Data.FarmInvestment.Phase is not ("done" or "blocked"))
             plots=Math.Max(plots,Math.Min(Data.FarmInvestment.Plots,Data.FarmInvestment.ManualWaterLimit));
-        return CleanupBudget.Calculate((int)Game1.player.Stamina,Game1.player.MaxStamina,order.ReserveStamina,dry,plots,state.EnergyCommitted,state.MinutesUsed);
+        var allowance=CleanupBudget.Calculate((int)Game1.player.Stamina,Game1.player.MaxStamina,order.ReserveStamina,dry,plots,state.EnergyCommitted,state.MinutesUsed);
+        int committedReserve=Math.Max(allowance.Reserve,Math.Max(15,order.ReserveStamina)+PendingFarmEnergy());
+        allowance=allowance with{Reserve=committedReserve,Available=Math.Max(0,(int)Game1.player.Stamina-committedReserve)};
+        string key=$"{Game1.Date.TotalDays}:{plots}:{dry}:{state.EnergyCommitted}:{Data.FarmInvestment.Phase}";
+        if(key!=laborReservationKey){laborReservationKey=key;Data.Autoplay.Record("labor_reservation",AgentJson.Encode(new{time=Game1.timeOfDay,planting_plots=plots,planting_energy=PendingFarmEnergy(),cleanup_committed=state.EnergyCommitted,allowance,investment=Data.FarmInvestment.Phase,recoverable_nodes=Data.FarmInvestment.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state is "failed" or "blocked")).ToArray()}));}
+        return allowance;
     }
     private void TickFarmCleanup() {
         try{TickFarmCleanupCore();}catch(Exception e){maintenanceAt=DateTime.UtcNow.AddSeconds(30);Data.Autoplay.Record("cleanup_error",e is InvalidOperationException?e.Message:e.GetType().Name);WakeAgent("cleanup_requires_review");}

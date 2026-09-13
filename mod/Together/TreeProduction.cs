@@ -41,7 +41,7 @@ public sealed partial class PlayerExecutor {
             var p=Game1.player;int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId==tappingItem,-1);
             if(slot<0||p.Items[slot] is not StardewValley.Object tapper)throw new InvalidOperationException("tapper_supply_missing");
             ValidateConsumption?.Invoke(new Dictionary<Item,int>{{tapper,1}},tappingGoal,tappingItem);
-            int before=p.Items.Where(i=>i?.QualifiedItemId==tappingItem).Sum(i=>i.Stack);p.CurrentToolIndex=slot;p.netItemStowed.Value=false;
+            int before=p.Items.Where(i=>i?.QualifiedItemId==tappingItem).Sum(i=>i.Stack);PlayerSelection.Set(p,slot);p.netItemStowed.Value=false;
             Utility.tryToPlaceItem(l,tapper,tile.X*64,tile.Y*64);
             if(!treeNow.tapped.Value||!l.objects.TryGetValue(tile.ToVector2(),out var placed)||placed.QualifiedItemId!=tappingItem||before-p.Items.Where(i=>i?.QualifiedItemId==tappingItem).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_tapper_install_not_verified");
             Current!.effects.Add(new{kind="native_tapper_installed",tapper=tappingItem,desired_output=tappingOutput,minutes=placed.MinutesUntilReady,note="安装完成不等于已有树脂，等待原生计时"});

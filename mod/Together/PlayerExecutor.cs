@@ -233,7 +233,7 @@ public sealed partial class PlayerExecutor {
     private static void SelectSlot(JsonElement a,bool required) {
         if(!a.TryGetProperty("slot",out var s)){if(required)throw new InvalidOperationException("slot_required");return;}
         if(!s.TryGetInt32(out int i)||i<0||i>=Game1.player.Items.Count||Game1.player.Items[i]==null)throw new InvalidOperationException("invalid_inventory_slot");
-        Game1.player.CurrentToolIndex=i;Game1.player.netItemStowed.Value=false;
+        PlayerSelection.Set(Game1.player,i);Game1.player.netItemStowed.Value=false;
     }
     public static bool Passable(GameLocation l,Point p) {
         if(p.X<0||p.Y<0||p.X>=l.Map.Layers[0].LayerWidth||p.Y>=l.Map.Layers[0].LayerHeight)return false;
@@ -258,7 +258,7 @@ public sealed partial class PlayerExecutor {
         }
         ownedController=null;boundaryDriving=false;
         if(stowedForWalk){Game1.player.netItemStowed.Value=false;Game1.player.UpdateItemStow();stowedForWalk=false;}
-        if(walkingItemSlot>=0){if(Game1.player.CurrentToolIndex==walkingNeutralSlot&&walkingItemSlot<Game1.player.Items.Count)Game1.player.CurrentToolIndex=walkingItemSlot;walkingItemSlot=walkingNeutralSlot=-1;}
+        if(walkingItemSlot>=0){if(Game1.player.CurrentToolIndex==walkingNeutralSlot&&walkingItemSlot<Game1.player.Items.Count)PlayerSelection.Set(Game1.player,walkingItemSlot);walkingItemSlot=walkingNeutralSlot=-1;}
     }
     private bool AtWalkTarget=>Game1.player.TilePoint==target&&(ownedController?.pathToEndPoint?.Count??0)==0;
     private Stack<Point>? MeasuredPath(Point p) {
@@ -281,7 +281,7 @@ public sealed partial class PlayerExecutor {
                 // With stowing disabled the game clears that flag every frame.
                 // Select a real empty/tool slot without changing the user's option.
                 int neutral=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i]==null||Game1.player.Items[i] is Tool,-1);
-                if(neutral>=0){walkingItemSlot=Game1.player.CurrentToolIndex;walkingNeutralSlot=neutral;Game1.player.CurrentToolIndex=neutral;}
+                if(neutral>=0){walkingItemSlot=Game1.player.CurrentToolIndex;walkingNeutralSlot=neutral;PlayerSelection.Set(Game1.player,neutral);}
             }
         }
         ownedController=controller;Game1.player.controller=controller;lastProgress=DateTime.UtcNow;lastTile=Game1.player.TilePoint;
@@ -488,7 +488,7 @@ public sealed partial class PlayerExecutor {
             if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
-            if(workSkill is "harvest" or "forage")Game1.player.CurrentToolIndex=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is StardewValley.Tools.Hoe,-1);
+            if(workSkill is "harvest" or "forage")PlayerSelection.Neutral(Game1.player);
             if(workSkill is "water" or "till" or "clear" or "prune" or "chop" or "break_clump" or "clear_dead") {
                 if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
@@ -586,6 +586,7 @@ public sealed partial class PlayerExecutor {
     }
     private void Finish(string status,string? error=null) {
         if(Current==null)return;
+        if(Context.IsWorldReady)PlayerSelection.Assert(Game1.player);
         // Only close the exact menu owned by this executor, and never destroy
         // an unfinished native output while reporting failure/cancellation.
         if(status!="succeeded"&&productionMenu!=null&&Game1.activeClickableMenu==productionMenu&&productionMenu.heldItem==null&&productionMenu.readyToClose()) {

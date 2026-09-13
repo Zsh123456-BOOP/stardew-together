@@ -5,6 +5,7 @@ using StardewValley.TerrainFeatures;
 namespace Together;
 
 public sealed class WorldFacts {
+    public Dictionary<string,int> PurchasedItems {get;set;}=new();
     public int SpentToday {get;set;}
     public Dictionary<string,int> Purchased {get;set;}=new();
     public List<string> Transactions {get;set;}=new();
@@ -143,6 +144,7 @@ public static class WorldReader {
                 using var document=System.Text.Json.JsonDocument.Parse(ledger);var root=document.RootElement;
                 f.SpentToday=root.GetProperty("Day").GetInt32()==f.Day?root.GetProperty("Spent").GetInt32():0;
                 f.Purchased=root.GetProperty("Purchased").EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
+                if(root.TryGetProperty("PurchasedItems",out var purchasedItems))f.PurchasedItems=purchasedItems.EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
                 f.Transactions=root.GetProperty("Entries").EnumerateArray().Select(x=>x.GetString()??"").TakeLast(20).ToList();
             }catch{f.Errors.Add("economy_ledger_unreadable");}
         }

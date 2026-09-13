@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Together;
 
+Round4Checks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 CapacityChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 SurvivalChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

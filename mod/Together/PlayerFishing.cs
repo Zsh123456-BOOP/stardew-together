@@ -22,7 +22,7 @@ public sealed partial class PlayerExecutor {
         if(fishRequested is <1 or >20||fishReserve is <15 or >270)throw new InvalidOperationException("invalid_fishing_limits");
         int slot=Enumerable.Range(0,Game1.player.Items.Count).Where(i=>Game1.player.Items[i] is FishingRod).OrderByDescending(i=>((FishingRod)Game1.player.Items[i]).UpgradeLevel).FirstOrDefault(-1);
         if(slot<0)throw new InvalidOperationException("fishing_rod_missing");
-        Game1.player.CurrentToolIndex=slot;fishBaseline=fishCastBaseline=NativeFishCount();fishCasts=0;fishCastPending=fishLandingChecked=false;fishObservedPhase="";fishPhaseStarted=activeSeconds;
+        PlayerSelection.Set(Game1.player,slot);fishBaseline=fishCastBaseline=NativeFishCount();fishCasts=0;fishCastPending=fishLandingChecked=false;fishObservedPhase="";fishPhaseStarted=activeSeconds;
         var l=Game1.currentLocation;var rod=(FishingRod)Game1.player.Items[slot];
         foreach(var site in FishingRules.Sites(l,rod,fishTarget).OrderByDescending(s=>s.Depth).ThenBy(s=>Vector2.DistanceSquared(s.Stand.ToVector2(),Game1.player.Tile)).Take(160)) {
             var route=PreviewPath(l,site.Stand);

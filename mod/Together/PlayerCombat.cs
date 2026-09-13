@@ -28,7 +28,7 @@ public sealed partial class PlayerExecutor {
         if(combatRequested is <0 or >50||combatMinHealth is <20 or >200)throw new InvalidOperationException("invalid_combat_limits");
         combatWeaponSlot=Enumerable.Range(0,Game1.player.Items.Count).Where(i=>Game1.player.Items[i] is MeleeWeapon w&&!w.isScythe()).OrderByDescending(i=>((MeleeWeapon)Game1.player.Items[i]).maxDamage.Value).FirstOrDefault(-1);
         if(combatWeaponSlot<0)throw new InvalidOperationException("melee_weapon_required");
-        Game1.player.CurrentToolIndex=combatWeaponSlot;combatBaseline=Game1.player.stats.MonstersKilled;combatTarget=null;combatSwings=0;Current!.phase="combat_select";
+        PlayerSelection.Set(Game1.player,combatWeaponSlot);combatBaseline=Game1.player.stats.MonstersKilled;combatTarget=null;combatSwings=0;Current!.phase="combat_select";
     }
     private void TickCombat() {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("combat_location_changed");
@@ -55,7 +55,7 @@ public sealed partial class PlayerExecutor {
             if(ownedController==null||combatTargetTile!=combatTarget.TilePoint){combatTargetTile=combatTarget.TilePoint;Walk(Approach(combatTargetTile,true));}
             else MonitorWalk();Current.phase="combat_approach";return;
         }
-        StopWalk();p.CurrentToolIndex=combatWeaponSlot;
+        StopWalk();PlayerSelection.Set(p,combatWeaponSlot);
         if(p.CurrentTool is not MeleeWeapon weapon||weapon.isScythe())throw new InvalidOperationException("combat_weapon_changed");
         p.faceGeneralDirection(combatTarget.Position);p.lastClick=combatTarget.Position+new Vector2(32);
         combatTargetHealth=combatTarget.Health;p.BeginUsingTool();

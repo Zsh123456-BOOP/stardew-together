@@ -37,7 +37,7 @@ public static class FarmLayout {
         var legal=source.Where(c=>c.Plantable&&(!requireProtection||c.Protected)&&!reserved.Contains(c.Tile)).ToDictionary(c=>c.Tile);
         if(count<=0||legal.Count==0)return new(new(),0,0,"no_compact_plot");
         int maxArea=count+Math.Min(12,source.Count(c=>c.Equipment));
-        List<FarmCell>? best=null;double bestScore=double.MaxValue;int bestManual=0;
+        List<FarmCell>? best=null;double bestScore=double.MaxValue;int bestManual=0,maxSpatial=0,maxManual=0,maxEnergy=0;
         var shapes=(from w in Enumerable.Range(1,Math.Min(maxArea,12)) from h in Enumerable.Range(1,Math.Min(maxArea,12))
                     where w*h<=maxArea&&(!trellis||Math.Min(w,h)<=2) select (W:w,H:h)).GroupBy(s=>s.W*s.H).OrderByDescending(g=>g.Key);
         foreach(var size in shapes) {
@@ -49,23 +49,27 @@ public static class FarmLayout {
                     if(legal.TryGetValue(at,out var cell))bed.Add(cell);
                     else if(!cells.TryGetValue(at,out var equipment)||!equipment.Equipment||reserved.Contains(at)){valid=false;break;}
                 }
-                if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);if(manual>manualLimit||bed.Sum(c=>c.ClearCost+(c.Tilled?0:4)+(c.Watered?0:4))>energyBudget)continue;
+                if(!valid||bed.Count==0||bed.Count>count||best!=null&&bed.Count<best.Count)continue;int manual=bed.Count(c=>!c.Irrigated);int energy=bed.Sum(c=>c.ClearCost+(c.Tilled?0:4)+(c.Watered?0:4));
                 int entry=bed.SelectMany(c=>Neighbours(c.Tile).Append(c.Tile)).Where(reached.ContainsKey).Select(p=>reached[p]).DefaultIfEmpty(int.MaxValue).Min();
                 if(entry==int.MaxValue)continue;
                 double score=entry*2+Math.Abs(shape.W-shape.H)*3+bed.Sum(c=>c.PlanningPenalty+c.ClearCost*3+(c.Irrigated?0:25)+(c.Protected?0:8)+(c.Tilled?0:6)+Math.Min(100,c.DistanceToWater)*.2);
-                if(best!=null&&bed.Count==best.Count&&score>=bestScore)continue;
+
                 var tiles=bed.Select(c=>c.Tile).ToHashSet();
                 if(trellis) {
                     var future=source.Select(c=>c with{Passable=c.Passable&&(c.ClearCost==0||tiles.Contains(c.Tile))}).ToArray();
                     var after=Distances(future.ToDictionary(c=>c.Tile),start,tiles);
                     if(tiles.Contains(start)||anchors.Where(reached.ContainsKey).Any(a=>!after.ContainsKey(a))||tiles.Any(t=>!Neighbours(t).Any(after.ContainsKey)))continue;
                 }
+                maxSpatial=Math.Max(maxSpatial,bed.Count);if(manual<=manualLimit)maxManual=Math.Max(maxManual,bed.Count);if(energy<=energyBudget)maxEnergy=Math.Max(maxEnergy,bed.Count);
+                if(manual>manualLimit||energy>energyBudget||best!=null&&bed.Count==best.Count&&score>=bestScore)continue;
                 // Serpentine rows avoid repeatedly crossing the entire bed.
                 best=bed.OrderBy(c=>c.Tile.Y).ThenBy(c=>(c.Tile.Y-corner.Y)%2==0?c.Tile.X:-c.Tile.X).Select(c=>c.Tile).ToList();bestScore=score;bestManual=manual;
             }
         }
-        if(best!=null)return new(best,bestManual,best.Count(t=>!cells[t].Protected),best.Count==count?"compact_plot_selected":"compact_plot_reduced_for_space_access_or_labor");
-        return new(new(),0,0,"no_reachable_compact_plot");
+        var limits=new List<string>();if(maxSpatial<count)limits.Add("space_or_access_limit");if(maxManual<maxSpatial)limits.Add("daily_water_limit");if(maxEnergy<maxSpatial)limits.Add("planting_energy_limit");
+        string reason=string.Join("+",limits);if(reason.Length==0)reason="combined_labor_constraints";
+        if(best!=null)return new(best,bestManual,best.Count(t=>!cells[t].Protected),best.Count==count?"compact_plot_selected":reason);
+        return new(new(),0,0,reason);
     }
     // Used inside an already selected bed by the mixed-crop budget allocator.
     public static LayoutResult ChooseWithinBed(IReadOnlyList<LayoutCell> source,FarmCell start,IReadOnlyList<FarmCell> anchors,int count,bool trellis,int manualLimit,bool requireProtection=false) {
@@ -87,7 +91,7 @@ public static class FarmLayout {
                 }
                 chosen=candidate;break;
             }
-            if(chosen==null){stop="space_access_or_daily_labor_limit";break;}
+            if(chosen==null){stop=candidates.Any(c=>!selected.Contains(c.Tile)&&!c.Irrigated&&manual>=manualLimit)?"daily_water_limit":"space_or_access_limit";break;}
             selected.Add(chosen.Tile);if(trellis)blocked.Add(chosen.Tile);if(!chosen.Irrigated)manual++;
         }
         return new(selected,manual,selected.Count(t=>!cells[t].Protected),stop);

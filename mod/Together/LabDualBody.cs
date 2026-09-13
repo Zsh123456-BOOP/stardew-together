@@ -146,7 +146,7 @@ public sealed partial class ModEntry {
             Data.Partner.Enabled=true;EnsureCustomPartner();dualNpc=api!.GetCharacter(PartnerName)??throw new InvalidOperationException("custom_partner_missing");
             Game1.warpCharacter(dualNpc,farm,new Microsoft.Xna.Framework.Vector2(45,26));dualPrevious=dualNpc.Position;
             dualTree=new StardewValley.TerrainFeatures.Tree("1",5);farm.terrainFeatures[treeTile]=dualTree;
-            bot.addItemToInventory(new StardewValley.Tools.Axe());bot.CurrentToolIndex=0;
+            bot.addItemToInventory(new StardewValley.Tools.Axe());PlayerSelection.Set(bot,0);
             dualOldDebris.Clear();dualDrops.Clear();foreach(var d in farm.debris)dualOldDebris.Add(d);
             dualPlayerInventory=Inventory(player);dualBefore=new{player=Body(player),hidden=Body(bot),tree=new[]{50,25},fixture="one native mature tree; no wood added to either inventory"};DualLog("before_tree",dualBefore);
             dualPhase="walk_tree";DualWalk(stand);dualCapture=true;return;

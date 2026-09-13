@@ -3,7 +3,7 @@ public sealed partial class ModEntry {
     private object PromptFarm() {
         var active=Data.Projects.Where(p=>p.Status=="active").Select(p=>p.Kind).ToHashSet();
         var needed=Data.Projects.Where(p=>p.Status=="active").SelectMany(p=>p.Needs).Select(n=>n.Item).ToHashSet();
-        return new {Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.SpentToday,Facts.Purchased,transactions=Facts.Transactions.TakeLast(5),Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,
+        return new {Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.SpentToday,Facts.Purchased,Facts.PurchasedItems,transactions=Facts.Transactions.TakeLast(5),Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,
             Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,Facts.MachinesReady,Facts.Progress,Facts.Alerts,Facts.Errors,
             Goals=Facts.Goals.Where(g=>active.Contains(g.Id) || g.Kind.EndsWith("Quest") || g.Kind=="special_order").Take(12),
             Bundles=Facts.Bundles.Where(b=>active.Contains("bundle:"+b.Id)).Take(4),

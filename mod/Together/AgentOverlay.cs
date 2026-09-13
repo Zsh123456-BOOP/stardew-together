@@ -6,6 +6,7 @@ using StardewValley;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private string overlayIntentKey="";
     private Rectangle overlayBounds;
     private string[] overlayLines=Array.Empty<string>();
     private string overlayTitle="同行 · 等待任务";
@@ -62,7 +63,11 @@ public sealed partial class ModEntry {
         string now=preparation!=null?(preparation.Phase=="return"?"物资准备好了，回去继续干活":"去仓库存取这次需要的东西"):
             work!=null?OverlayWork(work.goal):action is {status:"running"}?OverlayTool(action.skill):mode;
         if(work!=null&&work.completed>0)now+="，已处理 "+work.completed+" 处";
-        Add("现在  "+now);
+        var active=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running");
+        string purpose=OverlaySentence(active?.spec.purpose,72);
+        Add("现在  "+now+(purpose.Length>0?" ← 为了"+purpose:""));
+        string intentKey=(active?.spec.id??action?.command_id??work?.command_id??"")+":"+purpose;
+        if(intentKey!=overlayIntentKey){overlayIntentKey=intentKey;if(action is {status:"running"}||work!=null)Data.Autoplay.Record("overlay_intent_sample",AgentJson.Encode(new{task=active?.spec.id,covered=purpose.Length>0,source="scheduled_task_purpose",purpose}));}
         var next=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.state!="running").Take(5).ToArray();
         if(next.Length>0) {
             Add("接下来");
@@ -89,11 +94,7 @@ public sealed partial class ModEntry {
         overlayOffset=Math.Clamp(overlayOffset,0,Math.Max(0,overlayLines.Length-overlayVisible));
         overlayBuildMs=(System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency;
     }
-    private static string OverlaySentence(string? text,int limit) {
-        if(string.IsNullOrWhiteSpace(text)||text.IndexOfAny(new[]{'{','}','[',']','_','`'})>=0||!text.Any(c=>c>='\u4e00'&&c<='\u9fff'))return "";
-        text=text.Replace("\n"," ").Replace("\r"," ").Trim();
-        return text.Length>limit?text[..limit]+"…":text;
-    }
+    private static string OverlaySentence(string? text,int limit)=>OverlayText.Clean(text,limit);
     private static string OverlayWork(string goal)=>goal switch {
         "plant"=>"整理田块、播种和浇水","cleanup"=>"清理规划区域","water"=>"给作物浇水","refill"=>"给水壶补水","harvest"=>"收获成熟作物","store"=>"把物资存进仓库","withdraw"=>"从仓库取物资","storage_expand"=>"准备新的储物箱","wood"=>"收集木材","stone"=>"收集石头","hardwood"=>"收集硬木","fiber"=>"清理杂草、收集纤维","forage"=>"寻找可采集的东西","fish"=>"钓鱼","mine_trip"=>"下矿收集资源","volcano_trip"=>"探索火山","pet"=>"照顾动物","feed"=>"给动物喂食","milk"=>"挤奶","shear"=>"剪羊毛","animal_collect"=>"收取动物产品","clear_dead"=>"清除枯萎作物",_=>"处理已安排的工作"
     };

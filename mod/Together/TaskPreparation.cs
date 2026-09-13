@@ -26,7 +26,7 @@ public sealed partial class ModEntry {
     private List<ScheduledAgentTask> KitTrip(ScheduledAgentTask task) {
         var trip=new List<ScheduledAgentTask>{task};
         // Follow explicit same-intent dependencies only. Tool requirements are a
-        // union; consumable requirements add, so later work isn't unloaded now.
+        // union; ordered outputs offset later consumables without creating stock.
         for(int n=0;n<3;n++) {
             var next=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="queued"&&t.spec.actor=="player"&&t.spec.intent_id==task.spec.intent_id&&!trip.Contains(t)&&t.spec.after.Contains(trip[^1].spec.id)&&t.spec.day==Game1.Date.TotalDays);
             if(next==null)break;trip.Add(next);
@@ -43,10 +43,12 @@ public sealed partial class ModEntry {
     private KitPlan DescribeKit(ScheduledAgentTask task) {
         var plan=new KitPlan{Task=task,Origin=Game1.currentLocation.NameOrUniqueName,OriginTile=Game1.player.TilePoint};
         var trip=KitTrip(task);
+        var future=new PreparationCredits<Item>();var required=new List<KitNeed>();var toolLabels=new HashSet<string>();
         foreach(var t in trip)if(LoadoutSafety.Unsupported(t.spec.tool,AgentToolRegistry.Text(t.spec.args,"mode")) is {} shape)RejectKitShape(task,shape);
-        void Tool<T>(string label) where T:Item {if(!plan.Needs.Any(n=>n.Label==label))plan.Needs.Add(new(label,1,i=>i is T));}
+        void Tool<T>(string label) where T:Item {if(toolLabels.Add(label))required.Add(new(label,1,i=>i is T));}
         void Id(string id,int count){if(id.Length>0&&count>0)plan.Needs.Add(new(id,count,i=>i.QualifiedItemId==id));}
         foreach(var t in trip) {
+            plan.Needs=new();
             var a=t.spec.args;string tool=t.spec.tool,goal=AgentToolRegistry.Text(a,"goal");int count=Math.Max(1,AgentToolRegistry.Number(a,"count",1));
             if(tool=="work.run") {
                 switch(goal) {
@@ -96,7 +98,17 @@ public sealed partial class ModEntry {
                 foreach(var i in Game1.player.Items.Where(i=>i!=null&&order.GetAcceptCount(i)>0))plan.Needs.Add(new("交付:"+i.QualifiedItemId,Math.Min(i.Stack,order.GetAcceptCount(i)),other=>ReferenceEquals(i,other)));
                 plan.KeepUnknown=true;
             }else {plan.KeepUnknown=true;}
+            foreach(var need in plan.Needs){int net=future.Require(need.Count,need.Accept);if(net>0)required.Add(need with{Count=net});}
+            // Only dependencies earlier in this trip can supply later requirements.
+            // Native execution will re-read stocks before each task starts.
+            if(tool is "player.buy" or "player.procure") {
+                string id=AgentToolRegistry.Text(a,"item");
+                if(quoteEpoch==agentSaveEpoch&&observedProducts.TryGetValue(AgentToolRegistry.Text(a,"shop")+":"+id,out var q)&&q.Day==Game1.Date.TotalDays)future.Produce(q.Item,checked(count*q.Units));
+            }else if(tool is "player.craft" or "player.cook") {
+                var recipe=new CraftingRecipe(AgentToolRegistry.Text(a,"recipe"),tool=="player.cook");var output=recipe.createItem();future.Produce(output,checked(output.Stack*count));
+            }
         }
+        plan.Needs=required;
         // Do not require food to exist. Keep a bounded amount of an already
         // allowed food; never take a quest/bundle reservation as travel food.
         var food=Game1.player.Items.OfType<StardewValley.Object>().Where(i=>i.Edibility>0&&CanConsumeOne(i)&&!Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(m=>m.Item==i.QualifiedItemId))).OrderByDescending(i=>i.staminaRecoveredOnConsumption()).FirstOrDefault();

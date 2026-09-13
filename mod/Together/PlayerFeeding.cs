@@ -18,7 +18,7 @@ public sealed partial class PlayerExecutor {
         if(feedTarget.HasValue) {
             if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var at=feedTarget.Value;Adjacent(at);Face(at);
             if(feedHopper) {
-                p.CurrentToolIndex=careSlot;int before=p.Items.Where(i=>i?.QualifiedItemId=="(O)178").Sum(i=>i.Stack),silo=house.GetRootLocation().piecesOfHay.Value;
+                PlayerSelection.Set(p,careSlot);int before=p.Items.Where(i=>i?.QualifiedItemId=="(O)178").Sum(i=>i.Stack),silo=house.GetRootLocation().piecesOfHay.Value;
                 if(!house.objects.TryGetValue(at.ToVector2(),out var hopper)||hopper.QualifiedItemId!="(BC)99"||silo<=0)throw new InvalidOperationException("feed_hopper_or_silo_unavailable");
                 hopper.checkForAction(p);
                 int gained=p.Items.Where(i=>i?.QualifiedItemId=="(O)178").Sum(i=>i.Stack)-before;
@@ -26,7 +26,7 @@ public sealed partial class PlayerExecutor {
                 if(gained<=0)throw new InvalidOperationException("hopper_withdraw_not_verified");
             } else {
                 int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId=="(O)178",-1);
-                if(slot<0)throw new InvalidOperationException("hay_disappeared");p.CurrentToolIndex=slot;var hay=p.ActiveObject!;int before=hay.Stack;
+                if(slot<0)throw new InvalidOperationException("hay_disappeared");PlayerSelection.Set(p,slot);var hay=p.ActiveObject!;int before=hay.Stack;
                 ValidateConsumption?.Invoke(new Dictionary<Item,int>{{hay,1}},"","");
                 Game1.tryToCheckAt(at.ToVector2(),p);
                 bool placed=house.objects.TryGetValue(at.ToVector2(),out var item)&&item.QualifiedItemId=="(O)178"&&before-(p.Items[slot]?.QualifiedItemId=="(O)178"?p.Items[slot].Stack:0)==1;

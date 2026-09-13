@@ -78,6 +78,6 @@ public sealed partial class PlayerExecutor {
         if(DateTime.UtcNow<nextInteraction)return;nextInteraction=DateTime.UtcNow.AddMilliseconds(500);
         int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is null or Tool,-1);
         if(slot<0)throw new InvalidOperationException("animal_interaction_empty_or_tool_slot_required");
-        StopWalk();Game1.player.CurrentToolIndex=slot;animal.pet(Game1.player); // First pet is care; a subsequent native pet opens its query menu.
+        StopWalk();PlayerSelection.Set(Game1.player,slot);animal.pet(Game1.player); // First pet is care; a subsequent native pet opens its query menu.
     }
 }

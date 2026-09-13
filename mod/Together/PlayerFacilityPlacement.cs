@@ -53,7 +53,7 @@ public sealed partial class PlayerExecutor {
         if(!AtWalkTarget){MonitorWalk();return;}
         StopWalk();var selected=facilitySite.Value;var at=selected.ToVector2();Adjacent(selected);Face(selected);
         if(location.objects.ContainsKey(at)||location.terrainFeatures.ContainsKey(at)||PlacementProtected?.Invoke(destination,selected)==true||!item.canBePlacedHere(location,at))throw new InvalidOperationException("facility_site_changed");
-        ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},facilityGoal,facilityItem);Game1.player.CurrentToolIndex=slot;Game1.player.netItemStowed.Value=false;
+        ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},facilityGoal,facilityItem);PlayerSelection.Set(Game1.player,slot);Game1.player.netItemStowed.Value=false;
         int before=Game1.player.Items.Where(i=>i?.QualifiedItemId==facilityItem).Sum(i=>i.Stack);
         if(!Utility.tryToPlaceItem(location,item,selected.X*64,selected.Y*64)||!location.objects.TryGetValue(at,out var placed)||placed.QualifiedItemId!=facilityItem||before-Game1.player.Items.Where(i=>i?.QualifiedItemId==facilityItem).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_facility_placement_not_verified");
         FacilityPlaced?.Invoke(facilityGoal,location,selected);

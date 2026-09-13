@@ -12,6 +12,8 @@ public sealed partial class CompanionControl {
         public int Spent {get;set;}
         public Dictionary<string,int> Purchased {get;set;}=new();
         public List<string> Entries {get;set;}=new();
+        public Dictionary<string,int> PurchasedItems {get;set;}=new();
+        public HashSet<string> NativeReceipts {get;set;}=new();
     }
     private const string LedgerKey="stardewagent.together/economy";
     private EconomyLedger Ledger() {

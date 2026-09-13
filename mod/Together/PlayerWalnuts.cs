@@ -68,7 +68,7 @@ public sealed partial class PlayerExecutor {
         if(nutSite.Kind=="buried") {
             int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is Hoe,-1);
             if(slot<0||Game1.player.Stamina<12)throw new InvalidOperationException("walnut_dig_needs_hoe_and_stamina");
-            Game1.player.CurrentToolIndex=slot;Game1.player.netItemStowed.Value=false;Game1.player.lastClick=nutSite.Tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
+            PlayerSelection.Set(Game1.player,slot);Game1.player.netItemStowed.Value=false;Game1.player.lastClick=nutSite.Tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
             if(!Game1.player.UsingTool)throw new InvalidOperationException("native_walnut_dig_did_not_start");
         }else {
             if(!NativeMenuInput.InteractWorld(nutSite.Tile))throw new InvalidOperationException("native_walnut_bush_interaction_failed");

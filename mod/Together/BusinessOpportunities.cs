@@ -25,6 +25,8 @@ public sealed partial class ModEntry {
             if(window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Game1.getCharacterFromName("Pierre")?.currentLocation==Game1.currentLocation)
                 rows.Add(new("inspect:seed-counter","已经到店，走近真实柜台打开商店并自动读取报价；此动作不花钱","player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_location;owner_present;window={window.Open}-{window.Close};cash={p.Money}",0,5));
         }
+        if(Data.FarmInvestment.Phase=="awaiting_selection"&&selectionDay==Game1.Date.TotalDays&&selectionEpoch==agentSaveEpoch)
+            rows.Add(new("select:seeds","根据真实报价、生长期和劳动需求选择种子与数量；不是采购完成","farm.select_seeds",new{quote_token=selectionQuote,candidates=selectionOffers,budget=SeedAllowance(),needs="items 与 reason 由模型选择"},"current_day_native_quotes;approved_budget;selection_pending",0,1));
         // Queries only: expose unresolved dependencies without inventing their
         // acquisition requirements or duplicating the encyclopedia database.
         foreach(var g in Data.SharedGoals.Where(g=>g.Status=="active"&&g.Nodes.Any(n=>n.Status is "blocked" or "locked")).Take(2)) {

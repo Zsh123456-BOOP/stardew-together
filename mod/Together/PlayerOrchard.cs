@@ -53,7 +53,7 @@ public sealed partial class PlayerExecutor {
             int slot=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i]?.QualifiedItemId==orchardItem,-1);
             if(slot<0||Game1.player.Items[slot] is not StardewValley.Object sapling)throw new InvalidOperationException("orchard_sapling_supply_missing");
             if(!OrchardSiteLegal(location,selected,sapling))throw new InvalidOperationException("orchard_growth_area_changed");
-            ValidateConsumption?.Invoke(new Dictionary<Item,int>{{sapling,1}},"","orchard:"+orchardItem);Game1.player.CurrentToolIndex=slot;Game1.player.netItemStowed.Value=false;
+            ValidateConsumption?.Invoke(new Dictionary<Item,int>{{sapling,1}},"","orchard:"+orchardItem);PlayerSelection.Set(Game1.player,slot);Game1.player.netItemStowed.Value=false;
             int before=Game1.player.Items.Where(i=>i?.QualifiedItemId==orchardItem).Sum(i=>i.Stack);
             Utility.tryToPlaceItem(location,sapling,selected.X*64,selected.Y*64);
             if(location.terrainFeatures.GetValueOrDefault(selected.ToVector2()) is not FruitTree tree||tree.treeId.Value!=sapling.ItemId||before-Game1.player.Items.Where(i=>i?.QualifiedItemId==orchardItem).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_orchard_plant_not_verified");

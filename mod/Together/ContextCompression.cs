@@ -57,8 +57,8 @@ public static class ContextCompression {
                     JsonNode? detail=entry;
                     if(entry is JsonObject e&&e["Text"] is JsonValue text&&text.TryGetValue<string>(out var raw))try{detail=JsonNode.Parse(raw);}catch(JsonException){}
                     if(detail is JsonObject obj) {
-                        var result=obj["result"] as JsonObject??obj;
-                        earlier.Add(new JsonObject{["kind"]=Copy(entry is JsonObject item?item["Kind"]:null),["tool"]=Copy(obj["tool"]),["status"]=Copy(result["status"]),["error"]=Copy(result["error"]),["command_id"]=Copy(result["command_id"]),["task_id"]=Copy(result["task_id"])});
+                        obj=obj["data"] as JsonObject??obj;var result=obj["result"] as JsonObject??obj;
+                        earlier.Add(new JsonObject{["kind"]=Copy(entry is JsonObject item?item["Kind"]:null),["tool"]=Copy(obj["tool"]),["status"]=Copy(result["status"]),["error"]=Copy(result["error"]),["command_id"]=Copy(result["command_id"]),["task_id"]=Copy(result["task_id"]),["disposition"]=Copy(result["disposition"]),["resume_policy"]=Copy(result["resume_policy"]),["stop_reason"]=Copy(result["stop_reason"])});
                     }
                 }
                 root["earlier_observation_summaries"]=earlier;cachedSize=-1;reductions.Add("older_events_retrievable_from_memory");

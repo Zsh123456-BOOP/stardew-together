@@ -16,7 +16,9 @@ public static class ExecutionContract {
         string status=raw.TryGetProperty("status",out var st)?st.GetString()??"unknown":"unknown";
         fields.TryAdd("stop_reason",error.Length>0?error:null);
         fields["retryable"]=error is "path_stalled" or "no_path" or "stale_menu_read_again" or "target_not_available" or "storage_busy";
-        fields["resume_policy"]=status=="running"?"poll_existing_command":"reobserve_then_submit_remaining_work_no_blind_replay";
+        string tool=raw.TryGetProperty("skill",out var skill)?skill.GetString()??"":raw.TryGetProperty("goal",out var goal)?"work.run":"";
+        var outcome=OperationsPolicy.Outcome(tool,raw);fields["disposition"]=outcome.Disposition;
+        fields["resume_policy"]=outcome.Disposition=="already_satisfied"?"do_not_retry_until_world_condition_changes":outcome.Disposition=="no_candidates_found"?"change_target_conditions_or_choose_other_work":status=="running"?"poll_existing_command":"reobserve_then_submit_remaining_work_no_blind_replay";
         fields["actual_progress"]=new{completed=raw.TryGetProperty("completed",out var c)?(int?)c.GetInt32():null,gained=raw.TryGetProperty("gained",out var g)?(int?)g.GetInt32():null};
         if(raw.TryGetProperty("before",out var before)&&before.ValueKind==JsonValueKind.Object&&raw.TryGetProperty("after",out var after)&&after.ValueKind==JsonValueKind.Object) {
             Dictionary<string,int> Stock(JsonElement snapshot) {

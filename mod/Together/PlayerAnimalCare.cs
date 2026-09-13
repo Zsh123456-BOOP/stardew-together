@@ -46,7 +46,7 @@ public sealed partial class PlayerExecutor {
         if(Math.Abs(p.TilePoint.X-careAnimal.TilePoint.X)+Math.Abs(p.TilePoint.Y-careAnimal.TilePoint.Y)>1) {
             if(DateTime.UtcNow>=nextInteraction){nextInteraction=DateTime.UtcNow.AddMilliseconds(500);Walk(Approach(careAnimal.TilePoint,true));}else if(ownedController!=null)MonitorWalk();Current.phase="care_approach";return;
         }
-        StopWalk();p.CurrentToolIndex=careSlot;Face(careAnimal.TilePoint);careProduce=careAnimal.currentProduce.Value;careInventory=p.Items.Where(i=>i?.QualifiedItemId=="(O)"+careProduce).Sum(i=>i.Stack);
+        StopWalk();PlayerSelection.Set(p,careSlot);Face(careAnimal.TilePoint);careProduce=careAnimal.currentProduce.Value;careInventory=p.Items.Where(i=>i?.QualifiedItemId=="(O)"+careProduce).Sum(i=>i.Stack);
         if(careMode=="pet")careAnimal.pet(p);
         else {
             if(p.Stamina<20||p.Items.Count(i=>i==null)<1)throw new InvalidOperationException("animal_harvest_supply_required");

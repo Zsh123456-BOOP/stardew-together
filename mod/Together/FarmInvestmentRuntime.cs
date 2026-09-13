@@ -38,11 +38,11 @@ public sealed partial class ModEntry {
             var next=Game1.locations.Concat(Game1.getFarm().buildings.Select(b=>b.GetIndoors()).Where(l=>l!=null)).Distinct().Where(l=>l.IsGreenhouse&&(l.NameOrUniqueName!="Greenhouse"||Game1.getFarm().greenhouseUnlocked.Value)&&!p.CompletedLocations.Contains(l.NameOrUniqueName)).FirstOrDefault(l=>l==Game1.currentLocation||PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)!=null);
             if(next==null||Game1.timeOfDay>=1500)return;p.CropLocation=next.NameOrUniqueName;p.Phase="start_planning";
         }
-        if(p.Phase=="blocked")return;
+        if(p.Phase is "blocked" or "awaiting_selection")return;
         try {
             if(p.Phase=="executing") {
                 var tasks=p.Tasks.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).ToArray();
-                if(!p.PurchaseRecoveryUsed&&tasks.Any(t=>t?.state=="failed"&&t.spec.tool=="player.buy")&&!tasks.Any(t=>t?.state=="running")&&!playerExecutor.Busy&&!WorkActorBusy("player")) {
+                if(!p.PurchaseRecoveryUsed&&tasks.Any(t=>t?.state=="failed"&&(t.spec.tool=="player.buy"||t.spec.tool=="player.service"&&(t.error??"").StartsWith("loadout_")))&&!tasks.Any(t=>t?.state=="running")&&!playerExecutor.Busy&&!WorkActorBusy("player")) {
                     if(Game1.activeClickableMenu is ShopMenu shop) {if(shop.heldItem!=null||!shop.readyToClose())throw new InvalidOperationException("purchase_recovery_requires_receiving_held_item");shop.exitThisMenu();}
                     if(Game1.activeClickableMenu!=null)return;
                     Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t!=null&&!t.Terminal).Select(t=>t!.spec.id));
@@ -62,7 +62,7 @@ public sealed partial class ModEntry {
                     if(task==null||task.state is "failed" or "blocked" or "cancelled" or "needs_review")throw new InvalidOperationException("farm_shop_visit_failed_or_interrupted:"+task?.error);
                     if(task.state!="succeeded")return;
                     if(Game1.activeClickableMenu is not ShopMenu menu||menu.ShopId!=p.Shop||menu.heldItem!=null)throw new InvalidOperationException("farm_observed_shop_changed");
-                    ObserveShop(JsonSerializer.SerializeToElement(new{}));if(!menu.readyToClose())return;menu.exitThisMenu();p.Phase="start_planning";
+                    ObserveShop(JsonSerializer.SerializeToElement(new{}));p.Phase="awaiting_selection";WakeAgent("seed_selection_required");return;
                 }
             }
             if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.player.UsingTool||!Game1.player.CanMove||OperationActorOccupied("player"))return;
@@ -100,6 +100,7 @@ public sealed partial class ModEntry {
                     Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){new(){id=id,tool="player.service",args=JsonSerializer.SerializeToElement(new{location=p.Location,service="shop",shop=p.Shop}),day=p.Day,deadline=1700,purpose="现场读取今日种子报价，按持续预算重新投资"}},p.Day);
                     p.ServiceTask=id;p.Phase="observing_shop";return;
                 }
+                if(!HasSeedSelection&&SeedAllowance()>0){p.Phase="awaiting_selection";WakeAgent("seed_selection_required");return;}
                 p.Phase="start_planning";
                 }
             }

@@ -86,7 +86,7 @@ public sealed partial class PlayerExecutor {
             if(IsVolcanoLava(location,volcanoObstacle)) {
                 if(can<0||Game1.player.Items[can] is not WateringCan water||water.WaterLeft==0)throw new InvalidOperationException("volcano_watering_can_refill_required");
                 if(Game1.player.Stamina<18)throw new InvalidOperationException("volcano_cooling_needs_stamina_reserve");
-                Game1.player.CurrentToolIndex=can;volcanoWaterBefore=water.WaterLeft;Game1.player.lastClick=volcanoObstacle.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
+                PlayerSelection.Set(Game1.player,can);volcanoWaterBefore=water.WaterLeft;Game1.player.lastClick=volcanoObstacle.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("native_volcano_watering_did_not_start");Current!.phase="volcano_cooling";return;
             }
             workSlot=pick;workSkill="clear";workTiles=new(){volcanoObstacle};workIndex=workHits=0;Current!.phase="work_next";volcanoAction="clear";return;

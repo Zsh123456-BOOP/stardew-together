@@ -44,7 +44,7 @@ public sealed partial class PlayerExecutor {
         if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var at=crabTile.Value;Adjacent(at);Face(at);
         if(crabMode=="place") {
             int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId=="(O)710",-1);if(slot<0)throw new InvalidOperationException("crab_pot_item_missing");
-            var item=(StardewValley.Object)p.Items[slot];ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},"","place:(O)710");p.CurrentToolIndex=slot;p.netItemStowed.Value=false;
+            var item=(StardewValley.Object)p.Items[slot];ValidateConsumption?.Invoke(new Dictionary<Item,int>{{item,1}},"","place:(O)710");PlayerSelection.Set(p,slot);p.netItemStowed.Value=false;
             int before=p.Items.Where(i=>i?.QualifiedItemId=="(O)710").Sum(i=>i.Stack);
             if(!CrabPot.IsValidCrabPotLocationTile(l,at.X,at.Y)||!Utility.tryToPlaceItem(l,item,at.X*64,at.Y*64)||!l.objects.TryGetValue(at.ToVector2(),out var placed)||placed is not CrabPot native||native.owner.Value!=p.UniqueMultiplayerID||before-p.Items.Where(i=>i?.QualifiedItemId=="(O)710").Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_crab_pot_placement_not_verified");
             Current!.effects.Add(new{kind="native_crab_pot_placed",location=destination,tile=at});
@@ -63,7 +63,7 @@ public sealed partial class PlayerExecutor {
                 int slot=Enumerable.Range(0,p.Items.Count).FirstOrDefault(i=>p.Items[i]?.QualifiedItemId==crabBait&&p.Items[i].Category==-21,-1);
                 if(slot<0)throw new InvalidOperationException("crab_pot_bait_missing");
                 var bait=p.Items[slot];ValidateConsumption?.Invoke(new Dictionary<Item,int>{{bait,1}},"","crab_pot_bait");int before=p.Items.Where(i=>i?.QualifiedItemId==crabBait).Sum(i=>i.Stack);
-                p.CurrentToolIndex=slot;p.netItemStowed.Value=false;NativeMenuInput.InteractWorld(at);
+                PlayerSelection.Set(p,slot);p.netItemStowed.Value=false;NativeMenuInput.InteractWorld(at);
                 if(pot.bait.Value?.QualifiedItemId!=crabBait||before-p.Items.Where(i=>i?.QualifiedItemId==crabBait).Sum(i=>i.Stack)!=1)throw new InvalidOperationException("native_crab_pot_bait_not_verified");
                 Current!.effects.Add(new{kind="native_crab_pot_bait",item=crabBait,tile=at,consumed=1});
             }

@@ -45,7 +45,7 @@ public sealed partial class PlayerExecutor {
         if(Current.phase=="animal_products_opening")return;
         if(!Game1.currentLocation.objects.TryGetValue(at.ToVector2(),out var product))throw new InvalidOperationException("animal_product_changed");
         if(careCollectChest==null&&!CapacityAdapter.CanReceive(Game1.player,product))throw new InvalidOperationException("capacity_no_stackable_room");
-        Game1.player.CurrentToolIndex=careSlot;string qid=product.QualifiedItemId;int beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
+        PlayerSelection.Set(Game1.player,careSlot);string qid=product.QualifiedItemId;int beforeBag=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack);
         if(!Game1.tryToCheckAt(at.ToVector2(),Game1.player))throw new InvalidOperationException("native_animal_product_interaction_rejected");
         if(careCollectChest!=null){Current.phase="animal_products_opening";return;}
         int added=Game1.player.Items.Where(i=>i?.QualifiedItemId==qid).Sum(i=>i.Stack)-beforeBag;

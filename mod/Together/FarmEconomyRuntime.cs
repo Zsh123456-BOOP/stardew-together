@@ -10,11 +10,14 @@ public sealed partial class ModEntry {
     private readonly Dictionary<string,EconomyJob> economyJobs=new();
     private readonly Dictionary<string,SeedQuote> seedQuotes=new();
     private string quoteEpoch="";
+    private readonly Dictionary<string,(Item Item,int Units,int Day)> observedProducts=new();
     internal object ObserveShop(JsonElement args) {
         var result=PlayerExecutor.ReadShop(args);var menu=(ShopMenu)Game1.activeClickableMenu;
-        if(quoteEpoch!=agentSaveEpoch){seedQuotes.Clear();quoteEpoch=agentSaveEpoch;}
+        if(quoteEpoch!=agentSaveEpoch){seedQuotes.Clear();observedProducts.Clear();quoteEpoch=agentSaveEpoch;}
+        foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {IsRecipe:false} observed&&pair.Value.Stock>0)observedProducts[menu.ShopId+":"+observed.QualifiedItemId]=(observed.getOne(),observed.Stack,Game1.Date.TotalDays);
         if(menu.currency==0)foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {Category:-74,IsRecipe:false} item&&pair.Value.TradeItem==null&&pair.Value.ActionsOnPurchase?.Count is not >0&&pair.Value.Price>=0&&pair.Value.Stock>0&&item.CanBuyItem(Game1.player))
             seedQuotes[menu.ShopId+":"+item.QualifiedItemId]=new(item.QualifiedItemId,menu.ShopId,Game1.currentLocation.NameOrUniqueName,Game1.Date.TotalDays,pair.Value.Price,pair.Value.Stock,item.Stack);
+        result=EnrichSeedQuote(result,menu);
         Data.Autoplay.Record("shop_quote_observed",AgentJson.Encode(new{source="shop.read_or_native_service",quote=result}));return result;
     }
     internal object PlanFarmEconomy(JsonElement args) {
@@ -47,6 +50,7 @@ public sealed partial class ModEntry {
         var start=Game1.currentLocation==l?new FarmCell(p.TilePoint.X,p.TilePoint.Y):home!=null?new(home.tileX.Value+home.humanDoor.Value.X,home.tileY.Value+home.humanDoor.Value.Y+1):anchors.FirstOrDefault(a=>grid.Any(c=>c.Tile==a&&c.Passable));
         var stock=p.Items.Where(i=>i?.Category==-74).Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().Where(i=>i?.Category==-74))).GroupBy(i=>i!.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
         var quotes=quoteEpoch==agentSaveEpoch?seedQuotes.Values.Where(q=>q.Day==Game1.Date.TotalDays&&q.Units==1).GroupBy(q=>q.Seed).ToDictionary(g=>g.Key,g=>g.OrderBy(q=>q.Price).First()):new Dictionary<string,SeedQuote>();
+        quotes=HasSeedSelection?quotes.Where(q=>selectedSeeds.GetValueOrDefault(q.Key)>0).ToDictionary(q=>q.Key,q=>q.Value with{Stock=Math.Min(q.Value.Stock,selectedSeeds[q.Key])}):new Dictionary<string,SeedQuote>();
         var seeds=new List<EconomySeed>();var crops=DataLoader.Crops(Game1.content);
         var paddy=water.SelectMany(w=>Enumerable.Range(-3,7).SelectMany(dx=>Enumerable.Range(-3,7).Select(dy=>new FarmCell(w.X+dx,w.Y+dy)))).ToHashSet();
         foreach(string id in stock.Keys.Union(quotes.Keys)) {
@@ -104,6 +108,7 @@ public sealed partial class ModEntry {
     internal object ExecuteFarmEconomy(JsonElement args) {
         var job=FindEconomyJob(args);if(!job.Task.IsCompleted)throw new InvalidOperationException("economy_plan_still_computing");var result=job.Task.GetAwaiter().GetResult();
         if(job.Submitted)return new{status="already_submitted"};
+        if(result.Purchases.Count>0&&(!HasSeedSelection||result.Purchases.Any(b=>b.Count>selectedSeeds.GetValueOrDefault(b.Seed))))throw new InvalidOperationException("model_seed_selection_required");
         if(result.FirstDayEnergy>AvailablePlantingEnergy())throw new InvalidOperationException("farm_labor_budget_changed_recalculate");
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("close_observed_menu_before_submitting_farm_plan");
         if(Game1.player.Money-result.Spent<job.Snapshot.KeepGold)throw new InvalidOperationException("farm_budget_changed_recalculate");
@@ -123,6 +128,7 @@ public sealed partial class ModEntry {
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};
         Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);job.Submitted=true;
+        foreach(var buy in result.Purchases)selectedSeeds[buy.Seed]-=buy.Count;
         if(!PlayerExecutor.LoadedLocation(job.Location)!.IsGreenhouse)District(PlayerExecutor.LoadedLocation(job.Location)!).Commit(result.PreparationTiles);
         return new{status="queued",tasks=tasks.Select(t=>t.id),result.Spent,note="采购/播种以各阶段原生回执为准。"};
     }

@@ -83,7 +83,7 @@ public sealed partial class PlayerExecutor {
             string actor=RecruitCompanion?.Invoke(socialName)??throw new InvalidOperationException("companion_recruitment_unavailable");
             Current.effects.Add(new{kind="companion_recruited",npc=socialName,actor});Current.completed=1;Finish("succeeded");return;
         }
-        p.CurrentToolIndex=socialSlot;p.netItemStowed.Value=false;Face(npc.TilePoint);
+        PlayerSelection.Set(p,socialSlot);p.netItemStowed.Value=false;Face(npc.TilePoint);
         if(socialItem.Length>0) {
             var item=p.ActiveObject;
             if(item?.QualifiedItemId!=socialItem)throw new InvalidOperationException("social_item_changed");

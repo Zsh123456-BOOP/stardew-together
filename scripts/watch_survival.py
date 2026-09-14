@@ -43,6 +43,7 @@ def main():
     failure = 'observer_timeout'; passed = False; probe_passed = False; probe_checkpoint = None; baseline_completed=False; quality_result={}
     start = time.monotonic(); start_day = None; start_sleeps = 0; run_id = None
     last_progress_day = -1; crashes_here = 0
+    trace_verified=False
     root_watch=RootFailureWatch();log_offsets={};last_full=0;failed_attempts={};observed_attempts=set()
 
     def write(name, data):
@@ -85,6 +86,12 @@ def main():
 
     try:
         write('manifest.json',dict(commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),days=args.days,baseline=args.baseline,normal_speed=True,mods=str(mods),dll_sha256=hashlib.sha256((mods/'Together/Together.dll').read_bytes()).hexdigest()))
+        # Baselines are reviewable only with full HTTP bodies (never auth headers).
+        config_path=mods/'Together/config.json'
+        config=json.loads(config_path.read_text()) if config_path.exists() else {}
+        config['RecordModelTrace']=True
+        config_path.write_text(json.dumps(config,ensure_ascii=False,indent=2))
+        write('trace-preflight.json',dict(enabled=True,verified_request=False,verified_response=False))
         initial=launch(save_name)
         save_name='AgentLab_'+initial['save_id']
         last=bridge.request('GET','/lab/together')['autoplay']
@@ -138,6 +145,14 @@ def main():
                             write('repeated-root-paused.json',bridge.request('GET','/lab/together'))
                             raise RuntimeError('same_root_three_distinct_attempts')
                     log_offsets[str(path)]=f.tell()
+            if not trace_verified:
+                traces=list((mods/'Together/logs'/str(initial['save_id'])).glob('*/model-'+run_id+'.jsonl'))
+                kinds={json.loads(line)['kind'] for path in traces for line in path.read_text().splitlines() if line.endswith('}')}
+                if 'response' in kinds:
+                    if 'request' not in kinds:raise RuntimeError('model_trace_request_missing')
+                    write('trace-preflight.json',dict(enabled=True,verified_request=True,verified_response=True))
+                    trace_verified=True
+                elif a['Decisions']>0:raise RuntimeError('model_trace_response_missing')
             if a['RunId']!=run_id:raise RuntimeError('run_identity_changed')
             for task in a.get('Schedule',{}).get('Tasks',[]):
                 cid=task.get('command_id');state=task.get('state');spec=task['spec']

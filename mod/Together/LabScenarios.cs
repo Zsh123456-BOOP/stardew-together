@@ -24,6 +24,13 @@ public sealed partial class ModEntry {
         int Num(string key,int fallback=0)=>root.TryGetProperty(key,out var value)?value.GetInt32():fallback;
         var farm=Game1.getFarm();
         switch(scenario) {
+            case "decision_chain": {
+                if(!agentLabProbe||!AutoplayRunning)throw new InvalidOperationException("schedule_probe_required");
+                if(deferredDecision!=null)throw new InvalidOperationException("decision_chain_busy");
+                var turn=AgentTurn.Parse(root.GetProperty("turn").GetRawText());decisionIntent="lab-chain-"+Guid.NewGuid().ToString("N");
+                try{var result=ApplyDecisionCalls(turn.calls,Data.Autoplay.Schedule.Revision);return AgentJson.Encode(new{result.Followup,result.Error,pending=deferredDecision!=null,intent=decisionIntent});}
+                finally{decisionIntent="";}
+            }
             case "round4":return AgentJson.Encode(Round4NativeFixture(Arg("mode","read")));
             case "round3":return AgentJson.Encode(Round3NativeFixture(Arg("mode","read")));
             case "round2_observation": {

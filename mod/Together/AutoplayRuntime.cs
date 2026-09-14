@@ -92,7 +92,7 @@ public sealed partial class ModEntry {
         if(wasRunning && !reason.StartsWith("lab_")){agentToast="自主游玩已暂停："+FriendlyAgentReason(reason);agentToastUntil=DateTime.UtcNow.AddSeconds(8);}
     }
     private void ResetAgentRuntime() {
-        ResetPreparation();labEarlyStorage=false;
+        CancelDecisionContinuation("runtime_reset");ResetPreparation();labEarlyStorage=false;
         maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
         Data.Maintenance.WasWorking=false;Data.Maintenance.LastMinute=-1;
         agentModelNotBefore=DateTime.MinValue;decisionPacing.Reset();
@@ -124,7 +124,7 @@ public sealed partial class ModEntry {
         tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},can_move=Game1.player.CanMove,using_tool=Game1.player.UsingTool,health=Game1.player.health,stamina=Game1.player.Stamina,money=Game1.player.Money,
         menu=Game1.activeClickableMenu?.GetType().Name,event_up=Game1.eventUp,minigame=Game1.currentMinigame?.GetType().Name,player_action=playerExecutor.Current is {} action?new{action.command_id,action.skill,action.status,action.phase,action.error,action.completed}:null};
     private object AutoplayDiagnostics()=>new{state=Data.Autoplay,snapshot=AgentSnapshot(),pending=agentPending!=null,last_model_ms=agentLastLatency,waiting=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.actor,t.command_id}),schedule=AgentPlanRead(),work=semanticJobs.Values.TakeLast(12),decision_reasons=agentWakeReasons,
-        model_context=new{last_characters=agentLastContextCharacters,core_tools=AgentToolDiscovery.CoreNames.Length,core_definitions_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,decisionPacing.QueriesWithoutProgress,not_before=agentModelNotBefore},model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek with native maintenance/end-day fallback",preparation=preparationSummary,overlay=new{overlayBuildMs,overlayOffset,overlayVisible}};
+        model_context=new{last_characters=agentLastContextCharacters,core_tools=AgentToolDiscovery.CoreNames.Length,core_definitions_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,decisionPacing.QueriesWithoutProgress,not_before=agentModelNotBefore},continuation=deferredDecision==null?null:new{deferredDecision.Intent,deferredDecision.Index,deferredDecision.After},model=Settings.Model,clock_interval=Game1.gameTimeInterval,clock_rate=Settings.AutoplayClockRate,decision_delay_ms=Settings.AutoplayDecisionDelayMs,source="DeepSeek with native maintenance/end-day fallback",preparation=preparationSummary,overlay=new{overlayBuildMs,overlayOffset,overlayVisible}};
     private void TickAutoplay() {
         long stage=Stopwatch.GetTimestamp();playerExecutor.Tick();FrameStage("player_executor",ref stage);TickSemanticWork();FrameStage("semantic",ref stage);
         if(!AutoplayRunning)return;
@@ -132,7 +132,8 @@ public sealed partial class ModEntry {
         TickSurvivalQuality();TickBusinessTelemetry();if(!AutoplayRunning)return;
         try{if(TickAutomaticMenus())return;}catch(Exception e){EnterSurvival("sleep","automatic_menu_failed:"+e.Message);}
         if(TickSurvival())return;
-        TickCustomPartner();TickDailyAutomation();TickGoalAutomation();TickAgentSchedule();FrameStage("schedule",ref stage);
+        TickCustomPartner();TickDailyAutomation();TickGoalAutomation();TickAgentSchedule();TickDecisionContinuation();FrameStage("schedule",ref stage);
+        if(deferredDecision!=null)return;
         if(SurvivalOwnsDay)return;
         TickDailyAutomation();FrameStage("daily",ref stage);
         TickGoalAutomation();FrameStage("goal_dependencies",ref stage);
@@ -156,20 +157,7 @@ public sealed partial class ModEntry {
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
                     int turnRevision=Data.Autoplay.Schedule.Revision;
-                    foreach(var call in turn.calls) {
-                        if(!AutoplayRunning||SurvivalOwnsDay)break;
-                        object result;
-                        try {
-                            var args=call.tool=="plan.submit"?AgentSchedule.RebaseOwnTurn(call.args,turnRevision,Data.Autoplay.Schedule.Revision):call.args;
-                            if(args.GetRawText()!=call.args.GetRawText())Data.Autoplay.Record("own_turn_revision_rebased",AgentJson.Encode(new{from=turnRevision,to=Data.Autoplay.Schedule.Revision}));
-                            result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,args);
-                        }
-                        catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
-                        var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);
-                        RecordToolAttempt(call,observed);
-                        if(observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String){RecordAgentFailure(error.GetString()!);followup=true;hadToolError=true;}
-                        if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))followup=true;
-                    }
+                    (followup,hadToolError)=ApplyDecisionCalls(turn.calls,turnRevision);
                     bool allActorsHaveWork=AgentWorkCovered()&&!NeedsAgentMenuDecision;
                     if(followup&&AgentPollingPolicy.Defer(allActorsHaveWork,hadToolError,turn.calls.Select(c=>c.tool)))followup=false;
                     if(followup)WakeAgent("tool_results");
@@ -182,7 +170,7 @@ public sealed partial class ModEntry {
                 }
             }catch(Exception e){ModelUnavailable(e,unappliedReply,applying);}finally{decisionIntent="";}
         }
-        if(!AutoplayRunning || SurvivalOwnsDay || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
+        if(deferredDecision!=null || !AutoplayRunning || SurvivalOwnsDay || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
         if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!agentWakeReasons.Contains("danger"))return;
         if(DateTime.UtcNow<agentModelNotBefore&&!NeedsAgentMenuDecision&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {

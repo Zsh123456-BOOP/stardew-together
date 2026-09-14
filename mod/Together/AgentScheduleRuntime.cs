@@ -82,7 +82,7 @@ public sealed partial class ModEntry {
         if(state!="succeeded" && state!="cancelled")state="failed";
         var outcome=OperationsPolicy.Outcome(task.spec.tool,result);
         if(CapacityState.IsConstraint(error))RecordCapacityConstraint(error!,task.spec.actor);
-        if(!RecoveryPolicy.CanWait(error))LearnActionResult(task,state,error);
+        LearnActionResult(task,state,error);
         LearnServiceConstraint(task,state,error);
         Data.Autoplay.Operations.LastOutcomes[task.spec.intent_id]=AgentJson.Encode(outcome);
         foreach(var key in Data.Autoplay.Operations.LastOutcomes.Keys.Take(Math.Max(0,Data.Autoplay.Operations.LastOutcomes.Count-64)).ToArray())Data.Autoplay.Operations.LastOutcomes.Remove(key);

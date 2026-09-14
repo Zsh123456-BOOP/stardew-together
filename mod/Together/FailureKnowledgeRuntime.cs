@@ -9,6 +9,7 @@ public sealed partial class ModEntry {
                 RefreshFacts(true);
                 return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,period=Game1.timeOfDay/100,energy=(int)p.Stamina/10,Facts.DryCrops,Facts.RipeCrops,Facts.FeedNeeded,reviewed=dayReviewed==Game1.Date.TotalDays}));
             }
+            if(reason=="native_shop_not_open")return Game1.activeClickableMenu?.GetType().Name??"none";
             bool collection=tool=="work.run"&&AgentToolRegistry.Text(args,"goal") is "wood" or "stone" or "fiber" or "resource" or "forage";
             if(collection&&PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location",l.NameOrUniqueName)) is {} target)l=target;
             string family=FailureKnowledge.Family(reason);
@@ -23,7 +24,7 @@ public sealed partial class ModEntry {
                     storage=SharedStorage().Select(c=>c.Chest.GetItemsForPlayer().Select(i=>i==null?null:new{id=i.QualifiedItemId,count=i.Stack,quality=i.Quality}).ToArray()).ToArray(),
                     reservations=AllReservations().Select(r=>new{r.Item,r.Count,r.Quality}).ToArray()}));
             }
-            if(family=="targets")return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,location=l.NameOrUniqueName,
+            if(family=="targets")return FailureKnowledge.Hash(AgentJson.Encode(new{location=l.NameOrUniqueName,
                 objects=l.objects.Pairs.Where(o=>goal switch{"wood"=>o.Value.IsTwig(),"stone"=>o.Value.BaseName=="Stone","fiber"=>o.Value.IsWeeds(),"forage"=>o.Value.isForage(),"resource"=>ResourceRules.Nodes.GetValueOrDefault(o.Value.ItemId)==item,_=>true})
                     .OrderBy(o=>o.Key.X).ThenBy(o=>o.Key.Y).Select(o=>new{x=o.Key.X,y=o.Key.Y,id=o.Value.QualifiedItemId}),
                 terrain=l.terrainFeatures.Pairs.Where(t=>goal is "wood" or "hardwood"?t.Value is StardewValley.TerrainFeatures.Tree:t.Value is StardewValley.TerrainFeatures.HoeDirt)
@@ -45,25 +46,40 @@ public sealed partial class ModEntry {
             }));
         }catch{return "unavailable";}
     }
+    private IEnumerable<FailureExperience> ActiveFailureRules() {
+        foreach(var e in Data.Autoplay.Failures.Entries.ToArray()) {
+            if(e.Reason.StartsWith("no_approved_material_demand")||!e.UntilChanged&&(e.Day!=Game1.Date.TotalDays||DailyBudget.Minutes(Game1.timeOfDay)>=e.RetryAfterMinute)) {Data.Autoplay.Failures.Entries.Remove(e);continue;}
+            if(e.Arguments.Length>0) {
+                using var args=System.Text.Json.JsonDocument.Parse(e.Arguments);
+                string current=FailureConditions(e.Actor,e.Tool,args.RootElement,e.Reason);
+                if(current!="unavailable"&&current!=e.Conditions){Data.Autoplay.Failures.Entries.Remove(e);Data.Autoplay.Record("failure_condition_released",AgentJson.Encode(new{e.Key,e.Reason,source=e.TaskEvidence}));continue;}
+            }
+            yield return e;
+        }
+    }
     private void CheckKnownFailure(ScheduledAgentTask task) {
         GuardCapacity(task.spec.actor,task.spec.tool,task.spec.args);
         string semantic=FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string exact=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string selection=FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
+        Data.Autoplay.Failures.Entries.RemoveAll(e=>e.Reason.StartsWith("no_approved_material_demand"));
         foreach(var known in Data.Autoplay.Failures.Entries.Where(e=>e.Actor==task.spec.actor&&e.Tool==task.spec.tool&&(e.Key==semantic||e.Key==exact||e.Key==selection)).ToArray()) {
             string conditions=FailureConditions(task.spec.actor,task.spec.tool,task.spec.args,known.Reason);if(conditions=="unavailable")continue;
             var old=Data.Autoplay.Failures.Block(known.Key,conditions,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay));
-            if(old!=null)throw new InvalidOperationException("known_failure_conditions_unchanged:"+old.Reason+":evidence="+old.TaskEvidence);
+            if(old!=null){old.Suppressed++;throw new InvalidOperationException("known_failure_conditions_unchanged:"+old.Reason+":evidence="+old.TaskEvidence);}
         }
     }
     private void LearnActionResult(ScheduledAgentTask task,string state,string? error) {
         string key=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         if(state=="succeeded"){Data.Autoplay.Failures.Success(key);Data.Autoplay.Failures.Success(FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location));Data.Autoplay.Failures.Success(FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location));return;}
         if(state!="failed"||string.IsNullOrEmpty(error)||error.StartsWith("known_failure_conditions_unchanged"))return;
+        // Capacity constraints already have a versioned authoritative store.
+        if(CapacityState.IsConstraint(error))return;
         bool untilChanged=FailureKnowledge.Family(error)!="transient";
         if(untilChanged)key=FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string conditions=FailureConditions(task.spec.actor,task.spec.tool,task.spec.args,error);if(conditions=="unavailable")return;
         Data.Autoplay.Failures.Record(key,task.spec.actor,task.spec.tool,error,conditions,task.spec.id,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay),untilChanged);
+        var learned=Data.Autoplay.Failures.Entries.Last();learned.Arguments=task.spec.args.GetRawText();learned.Location=task.spec.location;
         Data.Autoplay.Record("failure_experience",AgentJson.Encode(Data.Autoplay.Failures.Entries.Last()));
     }
 }

@@ -238,6 +238,7 @@ public sealed partial class ModEntry {
             var after=KitInventoryEvidence(chest);
             Data.Autoplay.Record("loadout_transferred",AgentJson.Encode(new{p.Task.spec.id,before,after,transfers=rows}));
             if(!KitTotals(before).OrderBy(x=>x.Key).SequenceEqual(KitTotals(after).OrderBy(x=>x.Key)))throw new InvalidOperationException("loadout_conservation_failed");
+            Data.Autoplay.Memory.Diary.Transfers(p.Task.spec.id+":loadout:"+FailureKnowledge.Hash(AgentJson.Encode(before)),JsonSerializer.SerializeToElement(rows),Game1.Date.TotalDays,Game1.timeOfDay,p.StorageLocation+":"+p.ChestTile);
             transferring=false;p.Phase="return";preparationSummary="已完成真实存取，返回原任务";
         }catch(Exception e){
             var task=p.Task;preparation=null;string reason=LoadoutSafety.Normalize(e.Message);preparationSummary="整备阻碍："+reason;

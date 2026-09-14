@@ -45,6 +45,7 @@ public sealed partial class ModEntry {
                 int actual=want-(p.addItemToInventory(copy)?.Stack??0);item.Stack-=actual;moved+=actual;
                 if(item.Stack<=0)contents.Remove(item);
             }
+            Data.Autoplay.Memory.Diary.Add(job.command_id+":withdraw:"+job.gained,Game1.Date.TotalDays,Game1.timeOfDay,"取出仓库",job.Item,Game1.currentLocation.NameOrUniqueName+":"+tile,moved);
             job.gained+=moved;job.evidence.Add(new{kind="native_withdraw",location=Game1.currentLocation.NameOrUniqueName,tile,item=job.Item,moved});job.StorageTile=null;
             if(moved==0){StopSemanticWork(job,contents.Any(i=>i?.QualifiedItemId==job.Item)?"capacity_no_stackable_room":"shared_stock_changed");return;}
             if(job.gained>=job.requested){StopSemanticWork(job,"requested_amount_withdrawn",true);return;}
@@ -114,6 +115,7 @@ public sealed partial class ModEntry {
         }
         Game1.player.faceGeneralDirection(tile.ToVector2()*64);if(moved>0)Game1.playSound("Ship");
         Data.Autoplay.Record("supply_verified",AgentJson.Encode(new{job.command_id,job.goal,job.RequiredSlots,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,moved,transfers,resume_location=job.goal=="fish"?job.FishLocation:job.location}));
+        Data.Autoplay.Memory.Diary.Transfers(job.command_id+":store:"+job.deposited,JsonSerializer.SerializeToElement(transfers),Game1.Date.TotalDays,Game1.timeOfDay,l.NameOrUniqueName+":"+tile);
         job.evidence.Add(new{kind="native_storage",location=l.NameOrUniqueName,x=tile.X,y=tile.Y,transfers});job.deposited+=moved;
         if(moved==0)throw new InvalidOperationException("capacity_no_stackable_room");
     }

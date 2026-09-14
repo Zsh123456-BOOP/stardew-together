@@ -38,6 +38,7 @@ public sealed partial class ModEntry {
                 try {
                     if(!DecisionBarrier.Control(call.tool)&&barrier=="failed")throw new InvalidOperationException("decision_dependency_failed_replan");
                     var args=call.tool=="plan.submit"?AgentSchedule.RebaseOwnTurn(call.args,batch.Revision,Data.Autoplay.Schedule.Revision):call.args;
+                    if(!AgentSchedule.Queueable(call.tool)&&!DecisionBarrier.Control(call.tool))CheckKnownFailure(new ScheduledAgentTask{spec=new(){actor="player",tool=call.tool,args=args}});
                     result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,args);
                 }catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
                 var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);RecordToolAttempt(call,observed);

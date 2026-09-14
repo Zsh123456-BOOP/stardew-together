@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace Together;
 public sealed class MemoryCheckpoint {
+    public ActivityDiary Diary {get;set;}=new();
     public Dictionary<string,int> Cursors {get;set;}=new();
     public List<MemoryDaySummary> Days {get;set;}=new();
     public string LastError {get;set;}="";

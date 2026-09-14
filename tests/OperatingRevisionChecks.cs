@@ -36,9 +36,9 @@ static class OperatingRevisionChecks {
         check(!AgentDecisionPacing.CanDefer(true,true)&&AgentDecisionPacing.CanDefer(true,false),"queued work never suppresses a required branch-menu decision");
         check(WorkQuantity.Resolve(10,50,0,null,true)==new WorkQuantity(50,40,null),"zero material count fills only an approved deficit");
         check(WorkQuantity.Resolve(10,50,5,null,true)==new WorkQuantity(15,5,null),"positive count is incremental, never silently a total");
-        check(WorkQuantity.Resolve(10,12,20,null,true)==new WorkQuantity(12,2,null),"incremental collection is capped by the approved remaining need");
+        check(WorkQuantity.Resolve(10,12,20,null,true)==new WorkQuantity(30,20,null),"explicit collection is independent of project approval");
         check(WorkQuantity.Resolve(40,50,0,30,true)==new WorkQuantity(30,0,null),"an explicit satisfied stock target does not refill unrelated future demand");
-        check(WorkQuantity.Resolve(40,0,0,null,true).Error=="no_approved_material_demand","zero without purpose produces a specific planning condition, not an invalid number");
+        check(WorkQuantity.Resolve(40,0,0,null,true)==new WorkQuantity(60,20,null),"unspecified collection uses bounded default without approval");
         var conditionMemory=new FailureKnowledge();string semantic=FailureKnowledge.ConditionKey("npc","work.run","{\"goal\":\"wood\",\"location\":\"Farm\",\"count\":2,\"until\":1200}");
         check(semantic==FailureKnowledge.ConditionKey("npc","work.run","{\"goal\":\"wood\",\"location\":\"Farm\",\"count\":8,\"until\":1800,\"purpose\":\"different words\"}"),"changing quantity, deadline or phrasing cannot bypass an unchanged material policy");
         conditionMemory.Record(semantic,"npc","work.run","no_approved_material_demand","policy-A","task",3,600,true);

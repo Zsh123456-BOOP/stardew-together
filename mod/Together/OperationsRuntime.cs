@@ -44,7 +44,7 @@ public sealed partial class ModEntry {
         return (open,close,reason,conditions);
     }
     private void PrepareOperation(AgentTaskSpec spec) {
-        GuardCapacity(spec.actor,spec.tool,spec.args);
+        CheckKnownFailure(new ScheduledAgentTask{spec=spec});
         if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(spec.actor,spec.tool,spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
         if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);

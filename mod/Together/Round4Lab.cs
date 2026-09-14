@@ -5,6 +5,13 @@ namespace Together;
 public sealed partial class ModEntry {
     private object Round4NativeFixture(string mode) {
         if(!Settings.EnableLab||!Context.IsWorldReady||Game1.player.Name!="AgentLab")throw new InvalidOperationException("isolated_lab_required");
+        if(mode=="diary")return new{diary=Data.Autoplay.Memory.Diary,context=AgentMemoryContext()};
+        if(mode=="material_autonomy") {Data.Business.Enabled=true;businessAt=DateTime.UtcNow.AddHours(1);return new{enabled=true,material_targets=Data.Operating.MaterialTargets,note="policy-only fixture; native inventory unchanged"};}
+        if(mode=="diary_replay") {
+            var a=playerExecutor.Current??throw new InvalidOperationException("native_receipt_required");
+            string before=AgentJson.Encode(Data.Autoplay.Memory.Diary);RecordNativeDiary(a);RecordNativeDiary(a);
+            return new{unchanged=before==AgentJson.Encode(Data.Autoplay.Memory.Diary)};
+        }
         if(mode=="service_recovery") {
             if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null)throw new InvalidOperationException("lab_requires_idle");
             var old=Data.FarmInvestment;string before=AgentJson.Encode(AgentToolRegistry.Inventory());

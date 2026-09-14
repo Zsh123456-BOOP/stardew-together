@@ -7,6 +7,7 @@ public sealed partial class ModEntry {
         string? cause=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String?error.GetString():null;
         if(cause?.StartsWith("known_failure_conditions_unchanged:capacity:")==true||cause?.StartsWith("known_failure_conditions_unchanged:capacity_relief:")==true)
             cause=Data.Autoplay.Capacity.Constraints.Where(c=>c.Actor==actor&&c.CapacityVersion==Data.Autoplay.Capacity.Version&&CapacityState.IsCapacity(c.RootCause)).OrderByDescending(c=>c.RootCause=="capacity_all_candidates_infeasible").Select(c=>c.RootCause).FirstOrDefault()??cause;
+        if(cause!=null)LearnActionResult(new ScheduledAgentTask{spec=new(){id=attemptId,actor=actor,tool=call.tool,args=call.args.Clone()}},"failed",cause);
         Data.Autoplay.Record("tool_result",AgentJson.Encode(new{attempt_id=attemptId,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,tool=call.tool,result=observed}));
     }
     private static object ReceiptSummary(string? text) {

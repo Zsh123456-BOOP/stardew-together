@@ -11,7 +11,7 @@ public sealed partial class PlayerExecutor {
     private static Dictionary<string,int> GeodeInventory(GeodeMenu menu)=>Game1.player.Items.Append(menu.heldItem).Where(i=>i!=null).GroupBy(i=>i.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
     private void StartGeodes(JsonElement args) {
         if(Game1.activeClickableMenu is not GeodeMenu {heldItem:null,waitingForServerResponse:false,geodeAnimationTimer:<=0} menu)throw new InvalidOperationException("idle_native_geode_menu_required");
-        geodeCount=AgentToolRegistry.Number(args,"count",1);geodeBudget=AgentToolRegistry.Number(args,"budget",0);geodeKeep=AgentToolRegistry.Number(args,"keep_gold",500);geodeFilter=AgentToolRegistry.Text(args,"item");
+        geodeCount=AgentToolRegistry.Number(args,"count",1);geodeBudget=AgentToolRegistry.Number(args,"budget",0);geodeKeep=AgentToolRegistry.Number(args,"keep_gold",0);geodeFilter=AgentToolRegistry.Text(args,"item");
         if(geodeCount is <1 or >40||geodeBudget<0||geodeKeep<0)throw new InvalidOperationException("invalid_geode_batch_budget");
         geodeMenu=menu;geodeSpent=0;Current!.phase="geode_next";
     }

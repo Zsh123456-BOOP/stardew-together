@@ -8,8 +8,8 @@ public sealed partial class ModEntry {
         var p=Data.Operating;string direction=AgentToolRegistry.Text(args,"direction",p.Direction);
         if(direction is not("balanced" or "cashflow" or "low_labor"))throw new InvalidOperationException("invalid_operating_direction");
         int player=AgentToolRegistry.Number(args,"player_water_limit",p.PlayerWaterLimit),partner=AgentToolRegistry.Number(args,"partner_water_limit",p.PartnerWaterLimit);
-        if(player is <0 or >96||partner is <0 or >96)throw new InvalidOperationException("invalid_water_capacity");
-        p.Direction=direction;p.PlayerWaterLimit=player;p.PartnerWaterLimit=partner;
+        if(player is <-1 or >9999||partner is <0 or >96)throw new InvalidOperationException("invalid_water_capacity");
+        p.Direction=direction;p.PlayerWaterLimit=player;Data.FarmInvestment.ManualWaterLimit=player;p.PartnerWaterLimit=partner;
         p.Reason=AgentToolRegistry.Text(args,"reason",p.Reason);if(p.Reason.Length>500)p.Reason=p.Reason[..500];
         Data.FarmInvestment.Priority=direction=="low_labor"?"low_labor":direction=="cashflow"?"cashflow":"income";
         return ReadOperatingLedger();
@@ -19,7 +19,7 @@ public sealed partial class ModEntry {
     private object ReadOperatingLedger() {
         var actors=SinglePlayerMode?Array.Empty<JsonElement>():World().GetProperty("actors").EnumerateArray().ToArray();var p=Data.Operating;
         return new{policy=p,active_actors=ActiveActors.ToArray(),partner=SinglePlayerMode?null:Data.Partner,capabilities=new{player="完整Farmer工具",partner=SinglePlayerMode?Array.Empty<string>():new[]{"water","harvest","forage","wood:twigs_only","fiber","stone","resource","store","pet"}},
-            seed_cash_available=OperatingMath.CashForSeeds(Game1.player.Money,Data.Business.KeepGold,Data.Business.DailyBudget,Data.Business.ReservedToday+Data.FarmInvestment.ReservedToday,p.DevelopmentCashHeld),
+            seed_cash_available=SeedAllowance(),
             materials=p.MaterialTargets.Select(t=>new{item=t.Key,target=t.Value,accessible=AccessibleStock(t.Key),in_transit=actors.Sum(a=>CargoItem(a,t.Key)),to_gather=OperatingMath.GatherDeficit(t.Value,AccessibleStock(t.Key),actors.Sum(a=>CargoItem(a,t.Key))),to_deliver=OperatingMath.DeliveredDeficit(t.Value,AccessibleStock(t.Key))}),
             note=SinglePlayerMode?"只使用玩家和可达仓库的真实库存；目标与预测不授予物品。":"伙伴货袋在送达前不可制作消费；储備是目标不授予物品。NPC劳动预算不是Farmer体力。"};
     }
@@ -47,8 +47,8 @@ public sealed partial class ModEntry {
         UpdateOperatingTargets();
         var actors=World().GetProperty("actors").EnumerateArray().ToArray();var partner=actors.FirstOrDefault(a=>a.GetProperty("name").GetString()==PartnerName);
         bool present=partner.ValueKind==JsonValueKind.Object;
-        Data.FarmInvestment.ManualWaterLimit=OperatingMath.WaterCapacity(p.PlayerWaterLimit,Game1.player.MaxStamina,40,present?p.PartnerWaterLimit:0);
-        Data.FarmInvestment.Plots=Math.Clamp(Data.FarmInvestment.ManualWaterLimit,1,96);
+        Data.FarmInvestment.ManualWaterLimit=p.PlayerWaterLimit<0?-1:OperatingMath.WaterCapacity(p.PlayerWaterLimit,Game1.player.MaxStamina,0,present?p.PartnerWaterLimit:0);
+        Data.FarmInvestment.Plots=Data.FarmInvestment.ManualWaterLimit<0?96:Math.Clamp(Data.FarmInvestment.ManualWaterLimit,1,96);
         if(!present){p.PartnerReason="伙伴不可用，保留玩家独立经营";return;}
         string actor=partner.GetProperty("id").GetString()!;
         if(p.AllocationDay!=Game1.Date.TotalDays){

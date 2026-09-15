@@ -19,7 +19,7 @@ public sealed partial class PlayerExecutor {
     }
     private void StartBeach(JsonElement args) {
         beachMode=AgentToolRegistry.Text(args,"mode");if(beachMode is not ("bridge" or "pendant"))throw new InvalidOperationException("invalid_beach_service");
-        beachBudget=AgentToolRegistry.Number(args,"budget",0);beachKeep=AgentToolRegistry.Number(args,"keep_gold",500);
+        beachBudget=AgentToolRegistry.Number(args,"budget",0);beachKeep=AgentToolRegistry.Number(args,"keep_gold",0);
         if(beachKeep<0||beachBudget<0)throw new InvalidOperationException("invalid_beach_budget");
         beachTarget=null;beachSubmitted=false;destination="Beach";Current!.phase="beach_travel";
     }

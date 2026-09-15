@@ -23,7 +23,7 @@ public sealed partial class PlayerExecutor {
     private void StartConstruction(JsonElement args) {
         if(Game1.activeClickableMenu is not CarpenterMenu {onFarm:false,readOnly:false} menu)throw new InvalidOperationException("native_carpenter_selection_menu_required");
         constructionBlueprint=menu.Blueprints.FirstOrDefault(b=>b.Id==AgentToolRegistry.Text(args,"blueprint"))??throw new InvalidOperationException("observed_blueprint_required");
-        constructionBudget=AgentToolRegistry.Number(args,"budget",0);constructionReserve=AgentToolRegistry.Number(args,"keep_gold",500);
+        constructionBudget=AgentToolRegistry.Number(args,"budget",0);constructionReserve=AgentToolRegistry.Number(args,"keep_gold",0);
         if(constructionBudget<0||constructionReserve<0)throw new InvalidOperationException("invalid_build_budget");
         constructionMenu=menu;menu.SetNewActiveBlueprint(constructionBlueprint);
         CheckConstructionCost();

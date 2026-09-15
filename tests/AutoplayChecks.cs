@@ -9,7 +9,7 @@ public static class AutoplayChecks {
         var carry=new SeedCarryBudget(1,new(){{"seed-a",10}},new(){{"seed-a",999},{"seed-b",999},{"seed-c",999}});
         check(carry.Fits(new Dictionary<string,int>{{"seed-a",10},{"seed-b",5}})&&!carry.Fits(new Dictionary<string,int>{{"seed-b",1},{"seed-c",1}}),"whole seed manifest shares finite free slots while existing stacks remain usable");
         check(!carry.Fits(new Dictionary<string,int>{{"seed-a",11},{"seed-b",1}}),"overflow of an existing seed stack also needs a slot");
-        check(!DailyBudget.Fits(1400,18,45,10,4)&&DailyBudget.Fits(1400,18,45,10,0),"low energy options use the execution reserve but keep free labor feasible");
+        check(DailyBudget.Fits(1400,18,45,10,4)&&DailyBudget.Fits(1400,18,45,10,0),"remaining actual energy is usable with no hidden reserve");
         var access=new[]{new WaterAccessCell(new(0,0),true,0),new WaterAccessCell(new(1,0),false,4),new WaterAccessCell(new(2,0),true,0)};
         var banks=new HashSet<FarmCell>{new(2,0)};
         check(WaterAccessPlan.Find(access,new(0,0),banks,4).Count==2,"water access includes a clearable blocker when labor fits the budget");
@@ -49,13 +49,13 @@ public static class AutoplayChecks {
             bool rejected=false;try{AgentTurn.Parse(bad);}catch(InvalidOperationException){rejected=true;}check(rejected,"malformed model turn rejected before execution");
         }
         check(DailyBudget.WorkMinutes(1200,90)==570 && DailyBudget.WorkMinutes(2250,45)==0,"normal-time work budget preserves return-home reserve");
-        check(!DailyBudget.Fits(1200,16,45,10,2) && !DailyBudget.Fits(2250,200,45,10,0),"tasks must fit both energy and return budget");
-        check(DailyBudget.SleepBlock(900,200,false,true,false,true,"种植完成")!=null,"planting done is not permission to waste useful daylight");
-        check(DailyBudget.SleepBlock(900,10,true,true,false,true,"体力不足")!=null,"low energy still considers free forage");
+        check(!DailyBudget.Fits(1200,1,45,10,2) && !DailyBudget.Fits(2250,200,45,10,0),"tasks must fit both energy and return budget");
+        check(DailyBudget.SleepBlock(900,200,false,true,false,true,"种植完成")==null,"explicit sleep is a model choice; productivity is measured rather than enforced");
+        check(DailyBudget.SleepBlock(900,10,true,true,false,true,"体力不足")==null,"optional forage cannot veto explicit sleep");
         check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,true,"今日必要农务已完成")==null,"low-energy evening close is not vetoed by optional forage");
-        check(DailyBudget.SleepBlock(1710,23.3f,true,true,true,true,"还有干作物")!=null,"evening preference does not hide outstanding farm care");
+        check(DailyBudget.SleepBlock(1710,23.3f,true,true,true,true,"还有干作物")==null,"unwatered crops are recorded, not a hidden sleep prohibition");
         check(DailyBudget.SleepBlock(2030,200,true,true,false,true,"已评估非紧急工作")==null,"reviewed evening close may defer optional stock building even with energy left");
-        check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,false,"没有评估")!=null,"evening close still requires the actual daily review");
+        check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,false,"没有评估")==null,"sleep tool itself records the review");
         check(DailyBudget.SleepBlock(2100,10,false,false,true,true,"体力不足")==null && DailyBudget.SleepBlock(2230,200,false,true,true,false,"安全返家")==null,"exhaustion and late return can end work safely");
         check(DailyBudget.Fits(1000,10,45,10,0),"free forage remains feasible below the tool-energy reserve");
         var agenda=new DailyAgenda();agenda.EnterDay(1);agenda.Priorities.Add("给鸡舍留木材");agenda.CompletedBatches=3;agenda.EnterDay(2);agenda.EnterDay(2);

@@ -1,10 +1,11 @@
 namespace Together;
 public sealed class FarmInvestmentPolicy {
     public bool Enabled {get;set;}
-    public int BudgetPerDay {get;set;}=0;
-    public int KeepGold {get;set;}=500;
-    public int Plots {get;set;}=24;
-    public int ManualWaterLimit {get;set;}=24;
+    public bool Repeat {get;set;}
+    public int BudgetPerDay {get;set;}=-1;
+    public int KeepGold {get;set;}=0;
+    public int Plots {get;set;}=96;
+    public int ManualWaterLimit {get;set;}=-1;
     public string Priority {get;set;}="income";
     public string Shop {get;set;}="SeedShop";
     public string Location {get;set;}="SeedShop";

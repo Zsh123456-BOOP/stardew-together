@@ -56,8 +56,6 @@ public sealed partial class ModEntry {
             }
             if(row.Length>0)lines.Add(row);
         }
-        string goal=OverlaySentence(Data.Autoplay.Goal,76);
-        if(goal.Length>0)Add("想做  "+goal);
         var work=semanticJobs.Values.FirstOrDefault(j=>j.actor=="player"&&j.status=="running");
         var action=playerExecutor.Current;
         string now=preparation!=null?(preparation.Phase=="return"?"物资准备好了，回去继续干活":"去仓库存取这次需要的东西"):
@@ -65,25 +63,14 @@ public sealed partial class ModEntry {
         if(work!=null&&work.completed>0)now+="，已处理 "+work.completed+" 处";
         var active=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running");
         string purpose=OverlaySentence(active?.spec.purpose,72);
-        Add("现在  "+now+(purpose.Length>0?" ← 为了"+purpose:""));
+        Add("正在  "+now);
+        string reason=OverlaySentence(purpose.Length>0?purpose:Data.Autoplay.Plan,50);
+        if(reason.Length>0)Add("原因  "+reason);
         string intentKey=(active?.spec.id??action?.command_id??work?.command_id??"")+":"+purpose;
         if(intentKey!=overlayIntentKey){overlayIntentKey=intentKey;if(action is {status:"running"}||work!=null)Data.Autoplay.Record("overlay_intent_sample",AgentJson.Encode(new{task=active?.spec.id,covered=purpose.Length>0,source="scheduled_task_purpose",purpose}));}
-        var next=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.state!="running").Take(5).ToArray();
-        if(next.Length>0) {
-            Add("接下来");
-            foreach(var task in next)Add("  · "+(task.spec.tool=="work.run"?OverlayWork(AgentToolRegistry.Text(task.spec.args,"goal")):OverlayTool(task.spec.tool)));
-        }
-        var dependency=Data.SharedGoals.FirstOrDefault(g=>g.AutoExecute&&g.Status=="active");
-        if(dependency!=null) {
-            Add("目标  "+dependency.Title);
-            foreach(var n in dependency.Nodes.Where(n=>n.Kind=="gather"&&n.ToPrepare>0).Take(3))Add("还需  "+n.Name+" × "+n.ToPrepare);
-            if(dependency.AutoBlockedReason.Length>0)Add("前置受阻  "+OverlayBlock(dependency.AutoBlockedReason));
-        }
-        // Only the model's explicit short explanation is eligible. Technical
-        // payloads, error codes, receipts and IDs stay in the diagnostic logs.
-        string reason=OverlaySentence(Data.Autoplay.Plan,110);
-        if(reason.Length>0&&reason!=goal)Add("打算  "+reason);
-        var blocked=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>t.state=="failed"||t.wait_reason!=null);
+        var next=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>!t.Terminal&&t.state=="queued"&&t.spec.actor=="player");
+        if(next!=null)Add("接着  "+(next.spec.tool=="work.run"?OverlayWork(AgentToolRegistry.Text(next.spec.args,"goal")):OverlayTool(next.spec.tool)));
+        var blocked=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>!t.Terminal&&t.wait_reason!=null);
         if(!AutoplayRunning)Add("暂停中，等待你继续");
         else if(preparation==null&&work==null&&!playerExecutor.Busy&&blocked!=null)Add("暂时受阻  "+OverlayBlock(blocked.error??blocked.wait_reason));
         if(!SinglePlayerMode&&Data.Partner.Enabled)Add("伙伴状态以实际行动为准");

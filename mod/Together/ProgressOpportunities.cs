@@ -21,7 +21,7 @@ public sealed partial class ModEntry {
         if(Game1.player.Items.Any(i=>i?.Category==-74)&&Game1.currentLocation.IsFarm)
             Add(70,"farm:layout","持有种子，计算季节/地形/维护负担后安排",new{tool="farm.plan",args=new{priority="collection"}});
         if(Game1.player.Stamina>=28&&Game1.currentLocation.canFishHere()&&Game1.player.Items.Any(i=>i is StardewValley.Tools.FishingRod))
-            Add(45,"fish:progress","当地允许钓鱼，持有鱼竿且留有体力",new{tool="player.fish",args=new{count=3,reserve_stamina=20}});
+            Add(45,"fish:progress","当地允许钓鱼，持有鱼竿且留有体力",new{tool="player.fish",args=new{count=3,reserve_stamina=0}});
         if(Facts.AnimalsUnpetted>0)Add(92,"animals:pet","动物还有未完成抚摸，可由玩家或伙伴分担",new{tool="work.run",args=new{goal="pet",count=0}});
         if(Facts.FeedNeeded>0)Add(93,"animals:feed","食槽缺草，先取筒仓实际库存再喂养",new{tool="work.run",args=new{goal="feed",count=0}});
         foreach(var quest in Game1.player.questLog.Where(q=>q.completed.Value&&q.HasMoneyReward()).Take(3))

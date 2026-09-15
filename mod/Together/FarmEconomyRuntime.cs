@@ -24,9 +24,9 @@ public sealed partial class ModEntry {
         RefreshFacts(true);var l=PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location","Farm"))??throw new InvalidOperationException("unknown_farm_location");var p=Game1.player;
         if(l.NameOrUniqueName=="Greenhouse"&&!Game1.getFarm().greenhouseUnlocked.Value)throw new InvalidOperationException("greenhouse_not_unlocked");
         if(!(l.IsFarm||l.IsGreenhouse)||l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)throw new InvalidOperationException("reachable_farm_or_greenhouse_required");
-        int budget=AgentToolRegistry.Number(args,"budget",0),keep=AgentToolRegistry.Number(args,"keep_gold",500),limit=AgentToolRegistry.Number(args,"plots",24),dailyManual=AgentToolRegistry.Number(args,"max_daily_manual_water",24);
+        int budget=AgentToolRegistry.Number(args,"budget",0),keep=AgentToolRegistry.Number(args,"keep_gold",0),limit=AgentToolRegistry.Number(args,"plots",96),dailyManual=AgentToolRegistry.Number(args,"max_daily_manual_water",-1);
         string priority=AgentToolRegistry.Text(args,"priority","income");
-        if(budget is <0 or >10000000||keep<0||limit is <1 or >96||dailyManual is <0 or >96||priority is not ("income" or "cashflow" or "collection" or "low_labor"))throw new InvalidOperationException("invalid_economy_limits");
+        if(budget is <0 or >10000000||keep<0||limit is <1 or >96||dailyManual is <-1 or >9999||priority is not ("income" or "cashflow" or "collection" or "low_labor"))throw new InvalidOperationException("invalid_economy_limits");
         if(economyJobs.Values.Any(j=>!j.Task.IsCompleted))throw new InvalidOperationException("farm_economy_calculation_already_running");
         var irrigation=l.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).Where(v=>l.doesTileHaveProperty((int)v.X,(int)v.Y,"NoSprinklers","Back")!="T").ToHashSet();
         var scares=l.objects.Pairs.Where(o=>o.Value.IsScarecrow()).ToArray();var grid=new List<LayoutCell>();var water=new List<FarmCell>();
@@ -68,8 +68,8 @@ public sealed partial class ModEntry {
         }
         int existingManual=l.terrainFeatures.Pairs.Count(x=>x.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!d.readyForHarvest()&&!irrigation.Contains(x.Key)&&!(crops.TryGetValue(d.crop.netSeedIndex.Value,out var cropData)&&cropData.IsPaddyCrop&&paddy.Contains(new((int)x.Key.X,(int)x.Key.Y))));
         var processing=CropProcessingLanes(seeds,crops);
-        if(Data.Business.Enabled&&priority=="income"&&(Data.Operating.Direction=="cashflow"||p.Money<keep+1000))priority="cashflow";
-        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){EnergyBudget=AvailablePlantingEnergy(),Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
+        // Honor the model-selected objective; algorithms never silently replace it.
+        var snapshot=new EconomySnapshot(Game1.Date.TotalDays,Game1.dayOfMonth,p.Money,budget,keep,limit,dailyManual<0?limit:Math.Max(0,dailyManual-existingManual),priority,start,grid,anchors,seeds){EnergyBudget=AvailablePlantingEnergy(),Processing=processing,Carry=SeedCapacity(seeds.Select(s=>s.Seed))};
         string jobId=Guid.NewGuid().ToString("N");economyJobs[jobId]=new(agentSaveEpoch,l.NameOrUniqueName,snapshot,Task.Run(()=>CropPortfolio.Plan(snapshot)));
         foreach(var old in economyJobs.Where(j=>j.Key!=jobId&&j.Value.Task.IsCompleted).Take(Math.Max(0,economyJobs.Count-8)).Select(j=>j.Key).ToArray())economyJobs.Remove(old);
         return new{status="planning",plan_id=jobId,existing_manual_water=existingManual,new_manual_limit=snapshot.ManualLimit,observed_seed_quotes=quotes.Count,next="farm.economy_status 查询；纯快照后台计算，不阻塞角色行动，不购买或播种。"};

@@ -25,12 +25,6 @@ public sealed partial class ModEntry {
             if(dirt==null)pending+=4;
             if(dirt?.crop==null&&dirt?.state.Value!=1)pending+=4;
         }
-        var investment=Data.FarmInvestment;
-        if(plans.Length==0&&investment.Enabled&&investment.Phase is "idle" or "observing_shop" or "start_planning" or "planning"&&Game1.timeOfDay<1500&&Game1.player.Money>investment.KeepGold&&investment.BudgetPerDay>investment.ReservedToday) {
-            int existing=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
-            int room=Math.Max(0,Math.Min(investment.Plots,investment.ManualWaterLimit-existing));
-            pending=Math.Min((int)(Game1.player.MaxStamina*.4f),room*8);
-        }
         return care+pending;
     }
 }

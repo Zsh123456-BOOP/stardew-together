@@ -26,6 +26,8 @@ def main():
     p.add_argument('--mods-dir', default='work/SurvivalMods', type=Path)
     p.add_argument('--port', default=18768, type=int)
     p.add_argument('--days', default=14, type=int)
+    p.add_argument('--trial', action='store_true', help='User-requested autonomous trial, never 14-day gate credit')
+    p.add_argument('--exit-on-stop', action='store_true', help='Explicitly close owned game after capturing evidence; default preserves window')
     p.add_argument('--baseline', action='store_true', help='Exactly three measurement days; never gate credit')
     p.add_argument('--g3-min-ratio', type=float, help='User-approved threshold only; mandatory for the 14-day gate')
     p.add_argument('--seconds', default=18000, type=int)
@@ -40,7 +42,7 @@ def main():
     mods = args.mods_dir.resolve()
     proc = None; stream = None; bridge = None
     restarts = 0; saved_days = set(); last = None; initial = None; save_name = args.load
-    failure = 'observer_timeout'; passed = False; probe_passed = False; probe_checkpoint = None; baseline_completed=False; quality_result={}
+    failure = 'observer_timeout'; passed = False; probe_passed = False; probe_checkpoint = None; baseline_completed=False; trial_completed=False; quality_result={}
     start = time.monotonic(); start_day = None; start_sleeps = 0; run_id = None
     last_progress_day = -1; crashes_here = 0
     trace_verified=False
@@ -103,7 +105,7 @@ def main():
         else:
             if start_day!=0 or last['snapshot']['time']>700 or last['snapshot']['money']!=500:
                 raise RuntimeError('not_fresh_native_start')
-            scenario('survival_start',goal=f'正常时间连续自主经营{args.days}天，所有劳动由玩家本体执行，小禾关闭且不在场，不招募或派工给任何NPC。领取原生初始种子，规划连片农田、种植浇水收获，适度采集备料、采购补种与出货，优先维持农务和资金周转。使用day.routine把water、harvest、feed、pet分配给player。配方目标优先goal.create(run:true)自动备料并连续制作放置；用plan.submit一次排多个可确定步骤，基础劳动用work.run。晚间使用原生player.sleep，不能修改时间、物资或进度。目标是持续真实经营，不是连睡14天。日志将核验每天实际行动和降级原因。')
+            scenario('survival_start',goal=f'正常时间连续自主经营{args.days}天，所有劳动由玩家本体执行，小禾关闭且不在场，不招募或派工给任何NPC。领取原生初始种子，规划连片农田、种植浇水收获，适度采集备料、采购补种与出货，优先维持农务和资金周转。使用day.routine把water、harvest、feed、pet分配给player。配方目标优先goal.create(run:true)自动备料并连续制作放置；用plan.submit一次排多个可确定步骤，基础劳动用work.run。晚间使用原生player.sleep，不能修改时间、物资或进度。目标是持续真实经营，不是只连续睡觉刷天数。日志将核验每天实际行动和降级原因。')
             if args.recovery_probe:
                 for _ in range(6):scenario('survival_failure_probe',kind='local')
         run_id=bridge.request('GET','/lab/together')['autoplay']['state']['RunId']
@@ -112,7 +114,7 @@ def main():
             if proc.poll() is not None:
                 event('process_exited',returncode=proc.returncode,last_day=last['snapshot']['day'])
                 if proc.returncode==0:raise RuntimeError('game_closed_no_crash_restart')
-                if args.baseline:raise RuntimeError('baseline_crash_no_stitching')
+                if args.baseline or args.trial:raise RuntimeError('trial_crash_no_stitching')
                 crashes_here+=1
                 if crashes_here>=3:raise RuntimeError('same_checkpoint_crashed_three_times')
                 if not saved_days and not args.load:raise RuntimeError('crash_before_first_native_checkpoint')
@@ -204,18 +206,19 @@ def main():
                 quality_result=dict(days=days,g1=g1,g2=g2,g3_ratios=ratios,g3_threshold=args.g3_min_ratio,g4=g4,net_asset_cash_change=net,cycle_evidence=q.get('CycleEvidence',[]),complete_day_evidence=len(days)==args.days)
                 write('quality-summary.json',quality_result)
                 baseline_completed=bool(args.baseline and uninterrupted and len(days)==3)
+                trial_completed=bool(args.trial and uninterrupted and len(days)==args.days)
                 passed=bool(uninterrupted and args.days==14 and len(days)==14 and g1 and g2 and g4 and args.g3_min_ratio is not None and all(r>=args.g3_min_ratio for r in ratios))
-                failure='14_uninterrupted_native_days_and_quality' if passed else 'three_day_measurement_only_user_G3_pending' if baseline_completed else 'completed_but_gate_not_passed'
+                failure='14_uninterrupted_native_days_and_quality' if passed else 'three_day_measurement_only_user_G3_pending' if baseline_completed else 'user_requested_trial_complete_not_14_day_gate' if trial_completed else 'completed_but_gate_not_passed'
                 break
             time.sleep(5)
     except Exception as e:
         failure=type(e).__name__+':'+str(e);event('stopped',reason=failure)
     finally:
-        write('result.json',dict(passed=passed,recovery_probe_passed=probe_passed,reason=failure,restarts=restarts,saved_days=sorted(saved_days),start_day=start_day,last_day=last['snapshot']['day'] if last else None,elapsed=time.monotonic()-start,scope='Stage A continuity plus G1/G2/G4; G3 is measured in baseline and user-defined for gate',baseline_completed=baseline_completed,quality=quality_result))
+        write('result.json',dict(passed=passed,recovery_probe_passed=probe_passed,reason=failure,restarts=restarts,saved_days=sorted(saved_days),start_day=start_day,last_day=last['snapshot']['day'] if last else None,elapsed=time.monotonic()-start,scope='Stage A continuity plus G1/G2/G4; G3 is measured in baseline and user-defined for gate',baseline_completed=baseline_completed,trial_completed=trial_completed,quality=quality_result))
         if bridge:
             try:scenario('agent_pause')
             except Exception:pass
-        if proc and proc.poll() is None:
+        if proc and proc.poll() is None and args.exit_on_stop:
             proc.stdin.write('agent_quit\n');proc.stdin.flush()
             try:proc.wait(timeout=30)
             except subprocess.TimeoutExpired:event('exit_pending',pid=proc.pid)
@@ -234,7 +237,7 @@ def main():
             for path in out.rglob('*'):
                 if path.is_file() and path.name!='bridge-private.json':files.append(dict(path=str(path.relative_to(out)),bytes=path.stat().st_size,sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
             write('evidence-index.json',files)
-    return 0 if passed or probe_passed or baseline_completed else 1
+    return 0 if passed or probe_passed or baseline_completed or trial_completed else 1
 
 
 if __name__=='__main__':sys.exit(main())

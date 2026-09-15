@@ -52,7 +52,9 @@ public sealed partial class ModEntry {
             max=Math.Min(max,Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.QualifiedItemId==fertilizer).Sum(i=>i.Stack));
             if(max==0)throw new InvalidOperationException("planned_fertilizer_not_carried");
         }
-        int manual=Math.Clamp(AgentToolRegistry.Number(args,"max_daily_manual_water",24),0,96);
+        int manual=AgentToolRegistry.Number(args,"max_daily_manual_water",-1);
+        if(manual < -1 || manual > 9999)throw new InvalidOperationException("invalid_manual_care_budget");
+        if(manual<0)manual=max;
         bool protectedOnly=args.TryGetProperty("require_scarecrow",out var protect)&&protect.ValueKind==JsonValueKind.True;
         var owned=Game1.player.Items.Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74).GroupBy(i=>i!.QualifiedItemId).ToDictionary(g=>g.Key,g=>g.Sum(i=>i.Stack));
         var irrigated=l.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();

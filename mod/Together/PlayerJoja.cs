@@ -15,7 +15,7 @@ public sealed partial class PlayerExecutor {
     }
     private void StartJoja(JsonElement args) {
         if(AgentToolRegistry.Text(args,"route")!="joja")throw new InvalidOperationException("explicit_joja_route_required");
-        jojaMode=AgentToolRegistry.Text(args,"mode","project");jojaBudget=AgentToolRegistry.Number(args,"budget",0);jojaKeep=AgentToolRegistry.Number(args,"keep_gold",500);
+        jojaMode=AgentToolRegistry.Text(args,"mode","project");jojaBudget=AgentToolRegistry.Number(args,"budget",0);jojaKeep=AgentToolRegistry.Number(args,"keep_gold",0);
         if(jojaBudget<0||jojaKeep<0||jojaMode is not ("membership" or "project" or "cinema"))throw new InvalidOperationException("invalid_joja_operation");
         jojaFlag=jojaMode=="membership"?"JojaMember":jojaMode=="cinema"?"ccMovieTheater":AgentToolRegistry.Text(args,"project");
         if(jojaMode=="project"&&!JojaProjects.Contains(jojaFlag))throw new InvalidOperationException("observed_joja_project_required");

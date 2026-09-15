@@ -30,8 +30,8 @@ internal static class BusinessChecks {
         var aroundWall=CleanupRouting.Plan(new(0,1),wallSites,p=>p.X>=0&&p.X<5&&p.Y>=0&&p.Y<7&&!(p.X==1&&p.Y<6)&&!wallSites.Any(s=>s.Tile==p),20,2);
         check(aroundWall.First().Site.Tile==new FarmCell(0,4),"real walk distance wins over a geometrically closer obstacle behind a wall");
         var allowance=CleanupBudget.Calculate(270,270,30,15,15,0,0);
-        check(allowance.FarmEnergy==90&&allowance.Reserve==120&&allowance.Available==150,"cleanup budgets actual committed care plus return reserve");
-        check(CleanupBudget.Calculate(100,270,30,15,15,0,0).Available==0,"committed care can block optional cleanup");
+        check(allowance.FarmEnergy==90&&allowance.Reserve==30&&allowance.Available==240,"cleanup exposes care estimate without hidden reserve");
+        check(CleanupBudget.Calculate(100,270,30,15,15,0,0).Available==70,"model reserve is the only cleanup reserve");
         check(CleanupBudget.Calculate(270,270,30,0,0,94,180).Available==240,"historical time and spend cannot create an artificial second stamina bar");
         check(Together.Shared.ForageCropRules.HarvestId(true,"1","")=="(O)399","native spring onion maps to its actual harvest item even with empty crop index");
         check(Together.Shared.ForageCropRules.HarvestId(false,"1","(O)24")=="(O)24"&&Together.Shared.ForageCropRules.HarvestId(true,"2","")=="","normal crops and ginger are not guessed as spring onions");

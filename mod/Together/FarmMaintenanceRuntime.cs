@@ -113,9 +113,9 @@ public sealed partial class ModEntry {
         if(args.TryGetProperty("scopes",out var raw)&&(raw.ValueKind!=JsonValueKind.Array||raw.EnumerateArray().Any(v=>v.ValueKind!=JsonValueKind.String)))throw new InvalidOperationException("cleanup_scopes_array_required");
         var scopes=raw.ValueKind==JsonValueKind.Array?raw.EnumerateArray().Select(v=>v.GetString()??"").Distinct().ToList():new(){"roads","courtyard","fields","general"};
         if(scopes.Count is <1 or >8||scopes.Any(s=>s is not("all" or "roads" or "courtyard" or "fields" or "general")&&!Data.Maintenance.Zones.Any(z=>s=="zone:"+z.Id)))throw new InvalidOperationException("unknown_cleanup_scope");
-        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",30),until=AgentToolRegistry.Number(args,"until",1800),limit=AgentToolRegistry.Number(args,"daily_limit",0);
+        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",0),until=AgentToolRegistry.Number(args,"until",1800),limit=AgentToolRegistry.Number(args,"daily_limit",0);
         bool remove=false;if(args.TryGetProperty("remove_trees",out var trees)){if(trees.ValueKind is not(JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("cleanup_boolean_required");remove=trees.GetBoolean();}
-        if(reserve is <15 or >270||until is <600 or >2200||until%100>59||limit is <0 or >120)throw new InvalidOperationException("invalid_cleanup_budget");
+        if(reserve is <0 or >270||until is <600 or >2200||until%100>59||limit is <0 or >120)throw new InvalidOperationException("invalid_cleanup_budget");
         if(old!=null) {
             if(!old.Scopes.OrderBy(x=>x).SequenceEqual(scopes.OrderBy(x=>x))||old.RemoveTrees!=remove||old.ReserveStamina!=reserve||old.Until!=until||old.DailyLimit!=limit)throw new InvalidOperationException("cleanup_request_id_reused_with_different_policy");
             if(old.Status=="paused"){old.Status="active";old.RetryAt=0;maintenanceAt=DateTime.MinValue;}return new{order=old,idempotent=true};
@@ -140,13 +140,7 @@ public sealed partial class ModEntry {
         // not reserve the same seeds multiple times. Never trust an idle NPC to finish watering.
         var planned=ApprovedPlantingPlans();
         int plots=planned.SelectMany(p=>p.Tiles.Select(t=>(p.Location,t))).Distinct().Count(p=>Game1.getLocationFromName(p.Location)?.terrainFeatures.GetValueOrDefault(new(p.t.X,p.t.Y)) is not HoeDirt {crop:not null});
-        // Before the investment planner runs (e.g. before the shop opens), leave
-        // room for the agreed expansion, bounded by its manual-care capacity.
-        if(Data.FarmInvestment.Enabled&&Data.FarmInvestment.Phase is not ("done" or "blocked"))
-            plots=Math.Max(plots,Math.Min(Data.FarmInvestment.Plots,Data.FarmInvestment.ManualWaterLimit));
         var allowance=CleanupBudget.Calculate((int)Game1.player.Stamina,Game1.player.MaxStamina,order.ReserveStamina,dry,plots,state.EnergyCommitted,state.MinutesUsed);
-        int committedReserve=Math.Max(allowance.Reserve,Math.Max(15,order.ReserveStamina)+PendingFarmEnergy());
-        allowance=allowance with{Reserve=committedReserve,Available=Math.Max(0,(int)Game1.player.Stamina-committedReserve)};
         string key=$"{Game1.Date.TotalDays}:{plots}:{dry}:{state.EnergyCommitted}:{Data.FarmInvestment.Phase}";
         if(key!=laborReservationKey){laborReservationKey=key;Data.Autoplay.Record("labor_reservation",AgentJson.Encode(new{time=Game1.timeOfDay,planting_plots=plots,planting_energy=PendingFarmEnergy(),cleanup_committed=state.EnergyCommitted,allowance,investment=Data.FarmInvestment.Phase,recoverable_nodes=Data.FarmInvestment.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state is "failed" or "blocked")).ToArray()}));}
         return allowance;
@@ -161,7 +155,7 @@ public sealed partial class ModEntry {
         int minute=BusinessMinute;
         if(state.WasWorking&&state.LastMinute>=0)state.MinutesUsed+=Math.Max(0,minute-state.LastMinute);
         state.LastMinute=minute;state.WasWorking=semanticJobs.Values.Any(j=>j.goal=="cleanup"&&j.status=="running");
-        if(state.Enabled&&Data.Business.Enabled&&!state.Orders.Any(o=>o.Id=="daily-maintenance"))state.Orders.Add(new(){Id="daily-maintenance",Recurring=true});
+        // Cleanup is dispatched only from a model-created order; no competing default order.
         foreach(var order in state.Orders) {
             FarmCleanupRules.NewDay(order,Game1.Date.TotalDays);
             if(order.Recurring&&order.Status=="complete"&&order.RetryAt<=BusinessMinute)order.Status="active";
@@ -229,6 +223,13 @@ public sealed partial class ModEntry {
             candidates.Values.Select(c=>new CleanupSite(c.Target.Tile,c.Target.Energy,FarmCleanupRules.Priority(c.Target.Scope))),
             p=>PlayerExecutor.Passable(Game1.getFarm(),new(p.X,p.Y)),allowance.Available,
             Math.Min(6,Math.Min(job.requested-job.completed,FarmCleanupRules.RemainingBudget(order))));
+        if(candidates!=allCandidates) {
+            var nearest=CleanupRouting.Plan(new(Game1.player.TilePoint.X,Game1.player.TilePoint.Y),allCandidates.Values.Select(c=>new CleanupSite(c.Target.Tile,c.Target.Energy,FarmCleanupRules.Priority(c.Target.Scope))),p=>PlayerExecutor.Passable(Game1.getFarm(),new(p.X,p.Y)),allowance.Available,1);
+            if(nearest.Count>0&&(route.Count==0||route[0].Walk>nearest[0].Walk+8)) {
+                Data.Autoplay.Record("cleanup_patch_switch",AgentJson.Encode(new{order.Id,old_anchor=order.Patch,old_walk=route.FirstOrDefault()?.Walk,new_walk=nearest[0].Walk,reason="reachable_local_frontier_beats_geometric_patch_detour"}));
+                candidates=allCandidates;route=nearest;order.Patch=null;
+            }
+        }
         if(route.Count>0) {
             order.Patch??=route[0].Site.Tile;
             Data.Maintenance.EnergyCommitted+=route.Sum(s=>s.Site.Energy);

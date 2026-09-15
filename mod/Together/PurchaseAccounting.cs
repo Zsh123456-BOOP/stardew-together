@@ -3,6 +3,11 @@ using System.Text.Json.Nodes;
 using StardewValley;
 namespace Together;
 public sealed partial class ModEntry {
+    private static int NativePurchaseSpent() {
+        if(!Game1.player.modData.TryGetValue("stardewagent.together/economy",out var raw))return 0;
+        using var doc=JsonDocument.Parse(raw);var row=doc.RootElement;
+        return row.GetProperty("Day").GetInt32()==Game1.Date.TotalDays?row.GetProperty("Spent").GetInt32():0;
+    }
     private void RecordNativePurchases(PlayerAction action) {
         const string key="stardewagent.together/economy";
         var ledger=Game1.player.modData.TryGetValue(key,out var raw)?JsonNode.Parse(raw)!.AsObject():new JsonObject();

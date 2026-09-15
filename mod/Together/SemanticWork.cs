@@ -82,7 +82,7 @@ public sealed partial class ModEntry {
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
         int reserve=AgentToolRegistry.Number(args,"reserve_stamina",DailyBudget.EnergyReserve),until=AgentToolRegistry.Number(args,"until",2200);
-        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<15||reserve>270||until<600||until>(goal is "withdraw" or "store"?2500:2300)||until%100>59)throw new InvalidOperationException("invalid_work_limits");
+        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<0||reserve>270||until<600||until>(goal is "withdraw" or "store"?2500:2300)||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};
@@ -120,13 +120,13 @@ public sealed partial class ModEntry {
             if(job.FishLocation.Length==0)job.FishLocation=FishingLocations(job.Item).FirstOrDefault()?.NameOrUniqueName??location;
         }
         if(goal=="volcano_trip") {
-            job.MineTarget=AgentToolRegistry.Number(args,"target_level",10);job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
+            job.MineTarget=AgentToolRegistry.Number(args,"target_level",10);job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",0);
             if(job.MineTarget is <1 or >10||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_volcano_target_or_budget");job.requested=0;
         }
         if(goal=="mine_trip") {
             job.MineStartLevel=AgentToolRegistry.Number(args,"start_level",-1);
             job.MineRegion=AgentToolRegistry.Text(args,"region","normal");job.MineTarget=AgentToolRegistry.Number(args,"target_level",job.MineRegion=="skull"?25:Math.Min(120,(StardewValley.Locations.MineShaft.lowestLevelReached/5+1)*5));
-            job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
+            job.MineTravelBudget=AgentToolRegistry.Number(args,"travel_budget",0);job.MineKeepGold=AgentToolRegistry.Number(args,"keep_gold",0);
             if(job.MineStartLevel < -1||job.MineStartLevel>=job.MineTarget||job.MineStartLevel>StardewValley.Locations.MineShaft.lowestLevelReached||job.MineStartLevel>=0&&job.MineStartLevel%5!=0||job.MineRegion is not ("normal" or "skull")||job.MineTarget<1||job.MineTarget>(job.MineRegion=="skull"?1000:120)||job.MineTravelBudget<0||job.MineKeepGold<0)throw new InvalidOperationException("invalid_mine_target_or_budget");job.requested=0;
         }
         if(goal=="resource"&&!ResourceRules.Nodes.Values.Contains(job.Item))throw new InvalidOperationException("resource_item_has_no_known_native_node_route");
@@ -351,7 +351,7 @@ public sealed partial class ModEntry {
             foreach(var at in new[]{clump.Tile.ToPoint(),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y),new Point((int)clump.Tile.X,(int)clump.Tile.Y+clump.height.Value-1),new Point((int)clump.Tile.X+clump.width.Value-1,(int)clump.Tile.Y+clump.height.Value-1)}.Distinct())
                 candidates.Add((at,"break_clump",clumpSlot,energy,j.Item));
         }
-        int energyReserve=j.Reserve+(j.goal is "wood" or "stone" or "resource" or "hardwood"?PendingFarmEnergy():0);
+        int energyReserve=j.Reserve;
         string? constraint=null;
         var eligible=candidates.Where(c=>!j.Excluded.Contains($"{c.Tile.X},{c.Tile.Y}")&&!AgentTileBusy(l.NameOrUniqueName,c.Tile.X,c.Tile.Y)&&!(j.goal is "resource" or "stone" or "wood" or "fiber" or "hardwood" or "clear_dead"&&MaintenanceProtects(l,c.Tile))).ToArray();
         var route=CleanupRouting.Plan(new(p.TilePoint.X,p.TilePoint.Y),eligible.Select(c=>new CleanupSite(new(c.Tile.X,c.Tile.Y),(int)Math.Ceiling(c.Energy))),t=>PlayerExecutor.Passable(l,new(t.X,t.Y)),Math.Max(0,(int)p.Stamina-energyReserve),1);

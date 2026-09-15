@@ -17,9 +17,7 @@ public sealed partial class ModEntry {
             if(requested<1||requested>dependencyMissing)throw new InvalidOperationException("dependency_quantity_changed_replan");
             return StartSemanticWork(args);
         }
-        if(Data.Business.Enabled&&goal=="store"&&actor=="player"&&CapacityAdapter.Of(Game1.player).FreeSlots>=Math.Max(1,AgentToolRegistry.Number(args,"required_free_slots",0))&&Game1.timeOfDay<1800) {
-            var skipped=(SemanticJob)StartSemanticWork(args);StopSemanticWork(skipped,"storage_not_required_capacity_available",true);return skipped;
-        }
+        // Explicit storage requests belong to the model; no free-slot policy veto.
         string item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),_=>""};
         if(item.Length==0||AgentToolRegistry.Text(args,"quest_id").Length>0||AgentToolRegistry.Text(args,"order_id").Length>0)return StartSemanticWork(args);
         UpdateOperatingTargets();

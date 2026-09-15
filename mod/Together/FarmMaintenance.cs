@@ -17,7 +17,7 @@ public sealed class FarmCleanupOrder {
     public bool Recurring {get;set;}
     public string Status {get;set;}="active";
     public string Reason {get;set;}="";
-    public int ReserveStamina {get;set;}=30;
+    public int ReserveStamina {get;set;}=0;
     public int Until {get;set;}=1800;
     public int DailyLimit {get;set;}=0;
     public int Day {get;set;}=-1;
@@ -58,7 +58,7 @@ public sealed record CleanupAllowance(int FarmEnergy,int ProductionReserve,int R
 public static class CleanupBudget {
     public static CleanupAllowance Calculate(int stamina,int maximum,int safety,int dry,int newPlots,int committed,int minutes) {
         int farm=Math.Max(0,dry)*2+Math.Max(0,newPlots)*4;
-        int reserve=Math.Max(15,safety)+farm;
+        int reserve=Math.Max(0,safety);
         int available=Math.Max(0,stamina-reserve);
         return new(farm,0,reserve,available,available==0?"cleanup_committed_care_or_return_reserve":"available");
     }

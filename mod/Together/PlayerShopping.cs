@@ -16,7 +16,7 @@ public sealed partial class PlayerExecutor {
         if(purchaseMenu.ShopId!=AgentToolRegistry.Text(args,"shop"))throw new InvalidOperationException("shop_changed_read_again");
         purchaseRecipe=args.TryGetProperty("recipe",out var recipeFlag)?recipeFlag.GetBoolean():null;
         purchaseId=AgentToolRegistry.Text(args,"item");purchaseRemaining=AgentToolRegistry.Number(args,"count",1);
-        purchasePriceLimit=AgentToolRegistry.Number(args,"max_unit_price",-1);purchaseKeepGold=AgentToolRegistry.Number(args,"keep_gold",500);
+        purchasePriceLimit=AgentToolRegistry.Number(args,"max_unit_price",-1);purchaseKeepGold=AgentToolRegistry.Number(args,"keep_gold",0);
         purchaseBudget=AgentToolRegistry.Number(args,"budget",-1);purchaseSpent=0;
         purchaseTrade=AgentToolRegistry.Text(args,"trade_item","");purchaseTradeBudget=AgentToolRegistry.Number(args,"trade_budget",0);purchaseTradeSpent=0;
         purchaseCurrency=AgentToolRegistry.Number(args,"currency",0);

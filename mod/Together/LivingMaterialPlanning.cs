@@ -54,7 +54,7 @@ public sealed partial class ModEntry {
         if(Game1.currentLocation!=farm){add("player.travel",new{location="Farm"},"返回农场读取真实目标种植布局");return true;}
         var watered=farm.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();
         int currentManual=farm.terrainFeatures.Pairs.Count(c=>c.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&!watered.Contains(c.Key));
-        int manual=Math.Max(0,Data.FarmInvestment.ManualWaterLimit-currentManual),count=Math.Min(node.ToPrepare,Data.FarmInvestment.Plots);
+        int manual=Data.FarmInvestment.ManualWaterLimit<0?node.ToPrepare:Math.Max(0,Data.FarmInvestment.ManualWaterLimit-currentManual),count=Math.Min(node.ToPrepare,Data.FarmInvestment.Plots);
         var result=JsonSerializer.SerializeToElement(PlanFarm(JsonSerializer.SerializeToElement(new{seed=selected.Seed,count,max_daily_manual_water=manual,priority="collection"})));
         var option=result.GetProperty("options").EnumerateArray().FirstOrDefault();
         if(option.ValueKind!=JsonValueKind.Object){wait="target_crop_no_feasible_season_space_or_care_capacity";return true;}

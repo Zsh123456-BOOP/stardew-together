@@ -11,7 +11,7 @@ public sealed partial class PlayerExecutor {
     private Point? donationNote;
     private readonly HashSet<int> donationBlocked=new();
     private void StartBundle(JsonElement args) {
-        donationBundle=AgentToolRegistry.Number(args,"bundle",-1);donationBudget=AgentToolRegistry.Number(args,"budget",0);donationKeep=AgentToolRegistry.Number(args,"keep_gold",500);
+        donationBundle=AgentToolRegistry.Number(args,"bundle",-1);donationBudget=AgentToolRegistry.Number(args,"budget",0);donationKeep=AgentToolRegistry.Number(args,"keep_gold",0);
         if(donationBudget<0||donationKeep<0)throw new InvalidOperationException("invalid_bundle_budget");
         string? key=Game1.netWorldState.Value.BundleData.Keys.FirstOrDefault(k=>k.Split('/').Last()==donationBundle.ToString());
         if(key==null)throw new InvalidOperationException("native_bundle_not_found");

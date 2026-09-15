@@ -23,7 +23,7 @@ public sealed partial class PlayerExecutor {
         var choice=menu.animalsToPurchase.FirstOrDefault(b=>b.hoverText==type&&b.item is StardewValley.Object {Type:null})??throw new InvalidOperationException("animal_not_available");
         livestockName=AgentToolRegistry.Text(args,"name").Trim();
         if(livestockName.Length is <1 or >12||livestockName.Any(char.IsControl)||Utility.areThereAnyOtherAnimalsWithThisName(livestockName))throw new InvalidOperationException("unique_animal_name_required_max12");
-        livestockPrice=choice.item.salePrice();livestockReserve=AgentToolRegistry.Number(args,"keep_gold",500);
+        livestockPrice=choice.item.salePrice();livestockReserve=AgentToolRegistry.Number(args,"keep_gold",0);
         if(livestockReserve<0||livestockPrice>AgentToolRegistry.Number(args,"budget",0)||Game1.player.Money-livestockPrice<livestockReserve)throw new InvalidOperationException("animal_purchase_budget_insufficient");
         livestockMenu=menu;livestockHome=null;livestockId=0;livestockMoney=Game1.player.Money;
         int index=menu.animalsToPurchase.IndexOf(choice);menu.Scroll(Math.Clamp(index/3,0,menu.scrollRows)-menu.currentScroll);

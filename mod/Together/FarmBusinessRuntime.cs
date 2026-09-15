@@ -12,13 +12,13 @@ public sealed partial class ModEntry {
     internal object ConfigureBusiness(JsonElement args) {
         var b=Data.Business;bool wasEnabled=b.Enabled,wasRoutine=Data.Autoplay.Routine.Enabled;
         int budget=AgentToolRegistry.Number(args,"budget_per_day",b.DailyBudget),keep=AgentToolRegistry.Number(args,"keep_gold",b.KeepGold),animals=AgentToolRegistry.Number(args,"max_animals",b.MaxAnimals),machines=AgentToolRegistry.Number(args,"max_machines",b.MaxMachines),feed=AgentToolRegistry.Number(args,"feed_days",b.FeedDays);
-        if(budget is <0 or >10000000||keep is <0 or >10000000||animals is <0 or >96||machines is <0 or >200||feed is <2 or >28)throw new InvalidOperationException("invalid_business_policy");
+        if(budget is <-1 or >10000000||keep is <0 or >10000000||animals is <0 or >96||machines is <0 or >200||feed is <2 or >28)throw new InvalidOperationException("invalid_business_policy");
         foreach(string key in new[]{"enabled","expand"})if(args.TryGetProperty(key,out var flag)&&flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new InvalidOperationException("business_boolean_required");
         b.DailyBudget=budget;b.KeepGold=keep;b.MaxAnimals=animals;b.MaxMachines=machines;b.FeedDays=feed;
         if(args.TryGetProperty("expand",out var expand))b.Expand=expand.GetBoolean();
-        if(args.TryGetProperty("enabled",out var enabled))b.Enabled=enabled.GetBoolean();
-        if(b.Enabled) {
-            var farm=Data.FarmInvestment;farm.Enabled=true;farm.BudgetPerDay=budget;farm.KeepGold=keep;
+        if(args.TryGetProperty("enabled",out var enabled)){b.Enabled=true;b.Automation=enabled.GetBoolean();}
+        if(b.Automation) {
+            var farm=Data.FarmInvestment;farm.Enabled=true;farm.Repeat=true;farm.BudgetPerDay=budget;farm.KeepGold=keep;
             string actor=World().GetProperty("actors").EnumerateArray().Select(a=>a.GetProperty("id").GetString()).FirstOrDefault()??"player";
             ConfigureDailyRoutine(JsonSerializer.SerializeToElement(new{enabled=true,assignments=new Dictionary<string,string>{{"clear_dead","player"},{"harvest",actor},{"water",actor},{"pet",actor},{"mail","player"},{"cooking_tv","player"},{"animal_collect","player"},{"milk","player"},{"shear","player"}}}));
         }
@@ -27,7 +27,7 @@ public sealed partial class ModEntry {
             Data.Autoplay.Schedule.CancelPending(b.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state!="running")).ToArray());
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==b.ChildGoal);if(goal is {Status:"active"})AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id,mode="pause"}));
         }
-        businessAt=DateTime.MinValue;Data.Autoplay.Record("business_policy",AgentJson.Encode(new{policy=b,routine=Data.Autoplay.Routine,previous_enabled=wasEnabled,previous_routine=wasRoutine,source=agentLabProbe?"lab_explicit_configuration":"farm.business_explicit_call",time=Game1.timeOfDay}));return new{policy=b,note="先维护，再生产与销售；投资遵循预算与工作量，模型可查询建议并调整方向。关闭不撤销已发生消费或中断原生保存。"};
+        businessAt=DateTime.MinValue;Data.Autoplay.Record("business_policy",AgentJson.Encode(new{policy=b,routine=Data.Autoplay.Routine,previous_enabled=wasEnabled,previous_routine=wasRoutine,source=agentLabProbe?"lab_explicit_configuration":"farm.business_explicit_call",time=Game1.timeOfDay}));return new{policy=b,note="先维护，再生产与销售；投资遵循预算与工作量，模型可查询建议并调整方向。enabled 控制模型选择的持续经营例行，不限制直接工具；budget_per_day=-1取消每日额度，keep_gold默认0。关闭不撤销已发生消费或中断原生保存。"};
     }
     internal object ReadBusiness(JsonElement args) {RefreshFacts(true);return new{ledger=ReadBusinessLedger(),options=BusinessDevelopmentOptions().ToArray(),note="选项估值来自当前原生数据与可见供给；不是保证产量或全局最优。查看真实执行及等待原因后调整政策。"};}
     private bool QueueBusiness(string id,IEnumerable<(string Tool,object Args)> actions,string reason,int cost=0) {
@@ -82,7 +82,7 @@ public sealed partial class ModEntry {
     }
     private void TickFarmBusiness() {
         var b=Data.Business;
-        if(!AutoplayRunning||!b.Enabled||DateTime.UtcNow<businessAt)return;businessAt=DateTime.UtcNow.AddSeconds(2);
+        if(!AutoplayRunning||!b.Automation||DateTime.UtcNow<businessAt)return;businessAt=DateTime.UtcNow.AddSeconds(2);
         // Regular Together life updates yield to Autoplay. Restore previously
         // agreed companions here too, including ownership after save creation.
         if(Context.IsPlayerFree&&Game1.timeOfDay<1200&&DateTime.UtcNow>=rejoinAt) {
@@ -124,7 +124,7 @@ public sealed partial class ModEntry {
         }
         if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Game1.timeOfDay>=2130||OperationActorOccupied("player"))return;
         try {
-            Data.FarmInvestment.BudgetPerDay=Math.Max(Data.FarmInvestment.ReservedToday,b.DailyBudget-b.ReservedToday);
+            Data.FarmInvestment.BudgetPerDay=b.DailyBudget;
             Data.FarmInvestment.KeepGold=b.KeepGold;
             if(PlayerExecutor.HasHomeGift()&&QueueBusiness("home_gifts",new[]{("player.collect_home_gifts",(object)new{})},"自动领取自家原生礼包，核验实际种子等补给后再安排种植"))return;
             if(QueueInitialStorage())return;

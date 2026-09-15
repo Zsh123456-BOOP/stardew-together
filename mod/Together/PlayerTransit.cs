@@ -21,7 +21,7 @@ public sealed partial class PlayerExecutor {
         routes=new[]{"desert","from_desert","island","from_island"}
     };
     private void StartTransit(JsonElement args) {
-        transitTile=null;transitPart="";transitBudget=AgentToolRegistry.Number(args,"budget",0);transitKeep=AgentToolRegistry.Number(args,"keep_gold",500);
+        transitTile=null;transitPart="";transitBudget=AgentToolRegistry.Number(args,"budget",0);transitKeep=AgentToolRegistry.Number(args,"keep_gold",0);
         if(transitBudget<0||transitKeep<0)throw new InvalidOperationException("invalid_transport_budget");
         if(Current!.skill=="player.repair_boat") {
             transitPart=AgentToolRegistry.Text(args,"part");var part=BoatPart(transitPart);

@@ -18,8 +18,8 @@ public sealed partial class PlayerExecutor {
     private void StartFishing(JsonElement args) {
         if(!Game1.currentLocation.canFishHere())throw new InvalidOperationException("location_not_fishable");
         fishTarget=AgentToolRegistry.Text(args,"item");
-        fishRequested=AgentToolRegistry.Number(args,"count",3);fishReserve=AgentToolRegistry.Number(args,"reserve_stamina",20);
-        if(fishRequested is <1 or >20||fishReserve is <15 or >270)throw new InvalidOperationException("invalid_fishing_limits");
+        fishRequested=AgentToolRegistry.Number(args,"count",3);fishReserve=AgentToolRegistry.Number(args,"reserve_stamina",0);
+        if(fishRequested is <1 or >20||fishReserve is <0 or >270)throw new InvalidOperationException("invalid_fishing_limits");
         int slot=Enumerable.Range(0,Game1.player.Items.Count).Where(i=>Game1.player.Items[i] is FishingRod).OrderByDescending(i=>((FishingRod)Game1.player.Items[i]).UpgradeLevel).FirstOrDefault(-1);
         if(slot<0)throw new InvalidOperationException("fishing_rod_missing");
         PlayerSelection.Set(Game1.player,slot);fishBaseline=fishCastBaseline=NativeFishCount();fishCasts=0;fishCastPending=fishLandingChecked=false;fishObservedPhase="";fishPhaseStarted=activeSeconds;

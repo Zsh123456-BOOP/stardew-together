@@ -25,7 +25,7 @@ public sealed partial class ModEntry {
     private void ContinueDecision(DecisionContinuation batch) {
         string oldIntent=decisionIntent;decisionIntent=batch.Intent;
         try {
-            for(;batch.Index<batch.Calls.Count;batch.Index++) {
+            while(batch.Index<batch.Calls.Count) {
                 if(!AutoplayRunning||SurvivalOwnsDay){CancelDecisionContinuation("run_interrupted");return;}
                 var call=batch.Calls[batch.Index];
                 string barrier=DecisionBarrier.State(batch.After.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)?.state));
@@ -41,23 +41,29 @@ public sealed partial class ModEntry {
                     if(!AgentSchedule.Queueable(call.tool)&&!DecisionBarrier.Control(call.tool))CheckKnownFailure(new ScheduledAgentTask{spec=new(){actor="player",tool=call.tool,args=args}});
                     result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,args);
                 }catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
+                // Invocation has happened: receipt handling must never replay its side effects next tick.
+                batch.Index++;
                 var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);RecordToolAttempt(call,observed);
                 foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!before.Contains(t.spec.id)))if(!batch.After.Contains(task.spec.id))batch.After.Add(task.spec.id);
-                if(observed.TryGetProperty("task_id",out var taskId)&&taskId.ValueKind==JsonValueKind.String&&!batch.After.Contains(taskId.GetString()!))batch.After.Add(taskId.GetString()!);
+                if(DecisionBarrier.Text(observed,"task_id") is {} taskId&&!batch.After.Contains(taskId))batch.After.Add(taskId);
                 // menu.choose can start a native command directly rather than submit a task.
-                if(observed.TryGetProperty("status",out var status)&&status.GetString()=="running"&&observed.TryGetProperty("command_id",out var cid)) {
+                if(DecisionBarrier.Text(observed,"status")=="running"&&DecisionBarrier.Text(observed,"command_id") is {} cid) {
                     var id="observe-"+Guid.NewGuid().ToString("N");
-                    Data.Autoplay.Schedule.Tasks.Add(new(){spec=new(){id=id,tool=call.tool,args=call.args.Clone(),day=Game1.Date.TotalDays,intent_id=batch.Intent},state="running",command_id=cid.GetString()});
+                    Data.Autoplay.Schedule.Tasks.Add(new(){spec=new(){id=id,tool=call.tool,args=call.args.Clone(),day=Game1.Date.TotalDays,intent_id=batch.Intent},state="running",command_id=cid});
                     batch.After.Add(id);
                 }
-                if(observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String) {
-                    RecordAgentFailure(error.GetString()!);batch.Followup=true;batch.Error=true;
-                    Data.Autoplay.Record("decision_tail_not_applied",AgentJson.Encode(new{batch.Intent,failed_tool=call.tool,remaining=batch.Calls.Skip(batch.Index+1)}));
+                if(DecisionBarrier.Text(observed,"error") is {} error) {
+                    RecordAgentFailure(error);batch.Followup=true;batch.Error=true;
+                    Data.Autoplay.Record("decision_tail_not_applied",AgentJson.Encode(new{batch.Intent,failed_tool=call.tool,remaining=batch.Calls.Skip(batch.Index)}));
                     batch.Index=batch.Calls.Count;break;
                 }
                 if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))batch.Followup=true;
             }
             if(deferredDecision==batch){deferredDecision=null;Data.Autoplay.Record("decision_continuation_finished",AgentJson.Encode(new{batch.Intent,batch.Error}));WakeAgent("deferred_tool_results");}
+        }catch(Exception e){
+            batch.Error=true;deferredDecision=null;
+            Data.Autoplay.Record("decision_receipt_failed",AgentJson.Encode(new{batch.Intent,next_index=batch.Index,error=e.ToString(),remaining=batch.Calls.Skip(batch.Index)}));
+            PauseAutoplay("decision_receipt_failed_preserve_evidence");
         }finally{decisionIntent=oldIntent;}
     }
 }

@@ -1,5 +1,6 @@
 """Fourth-round native seam suite in one AgentLab process; no resource/progress seeding."""
 import argparse,json,os,subprocess,sys,time,shutil,hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
@@ -37,9 +38,10 @@ with (out/'game.log').open('w') as log:
     time.sleep(.5);r=tool('action.status',id=r['command_id']);write('latest-action.json',r)
    write(label+'.json',r);return r
   def scene():return sc('round3',mode='read')
+  evidence_start=datetime.now(timezone.utc)
   def events():
    paths=(mods/'Together/logs'/str(initial['save_id'])).glob('*/day-*.jsonl')
-   return [json.loads(x) for pth in paths for x in pth.read_text().splitlines() if x.endswith('}')]
+   return [json.loads(x) for pth in paths for x in pth.read_text().splitlines() if x.endswith('}') and datetime.fromisoformat(json.loads(x)['utc'].replace('Z','+00:00'))>=evidence_start]
   sc('agent_pause');sc('preparation_probe')
   def chain(calls,label,seconds=500):
    r=sc('decision_chain',turn=dict(plan='验证动作完成后才执行后续查询',speech='',calls=calls));write(label+'-submit.json',r)
@@ -56,12 +58,15 @@ with (out/'game.log').open('w') as log:
    d=sc('round4',mode='read')
    if d['snapshot']['time']>=900:break
    time.sleep(2)
-  calls=[dict(tool='player.service',args=dict(location='SeedShop',service='shop',shop='SeedShop')),dict(tool='shop.read',args={}),dict(tool='menu.close',args={})]
+  calls=[dict(tool='player.service',args=dict(location='SeedShop',service='shop',shop='SeedShop')),dict(tool='knowledge.search',args=dict(query='春季种子 防风草')),dict(tool='tools.lookup',args=dict(names=['work.run'])),dict(tool='shop.read',args={}),dict(tool='menu.close',args={})]
   r,ev,d=chain(calls,'native-shop')
   rows=[x for x in ev if x.get('kind')=='tool_result']
   write('tool-events.json',rows)
   # Event payloads use the same business JSON envelope as baseline analysis.
   check('continuation-finished',not d.get('continuation'),d)
+  knowledge=[x for x in rows if x['payload'].get('tool')=='knowledge.search']
+  check('array-observation-exactly-once',len(knowledge)==1 and isinstance(knowledge[0]['payload']['result'],list),knowledge)
+  check('query-after-array-executed',sum(x['payload'].get('tool')=='tools.lookup' for x in rows)==1,rows)
   shops=[x for x in rows if x['payload'].get('tool')=='shop.read']
   check('real-quote-after-native-service',len(shops)==1 and 'error' not in shops[0]['payload']['result'] and any(x['kind']=='task_finished' and x['payload'].get('state')=='succeeded' and x['utc']<shops[0]['utc'] for x in ev),shops)
   check('native-menu-closed' ,d['snapshot']['menu'] is None,d['snapshot'])

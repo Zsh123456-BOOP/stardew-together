@@ -8,6 +8,9 @@ public static class Round4Checks {
         check(DecisionBarrier.State(new[]{"succeeded","succeeded"})=="ready","all native prerequisites completed");
         check(DecisionBarrier.State(new[]{"succeeded","failed"})=="failed"&&DecisionBarrier.State(new string?[]{null})=="failed","failed or missing dependency does not execute tail");
         check(DecisionBarrier.Control("agent.pause")&&!DecisionBarrier.Control("shop.read"),"pause is never trapped behind action barrier");
+        check(StorageTiming.StoreComplete(6,3,0,84)&&StorageTiming.StoreComplete(10,8,0,4)&&StorageTiming.StoreComplete(10,0,0,15),"all three baseline unloads meet physical completion after depth reset");
+        check(StorageTiming.StoreComplete(6,0,0,0),"already unloaded cargo is an idempotent successful store");
+        check(!StorageTiming.StoreComplete(6,8,0,4)&&!StorageTiming.StoreComplete(6,0,2,4),"unmet explicit slots or remaining cargo do not falsely complete");
         var diary=new ActivityDiary();
         var native=JsonSerializer.SerializeToElement(new{command_id="native-one",skill="player.buy",status="succeeded",effects=new[]{new{kind="native_purchase",item="(O)472",units=3,cost=60,currency=0}}});
         diary.Native(native,0,900);diary.Native(native,0,900);

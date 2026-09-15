@@ -10,7 +10,7 @@ public sealed partial class ModEntry {
         if(job.ReliefAction=="expand")return TryStartStorageExpansion(job);
         CompactPlayerStacks();
         if(job.goal!="store"&&!PlayerNeedsWorkStorage(job)&&(!job.PickupPending||CapacityAdapter.HasSlots(Game1.player,1))){job.Storing=false;job.ReliefDepth=0;return true;}
-        if(job.goal=="store"&&CapacityAdapter.HasSlots(Game1.player,Math.Max(1,job.RequiredSlots))&&job.ReliefDepth>0){StopSemanticWork(job,"stored_available_cargo",true);return true;}
+        if(job.goal=="store"&&StorageTiming.StoreComplete(CapacityAdapter.Of(Game1.player).FreeSlots,job.RequiredSlots,Game1.player.Items.Where(i=>i!=null).Sum(StoreCount),job.deposited)){StopSemanticWork(job,"stored_available_cargo",true);return true;}
         RefreshFacts(true);
         var p=Game1.player;var candidates=new List<CapacityCandidate>();var execute=new Dictionary<string,Action>();
         void Exclude(string id,int priority,string reason,bool authorized=true)=>candidates.Add(new(id,priority,0,authorized,reason,Array.Empty<CapacityOp>()));

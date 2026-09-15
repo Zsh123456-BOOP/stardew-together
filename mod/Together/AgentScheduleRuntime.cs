@@ -132,6 +132,7 @@ public sealed partial class ModEntry {
             // Maintenance and cargo-support jobs may own an actor outside this
             // queue. Wait for the whole semantic job, not just its current swing.
             if(WorkActorBusy(task.spec.actor))continue;
+            CloseShopForDeparture(task);
             bool purchasing=PlayerExecutor.AcceptsNativeMenu(task.spec.tool);
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {

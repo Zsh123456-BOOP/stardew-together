@@ -4,7 +4,14 @@ using StardewValley.Menus;
 namespace Together;
 public sealed partial class ModEntry {
     private DateTime automaticMenuAt;
-    private bool NeedsAgentMenuDecision=>playerExecutor.NeedsMenuChoice||!playerExecutor.Busy&&Game1.activeClickableMenu is DialogueBox {isQuestion:true} or NamingMenu or LevelUpMenu {isProfessionChooser:true};
+    private bool NeedsAgentMenuDecision=>playerExecutor.NeedsMenuChoice||!playerExecutor.Busy&&Game1.activeClickableMenu is ShopMenu or DialogueBox {isQuestion:true} or NamingMenu or LevelUpMenu {isProfessionChooser:true};
+    private void CloseShopForDeparture(ScheduledAgentTask task) {
+        if(task.spec.actor!="player"||task.spec.tool!="player.travel"||playerExecutor.Busy||Game1.activeClickableMenu is not ShopMenu shop||shop.heldItem!=null||!shop.readyToClose())return;
+        // A queued departure already expresses the decision to leave. Preserve all
+        // native held-item/close checks; never dismiss transaction intermediates.
+        new NativeMenuTools().Close();
+        Data.Autoplay.Record("shop_closed_for_departure",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,destination=AgentToolRegistry.Text(task.spec.args,"location"),closed=Game1.activeClickableMenu==null}));
+    }
     private bool TickAutomaticMenus() {
         if(playerExecutor.Busy)return false;
         if(ApplyFamilyNightPolicy())return true;

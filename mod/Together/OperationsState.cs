@@ -30,7 +30,7 @@ public static class OperationsPolicy {
         bool changed=new[]{"completed","gained","deposited","refills"}.Any(k=>Count(k)>0);
         bool navigation=tool is "player.move" or "player.travel" or "player.service" or "player.interact";
         bool deferred=result.TryGetProperty("deferred",out var d)&&d.ValueKind==JsonValueKind.True;
-        string disposition=deferred?"deferred":status=="succeeded"?changed?"completed":navigation?"observed":"already_satisfied":reason is "remaining_targets_unreachable" or "no_matching_targets" or "no_eligible_targets_check_capability_path_or_cargo"?"no_candidates_found":RecoveryPolicy.CanWait(reason)?changed?"partial":"waiting_condition":status=="cancelled"?"cancelled":"failed";
+        string disposition=status=="partial"?(changed?"partial":"waiting_condition"):deferred?"deferred":status=="succeeded"?changed?"completed":navigation?"observed":"already_satisfied":reason is "remaining_targets_unreachable" or "no_matching_targets" or "no_eligible_targets_check_capability_path_or_cargo"?"no_candidates_found":RecoveryPolicy.CanWait(reason)?changed?"partial":"waiting_condition":status=="cancelled"?"cancelled":"failed";
         bool progress=!navigation&&!deferred&&(changed||status=="succeeded"&&tool is "player.sleep" or "player.read_mail" or "player.collect_reward");
         return new(disposition,reason,progress,Count("completed"),Count("gained"),Count("deposited"),Math.Max(0,Count("requested")-Math.Max(Count("completed"),Count("gained"))));
     }

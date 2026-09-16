@@ -6,7 +6,7 @@ namespace Together;
 public sealed partial class ModEntry {
     private IEnumerable<GameLocation> FishingLocations(string item,string requested="") {
         if(item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(item.StartsWith("(O)")?item[3..]:item))yield break;
-        var rod=Game1.player.Items.OfType<FishingRod>().OrderByDescending(r=>r.UpgradeLevel).FirstOrDefault();if(rod==null)yield break;
+        var rod=AvailableTools<FishingRod>().OrderByDescending(r=>r.UpgradeLevel).FirstOrDefault();if(rod==null)yield break;
         var locations=new[]{Game1.currentLocation}.Concat(Game1.locations).Distinct();
         foreach(var l in locations.OrderBy(l=>l.IsFarm?2:l==Game1.currentLocation?0:1)) {
             if(requested.Length>0&&l.NameOrUniqueName!=requested||!l.canFishHere())continue;
@@ -17,7 +17,7 @@ public sealed partial class ModEntry {
     }
     internal object ReadFishingOptions(JsonElement args) {
         string item=AgentToolRegistry.Text(args,"item"),location=AgentToolRegistry.Text(args,"location");
-        var rod=Game1.player.Items.OfType<FishingRod>().OrderByDescending(r=>r.UpgradeLevel).FirstOrDefault();
+        var rod=AvailableTools<FishingRod>().OrderByDescending(r=>r.UpgradeLevel).FirstOrDefault();
         if(rod==null)return new{available=false,reason="fishing_rod_missing"};
         var rows=(location.Length>0?new[]{PlayerExecutor.LoadedLocation(location)}:Game1.locations.ToArray()).Where(l=>l!=null&&l.canFishHere()).Select(l=>new{
             location=l!.NameOrUniqueName,reachable=l==Game1.currentLocation||PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)!=null,

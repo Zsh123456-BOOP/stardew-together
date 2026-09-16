@@ -58,6 +58,10 @@ public sealed partial class ModEntry {
     }
     internal object AgentPlanArchive()=>new{archived=Data.Autoplay.Schedule.Archive(),revision=Data.Autoplay.Schedule.Revision};
     private object QueueLegacyAction(AgentCall call) {
+        if(call.tool is "player.buy" or "player.procure"&&decisionIntent.Length>0&&seedSelectionIntent==decisionIntent&&HasSeedSelection&&selectedSeeds.TryGetValue(AgentToolRegistry.Text(call.args,"item"),out int selected)&&AgentToolRegistry.Number(call.args,"count",1)<=selected&&Data.FarmInvestment.Phase is "start_planning" or "planning" or "executing") {
+            var receipt=new{status="already_pending",source="same_decision_seed_selection",purchased=false,selected_count=selected,note="本轮选品已经创建采购播种链；未重复购买。进度由farm.business_status返回。"};
+            Data.Autoplay.Record("purchase_duplicate_coalesced",AgentJson.Encode(receipt));return receipt;
+        }
         string actor=call.tool is "companion.assign" or "work.run"?AgentToolRegistry.Text(call.args,"actor_id","player"):"player";
         var previous=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>t.spec.actor==actor&&!t.Terminal&&t.spec.intent_id==decisionIntent);
         var duplicate=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>!t.Terminal&&t.spec.actor==actor&&FailureKnowledge.Key(actor,t.spec.tool,t.spec.args.GetRawText())==FailureKnowledge.Key(actor,call.tool,call.args.GetRawText()));
@@ -79,10 +83,10 @@ public sealed partial class ModEntry {
         if(task.spec.goal_id.Length>0)goalAutomationAt=DateTime.MinValue;
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
-        if(state!="succeeded" && state!="cancelled")state="failed";
+        if(state is not("succeeded" or "cancelled" or "partial"))state="failed";
         var outcome=OperationsPolicy.Outcome(task.spec.tool,result);
         if(CapacityState.IsConstraint(error))RecordCapacityConstraint(error!,task.spec.actor);
-        LearnActionResult(task,state,error);
+        if(state!="partial")LearnActionResult(task,state,error);
         LearnServiceConstraint(task,state,error);
         Data.Autoplay.Operations.LastOutcomes[task.spec.intent_id]=AgentJson.Encode(outcome);
         foreach(var key in Data.Autoplay.Operations.LastOutcomes.Keys.Take(Math.Max(0,Data.Autoplay.Operations.LastOutcomes.Count-64)).ToArray())Data.Autoplay.Operations.LastOutcomes.Remove(key);
@@ -98,7 +102,7 @@ public sealed partial class ModEntry {
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
         Data.Autoplay.Record("task_finished",AgentJson.Encode(new{attempt_id=task.spec.id,id=task.spec.id,actor=task.spec.actor,state,error,command_id=task.command_id,capacity_version=Data.Autoplay.Capacity.Version}));
-        if(state=="succeeded") {
+        if(state is "succeeded" or "partial") {
             bool emptyWork=result.TryGetProperty("deferred",out var deferred)&&deferred.ValueKind==JsonValueKind.True || task.spec.tool=="work.run"&&new[]{"completed","gained","deposited","refills"}.All(k=>!result.TryGetProperty(k,out var n)||n.GetInt32()==0);
             if(outcome.BusinessProgress){agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;}
             else Data.Autoplay.Record(emptyWork?"no_effect_action":"support_action_completed",AgentJson.Encode(new{task.spec.id,task.spec.tool,note="请求已处理，但未增加实际劳动进展"}));

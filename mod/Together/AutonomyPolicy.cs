@@ -23,4 +23,26 @@ public static class AutonomyPolicy {
         "idle"=>"idle",
         _=>"executing"
     };
+    public static List<FarmCell>? Path(FarmCell start,FarmCell end,Func<FarmCell,bool> passable,int limit=10000) {
+        if(start==end)return new(){start};if(!passable(end))return null;
+        var open=new PriorityQueue<FarmCell,int>();var costs=new Dictionary<FarmCell,int>{{start,0}};var parent=new Dictionary<FarmCell,FarmCell>();var closed=new HashSet<FarmCell>();
+        open.Enqueue(start,FarmDistrict.Distance(start,end));
+        while(open.TryDequeue(out var at,out _)&&closed.Count<limit) {
+            if(!closed.Add(at))continue;
+            if(at==end){var path=new List<FarmCell>{end};while(parent.TryGetValue(at,out var prev)){path.Add(prev);at=prev;}path.Reverse();return path;}
+            foreach(var next in new[]{new FarmCell(at.X+1,at.Y),new(at.X-1,at.Y),new(at.X,at.Y+1),new(at.X,at.Y-1)}) {
+                if(closed.Contains(next)||!passable(next))continue;int cost=costs[at]+1;
+                if(costs.TryGetValue(next,out int old)&&old<=cost)continue;costs[next]=cost;parent[next]=at;open.Enqueue(next,cost+FarmDistrict.Distance(next,end));
+            }
+        }
+        return null;
+    }
+    public static Dictionary<FarmCell,int> Distances(FarmCell start,Func<FarmCell,bool> passable,int limit=10000) {
+        var found=new Dictionary<FarmCell,int>{{start,0}};var seen=new HashSet<FarmCell>{start};var queue=new Queue<FarmCell>();queue.Enqueue(start);
+        while(queue.TryDequeue(out var at)&&found.Count<limit)foreach(var next in new[]{new FarmCell(at.X+1,at.Y),new(at.X-1,at.Y),new(at.X,at.Y+1),new(at.X,at.Y-1)})
+            if(seen.Add(next)&&passable(next)){found[next]=found[at]+1;queue.Enqueue(next);}
+        return found;
+    }
+    public static double ResourceCost(int walk,float energy,int hits,int yield,int needed)=>
+        (walk+Math.Max(0,energy)+Math.Max(0,hits)+2.0)/Math.Max(1,Math.Min(yield,needed));
 }

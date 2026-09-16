@@ -20,7 +20,7 @@ public sealed partial class ModEntry {
         pursuit.Tasks.Clear();
         if(tasks.Any(t=>t!.state!="succeeded")) {
             var failed=tasks.First(t=>t!.state!="succeeded")!;string error=failed.error??"progress_action_failed";
-            if(failed.state=="failed"&&RecoveryPolicy.CanWait(error)){pursuit.RecoveryCondition=PursuitRecoveryCondition();PursuitState(pursuit,"waiting",error);}else PursuitState(pursuit,"blocked",error);
+            if(failed.state=="partial"||failed.state=="failed"&&RecoveryPolicy.CanWait(error)){pursuit.RecoveryCondition=PursuitRecoveryCondition();PursuitState(pursuit,"waiting",error);}else PursuitState(pursuit,"blocked",error);
             return false;
         }
         return true;

@@ -31,28 +31,21 @@ public sealed partial class ModEntry {
         for(int y=tile.Y-1;y<=tile.Y+1;y++)for(int x=tile.X-1;x<=tile.X+1;x++)if(l.terrainFeatures.GetValueOrDefault(new(x,y)) is HoeDirt {crop:not null})return ("fields","crop",false);
         return ("general","general",false);
     }
-    private static bool CleanupScytheSafe(FarmCell tile) {
-        // Native scythes sweep an area and can remove young trees/nearby weeds.
-        // Use a single-target axe where collateral effects would leave the order
-        // or its quota ambiguous. Grass and planted/decorated tiles stay intact.
-        var farm=Game1.getFarm();
-        for(int x=tile.X-3;x<=tile.X+3;x++)for(int y=tile.Y-3;y<=tile.Y+3;y++) {
-            var at=new Vector2(x,y);if(x==tile.X&&y==tile.Y)continue;
-            if(farm.objects.ContainsKey(at)||farm.terrainFeatures.ContainsKey(at))return false;
-        }
-        return true;
-    }
     private List<CleanupTarget> CleanupTargets() {
         EnsureMaintenanceMask();var farm=Game1.getFarm();var result=new List<CleanupTarget>();
         foreach(var pair in farm.objects.Pairs) {
             var obj=pair.Value;string kind=obj.IsWeeds()?"weed":obj.IsTwig()?"twig":obj.BaseName=="Stone"?"stone":"";
             if(kind.Length==0||PlotClearCost(farm,pair.Key.ToPoint())<=0)continue;
             var tile=new FarmCell((int)pair.Key.X,(int)pair.Key.Y);var area=CleanupArea(tile);
-            result.Add(new(tile,kind,area.Scope,area.Zone,area.Trees,kind=="weed"&&CleanupScytheSafe(tile)?0:Math.Max(4,obj.MinutesUntilReady*2+2)));
+            result.Add(new(tile,kind,area.Scope,area.Zone,area.Trees,kind=="weed"?0:(int)Math.Ceiling(PlayerExecutor.ResourceEnergy(obj,kind=="stone"?Game1.player.Items.OfType<Pickaxe>().FirstOrDefault():Game1.player.Items.OfType<Axe>().FirstOrDefault()))));
+        }
+        foreach(var pair in farm.terrainFeatures.Pairs)if(pair.Value is Grass) {
+            var tile=new FarmCell((int)pair.Key.X,(int)pair.Key.Y);var area=CleanupArea(tile);
+            if(area.Scope is "roads" or "fields"||area.Zone is "crop" or "production")result.Add(new(tile,"grass",area.Scope,area.Zone,false,0));
         }
         foreach(var pair in farm.terrainFeatures.Pairs)if(pair.Value is Tree tree&&!tree.tapped.Value) {
             var tile=new FarmCell((int)pair.Key.X,(int)pair.Key.Y);var area=CleanupArea(tile);
-            result.Add(new(tile,tree.growthStage.Value>=5?"tree":"seedling",area.Scope,area.Zone,area.Trees,tree.growthStage.Value>=5?(int)Math.Ceiling(tree.health.Value*2+10):4));
+            result.Add(new(tile,tree.growthStage.Value>=5?"tree":"seedling",area.Scope,area.Zone,area.Trees,tree.growthStage.Value>=5?(int)Math.Ceiling(PlayerExecutor.TreeEnergy(tree,Game1.player.Items.OfType<Axe>().FirstOrDefault())):4));
         }
         return result;
     }
@@ -73,7 +66,7 @@ public sealed partial class ModEntry {
         var targets=CleanupTargets();string scope=AgentToolRegistry.Text(args,"scope");
         return new{summary=FarmMaintenanceSummary(targets),zones=Data.Maintenance.Zones,
             details=scope.Length==0?null:targets.Where(t=>t.Scope==scope).Take(32).Select(t=>new{t.Tile,t.Kind,t.Scope,estimated_energy=t.Energy}),
-            note="摘要不发送全图；剩余数是当前对象，不保证都可达。牧草/果树/设备始终保留；保留林区不视为垃圾。树木只能在明确允许的crop/production分区清理。"};
+            note="摘要不发送全图；剩余数是当前对象，不保证都可达。牧草区/果树/设备保留，明确田块和道路上的草可割；保留林区不视为垃圾。树木只能在明确允许的crop/production分区清理。"};
     }
     private object FarmMaintenanceSummary(List<CleanupTarget>? targets=null) {
         targets??=CleanupTargets();
@@ -118,10 +111,10 @@ public sealed partial class ModEntry {
         if(reserve is <0 or >270||until is <600 or >2200||until%100>59||limit is <0 or >120)throw new InvalidOperationException("invalid_cleanup_budget");
         if(old!=null) {
             if(!old.Scopes.OrderBy(x=>x).SequenceEqual(scopes.OrderBy(x=>x))||old.RemoveTrees!=remove||old.ReserveStamina!=reserve||old.Until!=until||old.DailyLimit!=limit)throw new InvalidOperationException("cleanup_request_id_reused_with_different_policy");
-            if(old.Status=="paused"){old.Status="active";old.RetryAt=0;maintenanceAt=DateTime.MinValue;}return new{order=old,idempotent=true};
+            if(old.Status=="paused"){FarmCleanupRules.NewDay(old,Game1.Date.TotalDays);old.Status="active";old.Reason="model_resumed";old.RetryAt=0;maintenanceAt=DateTime.MinValue;}return new{order=old,idempotent=true};
         }
         if(Data.Maintenance.Orders.Count(o=>o.Status!="complete")>=16)throw new InvalidOperationException("too_many_cleanup_orders");
-        var order=new FarmCleanupOrder{Id=id,Scopes=scopes,RemoveTrees=remove,ReserveStamina=reserve,Until=until,DailyLimit=limit};Data.Maintenance.Orders.Add(order);
+        var order=new FarmCleanupOrder{Id=id,Scopes=scopes,RemoveTrees=remove,ReserveStamina=reserve,Until=until,DailyLimit=limit,Day=Game1.Date.TotalDays};Data.Maintenance.Orders.Add(order);
         Data.Maintenance.Orders.RemoveAll(o=>o.Status=="complete"&&!o.Recurring&&Data.Maintenance.Orders.IndexOf(o)<Data.Maintenance.Orders.Count-32);
         Data.Autoplay.Record("cleanup_requested",AgentJson.Encode(order));return new{order,note="已保存目标；自主运行时在已有农务后分批领取。暂停AI时只保存，不偷偷移动。"};
     }
@@ -162,7 +155,7 @@ public sealed partial class ModEntry {
             if(order.TaskId.Length>0) {
                 var task=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==order.TaskId);
                 if(task!=null&&!task.Terminal&&task.state!="needs_review")continue;
-                if(order.Status!="complete")order.Reason=task?.error??(task?.state=="succeeded"?"batch_complete":"reconcile_current_map_after_interruption");order.TaskId="";order.RetryAt=BusinessMinute+(task==null||task.state is "succeeded" or "cancelled" or "needs_review"?0:30);
+                if(order.Status=="active")order.Reason=task?.error??(task?.state=="succeeded"?"batch_complete":"reconcile_current_map_after_interruption");order.TaskId="";order.RetryAt=BusinessMinute+(task==null||task.state is "succeeded" or "cancelled" or "needs_review"?0:30);
             }
         }
         if(playerExecutor.Busy||WorkActorBusy("player")||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||OperationActorOccupied("player"))return;
@@ -179,7 +172,7 @@ public sealed partial class ModEntry {
             if(order.PendingPickup.Count==0&&remaining.Length>0&&allowance.Available<remaining.Min(t=>t.Energy)){order.Reason=allowance.Reason=="available"?"cleanup_insufficient_remaining_allowance":allowance.Reason;continue;}
             string id="cleanup-"+Guid.NewGuid().ToString("N");
             if(Data.Autoplay.Schedule.Tasks.Count>180)Data.Autoplay.Schedule.Archive();
-            Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){new(){id=id,tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="cleanup",cleanup_id=order.Id,count=FarmCleanupRules.RemainingBudget(order),location="Farm",reserve_stamina=order.ReserveStamina,until=order.Until}),day=Game1.Date.TotalDays,deadline=order.Until,purpose="持续整理农场；保留林区、牧草、设备和作物"}},Game1.Date.TotalDays);
+            Data.Autoplay.Schedule.Submit(id,Data.Autoplay.Schedule.Revision,new(){new(){id=id,tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="cleanup",cleanup_id=order.Id,count=FarmCleanupRules.RemainingBudget(order),location="Farm",reserve_stamina=order.ReserveStamina,until=order.Until}),day=Game1.Date.TotalDays,deadline=order.Until,purpose="持续整理农场；保留林区、牧草区、设备和作物"}},Game1.Date.TotalDays);
             order.TaskId=id;order.Reason="queued_cleanup_batch";Data.Autoplay.Record("cleanup_dispatch",AgentJson.Encode(new{order,remaining=remaining.Length}));return;
         }
     }
@@ -207,7 +200,7 @@ public sealed partial class ModEntry {
         var candidates=new Dictionary<FarmCell,(CleanupTarget Target,int Slot)>();
         foreach(var target in targets) {
             if(job.Excluded.Contains($"{target.Tile.X},{target.Tile.Y}")||AgentTileBusy("Farm",target.Tile.X,target.Tile.Y))continue;
-            int slot=WorkSlot(i=>target.Kind=="weed"&&target.Energy==0?i is Tool t&&t.isScythe():target.Kind=="stone"?i is Pickaxe:i is Axe);
+            int slot=WorkSlot(i=>target.Kind is "weed" or "grass"?i is Tool t&&t.isScythe():target.Kind=="stone"?i is Pickaxe:i is Axe);
             if(slot<0){reason="cleanup_tool_missing";continue;}
             candidates[target.Tile]=(target,slot);
         }
@@ -237,7 +230,7 @@ public sealed partial class ModEntry {
             var batch=route.Select(s=>candidates[s.Site.Tile]).ToArray();
             Data.Autoplay.Record("cleanup_route",AgentJson.Encode(new{order.Id,start=new{x=Game1.player.TilePoint.X,y=Game1.player.TilePoint.Y},route,allowance,committed=Data.Maintenance.EnergyCommitted,ms=(System.Diagnostics.Stopwatch.GetTimestamp()-begin)*1000.0/System.Diagnostics.Stopwatch.Frequency}));
             WorkChild(job,"player.work",new{skill="clear",slot=batch[0].Slot,tiles=batch.Select(t=>new{x=t.Target.Tile.X,y=t.Target.Tile.Y}),
-                steps=batch.Select((t,i)=>new{skill=t.Target.Kind=="tree"?"chop":t.Target.Kind=="seedling"?"prune":"clear",slot=t.Slot,stand=new{x=route[i].Stand.X,y=route[i].Stand.Y}})},"cleanup_labor",$"{batch[0].Target.Tile.X},{batch[0].Target.Tile.Y}");return;
+                steps=batch.Select((t,i)=>new{skill=t.Target.Kind=="grass"?"grass":t.Target.Kind=="tree"?"chop":t.Target.Kind=="seedling"?"prune":"clear",slot=t.Slot,stand=new{x=route[i].Stand.X,y=route[i].Stand.Y}})},"cleanup_labor",$"{batch[0].Target.Tile.X},{batch[0].Target.Tile.Y}");return;
         }
         if(candidates.Count>0&&candidates.Values.All(c=>c.Target.Energy>allowance.Available)){order.Reason="cleanup_insufficient_remaining_allowance";StopSemanticWork(job,order.Reason);return;}
         if(candidates!=allCandidates){order.Patch=null;job.phase="replan_frontier";return;}

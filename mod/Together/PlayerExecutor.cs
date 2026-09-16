@@ -54,7 +54,7 @@ public sealed partial class PlayerExecutor {
     private List<(string Skill,int Slot)> workSteps=new();
     private List<Point?> workStands=new();
     private int workPickupDoneIndex;
-    private int workSlot,workIndex,workHits;
+    private int workSlot,workIndex,workHits,workReserve;
     private int eatingSlot,eatingBefore;
     private string eatingItem="";
     private object? workBefore,actionTargetBefore;
@@ -154,8 +154,8 @@ public sealed partial class PlayerExecutor {
                     if(!Game1.player.isEating)throw new InvalidOperationException("native_eating_rejected");
                     Current.phase="eating";break;
                 case "player.work":
-                    workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
-                    if(workSkill is not ("water" or "till" or "plant" or "fertilize" or "harvest" or "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
+                    workReserve=Math.Max(0,AgentToolRegistry.Number(args,"reserve_stamina",0));workSkill=AgentToolRegistry.Text(args,"skill");workSlot=AgentToolRegistry.Number(args,"slot",-1);
+                    if(workSkill is not ("water" or "till" or "plant" or "fertilize" or "harvest" or "clear" or "grass" or "prune" or "chop" or "break_clump" or "clear_dead" or "forage"))throw new InvalidOperationException("unsupported_work_skill");
                     if(!args.TryGetProperty("tiles",out var tiles)||tiles.ValueKind!=JsonValueKind.Array||tiles.GetArrayLength() is <1 or >36)throw new InvalidOperationException("work_requires_1_to_36_tiles");
                     workTiles=tiles.EnumerateArray().Select(t=>Tile(t)).Distinct().ToList();workIndex=0;workHits=0;
                     workSteps.Clear();workStands.Clear();workPickupDoneIndex=-1;
@@ -163,7 +163,7 @@ public sealed partial class PlayerExecutor {
                         if(steps.ValueKind!=JsonValueKind.Array||steps.GetArrayLength()!=workTiles.Count)throw new InvalidOperationException("work_steps_must_match_tiles");
                         foreach(var step in steps.EnumerateArray()) {
                             string action=AgentToolRegistry.Text(step,"skill");int slot=AgentToolRegistry.Number(step,"slot",-1);
-                            if(action is not("clear" or "chop" or "prune")||slot<0||slot>=Game1.player.Items.Count||Game1.player.Items[slot] is not Tool)throw new InvalidOperationException("invalid_mixed_clear_step");
+                            if(action is not("clear" or "grass" or "chop" or "prune")||slot<0||slot>=Game1.player.Items.Count||Game1.player.Items[slot] is not Tool)throw new InvalidOperationException("invalid_mixed_clear_step");
                             workSteps.Add((action,slot));
                             Point? stand=step.TryGetProperty("stand",out var plannedStand)?Tile(plannedStand):null;
                             var at=workTiles[workSteps.Count-1];
@@ -237,7 +237,7 @@ public sealed partial class PlayerExecutor {
     }
     public static bool Passable(GameLocation l,Point p) {
         if(p.X<0||p.Y<0||p.X>=l.Map.Layers[0].LayerWidth||p.Y>=l.Map.Layers[0].LayerHeight)return false;
-        var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+48-box.Center.Y);
+        var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+40-box.Center.Y);
         return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,true,false,false,true);
     }
     // The native controller constructor teleports non-NPCs in unoccupied maps.
@@ -248,7 +248,9 @@ public sealed partial class PlayerExecutor {
             var entry=location.warps.Select(w=>new Point(w.X,Math.Max(0,w.Y-1))).FirstOrDefault(p=>Passable(location,p));
             if(!Passable(location,entry))return null;start=entry;
         }
-        return PathFindController.findPath(start,end,PathFindController.isAtEndPoint,location,Game1.player,10000);
+        var cache=new Dictionary<FarmCell,bool>();
+        var path=AutonomyPolicy.Path(new(start.X,start.Y),new(end.X,end.Y),p=>cache.TryGetValue(p,out bool valid)?valid:cache[p]=Passable(location,new(p.X,p.Y)));
+        return path==null?null:new Stack<Point>(path.AsEnumerable().Reverse().Select(p=>new Point(p.X,p.Y)));
     }
     private void StopWalk(){
         // Halt resets the sprite animation. Only halt movement owned by this executor;
@@ -427,13 +429,13 @@ public sealed partial class PlayerExecutor {
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("work_interrupted_by_menu");
         if(workIndex>=workTiles.Count){
             if(!Game1.player.CanMove || Game1.player.UsingTool || Game1.player.freezePause>0)return;
-            if(workSkill is "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage")
+            if(workSkill is "clear" or "grass" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage")
                 if(TickNativePickup(workTiles))return;
             Finish("succeeded");return;
         }
         Point tile=workTiles[workIndex];
         if(workSteps.Count>0)(workSkill,workSlot)=workSteps[workIndex];
-        if(workSkill is "clear" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage"
+        if(workSkill is "clear" or "grass" or "prune" or "chop" or "break_clump" or "clear_dead" or "harvest" or "forage"
             &&workIndex>0&&workPickupDoneIndex!=workIndex&&(Current!.phase=="work_next"&&workHits==0||Current!.phase.StartsWith("pickup_"))
             &&(Current!.phase.StartsWith("pickup_")||Vector2.DistanceSquared(Game1.player.Tile,tile.ToVector2())>16)) {
             if(TickNativePickup(workTiles.Take(workIndex).ToArray()))return;
@@ -458,10 +460,17 @@ public sealed partial class PlayerExecutor {
             }
             if(workSkill=="water" && Game1.player.Items[workSlot] is StardewValley.Tools.WateringCan {WaterLeft:0})throw new InvalidOperationException("watering_can_empty_read_day_refill_options_or_delegate");
             if(workSkill=="clear") {
-                if(!Game1.currentLocation.objects.TryGetValue(v,out var resource))throw new InvalidOperationException("resource_no_longer_present");
+                if(!Game1.currentLocation.objects.TryGetValue(v,out var resource)){
+                    if(workIndex>0&&Game1.player.Items[workSlot] is Tool goneTool&&goneTool.isScythe()){Current.effects.Add(new{tile=workBefore,status="already_cleared_by_sweep"});workIndex++;return;}
+                    throw new InvalidOperationException("resource_no_longer_present");
+                }
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
                 if(!(resource.IsTwig() && Game1.player.CurrentTool is StardewValley.Tools.Axe || (resource.BaseName=="Stone"||ResourceRules.Nodes.ContainsKey(resource.ItemId)) && Game1.player.CurrentTool is StardewValley.Tools.Pickaxe || resource.IsWeeds() && (Game1.player.CurrentTool?.isScythe()==true||Game1.player.CurrentTool is StardewValley.Tools.Axe)))throw new InvalidOperationException("wrong_resource_or_tool");
-                if(Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
+                if(SwingEnergy(Game1.player.CurrentTool)>0&&Game1.player.Stamina<SwingEnergy(Game1.player.CurrentTool)+workReserve)throw new InvalidOperationException("energy_reserve_reached");
+            }
+            if(workSkill=="grass") {
+                if(f is not Grass){Current.effects.Add(new{tile=workBefore,status="grass_already_clear"});workIndex++;return;}
+                if(Game1.player.Items[workSlot] is not Tool grassTool||!grassTool.isScythe())throw new InvalidOperationException("grass_requires_scythe");
             }
             if(workSkill=="clear_dead") {
                 SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
@@ -482,15 +491,16 @@ public sealed partial class PlayerExecutor {
             if(workSkill=="water"&&dirt?.crop==null || workSkill=="plant"&&(dirt==null||dirt.crop!=null) || workSkill=="harvest"&&dirt?.readyForHarvest()!=true)
                 throw new InvalidOperationException("work_target_not_eligible");
             if(workStands.Count>workIndex&&workStands[workIndex] is {} planned&&!Passable(Game1.currentLocation,planned))throw new InvalidOperationException("planned_work_stand_changed");
-            Walk(workStands.Count>workIndex&&workStands[workIndex] is {} stand?stand:Approach(tile,true));Current.phase="work_walk";
+            Walk(SafeWorkStand(tile,workStands.Count>workIndex&&workStands[workIndex] is {} stand?stand:Approach(tile,true)));Current.phase="work_walk";
         }
         if(Current.phase=="work_walk") {
             if(!AtWalkTarget){MonitorWalk();return;}
             StopWalk();Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")PlayerSelection.Neutral(Game1.player);
-            if(workSkill is "water" or "till" or "clear" or "prune" or "chop" or "break_clump" or "clear_dead") {
-                if(workSkill!="clear_dead" && Game1.player.Stamina<17 && Game1.player.CurrentTool?.isScythe()!=true)throw new InvalidOperationException("energy_reserve_reached");
+            if(workSkill is "water" or "till" or "clear" or "grass" or "prune" or "chop" or "break_clump" or "clear_dead") {
+                if(SwingEnergy(Game1.player.CurrentTool)>0&&Game1.player.Stamina<SwingEnergy(Game1.player.CurrentTool)+workReserve)throw new InvalidOperationException("energy_reserve_reached");
+                if(!SafeSweep(Game1.currentLocation,tile,Game1.player.TilePoint,Game1.player.GetBoundingBox()))throw new InvalidOperationException("protected_scythe_sweep_changed");
                 Game1.player.lastClick=tile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();
                 if(!Game1.player.UsingTool)throw new InvalidOperationException("work_tool_not_started");
             } else if(workSkill is "plant" or "fertilize") {
@@ -506,7 +516,7 @@ public sealed partial class PlayerExecutor {
             var after=TileState(tile);
             if(JsonSerializer.Serialize(workBefore)==JsonSerializer.Serialize(after))throw new InvalidOperationException("work_effect_not_observed");
             Current.effects.Add(new{before=workBefore,after,work_skill=workSkill,work_slot=workSlot});
-            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill is "chop" or "prune"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2()) || workSkill=="break_clump"&&ClumpAt(tile)!=null) {
+            if(workSkill=="clear" && Game1.currentLocation.objects.ContainsKey(tile.ToVector2()) || workSkill is "chop" or "prune" or "grass"&&Game1.currentLocation.terrainFeatures.ContainsKey(tile.ToVector2()) || workSkill=="break_clump"&&ClumpAt(tile)!=null) {
                 if(++workHits>=64)throw new InvalidOperationException("resource_hit_limit_replan");
                 Current.phase="work_next";return;
             }
@@ -515,6 +525,10 @@ public sealed partial class PlayerExecutor {
     }
     private void MonitorWalk() {
         if(Game1.player.TilePoint!=lastTile){lastTile=Game1.player.TilePoint;lastProgress=DateTime.UtcNow;}
+        if(ownedController is PlayerRouteController {Blocked:true} blocked){
+            RouteObserved?.Invoke(new{kind="route_blocked_before_step",command_id=Current?.command_id,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{blocked.BlockedTile.X,blocked.BlockedTile.Y},bounds=Game1.player.GetBoundingBox().ToString()});
+            if(++retries>2)throw new InvalidOperationException("path_stalled");pathRetries++;Walk(target);return;
+        }
         if((DateTime.UtcNow-lastProgress).TotalSeconds<3)return;
         if(++retries>2)throw new InvalidOperationException("path_stalled");pathRetries++;Walk(target);
     }

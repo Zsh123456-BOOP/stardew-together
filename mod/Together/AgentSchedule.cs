@@ -27,7 +27,7 @@ public sealed class ScheduledAgentTask {
     public string? error {get;set;}
     public string? wait_reason {get;set;}
     public string? receipt {get;set;}
-    public bool Terminal=>state is "succeeded" or "failed" or "cancelled" or "blocked";
+    public bool Terminal=>state is "succeeded" or "failed" or "partial" or "cancelled" or "blocked";
 }
 public sealed class AgentSchedule {
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
@@ -95,7 +95,7 @@ public sealed class AgentSchedule {
     public List<ScheduledAgentTask> Ready(int day,int time,Func<IEnumerable<ScheduledAgentTask>,IEnumerable<ScheduledAgentTask>>? order=null) {
         foreach(var t in Tasks.Where(t=>t.state=="queued")) {
             if(t.spec.day<day || t.spec.day==day&&time>t.spec.deadline){t.state="blocked";t.error="task_window_expired_replan";EventVersion++;}
-            else if(t.spec.after.Any(id=>Tasks.FirstOrDefault(x=>x.spec.id==id) is not {} d || d.state is "failed" or "blocked" or "cancelled" or "needs_review")){t.state="blocked";t.error="dependency_not_completed_replan";EventVersion++;}
+            else if(t.spec.after.Any(id=>Tasks.FirstOrDefault(x=>x.spec.id==id) is not {} d || d.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review")){t.state="blocked";t.error="dependency_not_completed_replan";EventVersion++;}
         }
         var busy=Tasks.Where(t=>t.state is "running" or "needs_review").Select(t=>t.spec.actor).ToHashSet();
         IEnumerable<ScheduledAgentTask> eligible=Tasks.Where(t=>t.state=="queued"&&!busy.Contains(t.spec.actor)&&t.spec.day==day&&time>=t.spec.not_before&&t.spec.after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded")))

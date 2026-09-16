@@ -52,7 +52,7 @@ public sealed partial class ModEntry {
                     // already delivered, without re-buying the failed manifest.
                     Data.Autoplay.Record("farm_purchase_partial_recovery","现场采购部分失败；保留原预算预留，按真实已到货种子重新规划。");return;
                 }
-                if(tasks.Any(t=>t==null||t.state is "failed" or "blocked" or "cancelled" or "needs_review"))throw new InvalidOperationException("farm_investment_task_interrupted_read_plan_before_retry");
+                if(tasks.Any(t=>t==null||t.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review"))throw new InvalidOperationException("farm_investment_task_interrupted_read_plan_before_retry");
                 if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";p.Error="";Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
             }
             if(p.Phase=="observing_shop") {
@@ -60,7 +60,7 @@ public sealed partial class ModEntry {
                 if(task?.state=="failed"&&task.error is "native_service_did_not_open_or_wrong_shop" or "native_service_unavailable_check_hours_and_owner") {
                     p.Error="shop_unavailable_use_owned_seeds_only";p.Phase="start_planning";
                 }else {
-                    if(task==null||task.state is "failed" or "blocked" or "cancelled" or "needs_review")throw new InvalidOperationException("farm_shop_visit_failed_or_interrupted:"+task?.error);
+                    if(task==null||task.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review")throw new InvalidOperationException("farm_shop_visit_failed_or_interrupted:"+task?.error);
                     if(task.state!="succeeded")return;
                     if(Game1.activeClickableMenu is not ShopMenu menu||menu.ShopId!=p.Shop||menu.heldItem!=null)throw new InvalidOperationException("farm_observed_shop_changed");
                     ObserveShop(JsonSerializer.SerializeToElement(new{}));p.Phase="awaiting_selection";WakeAgent("seed_selection_required");return;

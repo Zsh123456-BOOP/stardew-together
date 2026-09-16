@@ -27,7 +27,7 @@ public sealed partial class ModEntry {
     }));
     private void TickGoalAutomation() {
         if(!AutoplayRunning||DateTime.UtcNow<goalAutomationAt)return;goalAutomationAt=DateTime.UtcNow.AddSeconds(2);
-        if(!agentLabProbe||labEarlyStorage)EnsureStorageGoal();
+        if(agentLabProbe&&labEarlyStorage)EnsureStorageGoal();
         if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Game1.player.UsingTool||Game1.timeOfDay>=2200||Game1.player.health<35)return;
         if(AgentActorHasWork("player"))return;
         foreach(var goal in Data.SharedGoals.Where(g=>g.AutoExecute&&g.Status=="active").OrderBy(g=>g.AutoReviewDay).ThenBy(g=>g.AutoReviewMinute).ToArray()) {

@@ -11,10 +11,12 @@ public sealed partial class ModEntry {
     private IReadOnlyDictionary<FarmCell,int> GoalFacilityCosts(GameLocation location,Item item,IReadOnlyList<LayoutCell> grid) {
         if(location!=Game1.getFarm()||!NativeStorageItem(item))return new Dictionary<FarmCell,int>();
         var home=FarmHome(Game1.getFarm());var district=District(Game1.getFarm());
+        // Use a feasible connected field preview before the first planting commitment.
+        var preview=district.Field.Count>0?district.Field:FarmDistrict.LargestCluster(grid.Where(c=>FarmDistrict.Distance(c.Tile,home)>3&&location.doesTileHaveProperty(c.Tile.X,c.Tile.Y,"Diggable","Back")!=null&&(c.Passable||PlotClearCost(location,new(c.Tile.X,c.Tile.Y))>0)&&!MaintenanceProtects(location,new(c.Tile.X,c.Tile.Y))).Select(c=>c.Tile),home).OrderBy(t=>FarmDistrict.Distance(t,home)).Take(25).ToList();
         var homeRoutes=FarmLayout.WalkDistances(grid,home);
-        var fieldRoutes=FarmLayout.WalkDistances(grid,district.Field.OrderBy(t=>FarmDistrict.Distance(t,home)).FirstOrDefault(home));
+        var fieldRoutes=FarmLayout.WalkDistances(grid,preview.OrderBy(t=>FarmDistrict.Distance(t,home)).FirstOrDefault(home));
         int Route(Dictionary<FarmCell,int> map,FarmCell p)=>new[]{new FarmCell(p.X+1,p.Y),new(p.X-1,p.Y),new(p.X,p.Y+1),new(p.X,p.Y-1)}.Select(t=>map.GetValueOrDefault(t,10000)).Min();
-        return grid.ToDictionary(c=>c.Tile,c=>FarmDistrict.Distance(c.Tile,home)<=2||district.Field.Contains(c.Tile)||Route(homeRoutes,c.Tile)>24?100000:Route(homeRoutes,c.Tile)*3+Route(fieldRoutes,c.Tile)*2);
+        return grid.ToDictionary(c=>c.Tile,c=>FarmDistrict.Distance(c.Tile,home)<=2||preview.Contains(c.Tile)||Route(homeRoutes,c.Tile)>24?100000:Route(homeRoutes,c.Tile)*3+Route(fieldRoutes,c.Tile)*2);
     }
     // The storage policy authorizes a capability, not a second wood/craft loop.
     // Its existing budget is wood-only; recipes requiring other investment are
@@ -39,9 +41,9 @@ public sealed partial class ModEntry {
         return goal;
     }
     private void GoalFacilityPlaced(string goalId,GameLocation location,Point tile) {
-        if(Data.SharedGoals.FirstOrDefault(g=>g.Id==goalId) is not {Purpose:"policy:shared_storage"} goal)return;
+        if(Data.SharedGoals.FirstOrDefault(g=>g.Id==goalId) is not {} goal||!location.objects.TryGetValue(tile.ToVector2(),out var placed)||!NativeStorageItem(placed))return;
         if(!location.objects.TryGetValue(tile.ToVector2(),out var item)||item is not Chest {playerChest.Value:true} chest)throw new InvalidOperationException("native_storage_placement_not_verified");
-        chest.modData[WorkChestRole]="output";
+        chest.modData[WorkChestRole]="output";if(location==Game1.getFarm())District(location).Warehouse=new(tile.X,tile.Y);
         Data.Autoplay.Record("goal_facility_verified",AgentJson.Encode(new{goal.Id,item=item.QualifiedItemId,location=location.NameOrUniqueName,tile,capability="shared_storage",free_slots=CapacityAdapter.Of(Game1.player).FreeSlots}));
     }
 }

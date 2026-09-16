@@ -63,7 +63,7 @@ public static class ContextCompression {
                 }
                 root["earlier_observation_summaries"]=earlier;cachedSize=-1;reductions.Add("older_events_retrievable_from_memory");
             }
-            foreach(string key in new[]{"farm_cleanup","inventory_plan","progression"}) {
+            foreach(string key in new[]{"farm_cleanup","inventory_plan"}) {
                 if(Size()<=maxCharacters)break;
                 if(root[key] is JsonObject original){
                     var summary=new JsonObject{["details_available_via"]=key=="farm_cleanup"?"farm.cleanup":key=="inventory_plan"?"world.read":"progress.read"};

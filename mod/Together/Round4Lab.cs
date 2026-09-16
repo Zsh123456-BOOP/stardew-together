@@ -5,6 +5,14 @@ namespace Together;
 public sealed partial class ModEntry {
     private object Round4NativeFixture(string mode) {
         if(!Settings.EnableLab||!Context.IsWorldReady||Game1.player.Name!="AgentLab")throw new InvalidOperationException("isolated_lab_required");
+        if(mode=="autonomy7") {
+            RefreshFacts(true);var at=Game1.player.TilePoint;var l=Game1.currentLocation;var paths=new System.Collections.Generic.List<object>();
+            foreach(var end in new[]{new Microsoft.Xna.Framework.Point(at.X+6,at.Y),new(at.X-6,at.Y),new(at.X,at.Y+6),new(at.X,at.Y-6)}) {
+                var path=PlayerExecutor.PreviewPath(l,end);if(path!=null)paths.Add(new{end=new[]{end.X,end.Y},tiles=path.Select(p=>new[]{p.X,p.Y}),blocked=path.Where(p=>p!=at&&!PlayerExecutor.Passable(l,p)).Select(p=>new[]{p.X,p.Y})});
+            }
+            return new{progress=DailyProgressDigest(),opportunities=OperatingOpportunities(),orders=Data.Maintenance.Orders,paths,
+                tools=Game1.player.Items.OfType<Tool>().Select(t=>new{t.QualifiedItemId,energy=PlayerExecutor.SwingEnergy(t)}),snapshot=AgentSnapshot()};
+        }
         if(mode=="diary")return new{diary=Data.Autoplay.Memory.Diary,context=AgentMemoryContext()};
         if(mode=="material_autonomy") {Data.Business.Enabled=true;businessAt=DateTime.UtcNow.AddHours(1);return new{enabled=true,material_targets=Data.Operating.MaterialTargets,note="policy-only fixture; native inventory unchanged"};}
         if(mode=="diary_replay") {

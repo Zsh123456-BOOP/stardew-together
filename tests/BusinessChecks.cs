@@ -10,13 +10,13 @@ internal static class BusinessChecks {
         check(!FarmCleanupRules.Allowed("weed","pasture",false,false)&&!FarmCleanupRules.Allowed("twig","reserve",false,false)&&!FarmCleanupRules.Allowed("stone","woodland",false,false),"pasture woodland and reserves exclude all routine clearing");
         check(!FarmCleanupRules.Allowed("tree","general",true,true)&&!FarmCleanupRules.Allowed("seedling","crop",false,true),"tree clearing needs both land-use permission and explicit task authorization");
         check(FarmCleanupRules.Allowed("seedling","crop",true,true)&&FarmCleanupRules.Allowed("tree","production",true,true),"explicitly approved redevelopment permits young and mature ordinary trees");
-        check(!FarmCleanupRules.Allowed("fruit_tree","crop",true,true)&&!FarmCleanupRules.Allowed("grass","production",true,true),"grass and fruit trees never become cleanup debris");
+        check(!FarmCleanupRules.Allowed("fruit_tree","crop",true,true)&&FarmCleanupRules.Allowed("grass","production",true,true)&&!FarmCleanupRules.Allowed("grass","pasture",true,true),"production grass may clear while pasture and fruit trees remain protected");
         var cleanup=new FarmCleanupOrder{Id="field",Day=3,Completed=8,CompletedToday=3,DailyLimit=3,Scopes=new(){"zone:field"},PendingPickup=new(){new(3,4)}};
         var persisted=JsonSerializer.Deserialize<FarmCleanupOrder>(JsonSerializer.Serialize(cleanup))!;
         check(FarmCleanupRules.RemainingBudget(persisted)==0&&persisted.Completed==8,"reload preserves cleanup progress and spent daily quota");
         check(persisted.PendingPickup.Single()==new FarmCell(3,4),"reload preserves unfinished loot pickup even when the tree is already gone");
         FarmCleanupRules.NewDay(persisted,3);check(persisted.CompletedToday==3,"same-day retries cannot replenish cleaning quota");
-        FarmCleanupRules.NewDay(persisted,4);check(persisted.CompletedToday==0&&persisted.Completed==8&&persisted.Status=="active","next day resumes remaining work without erasing cumulative progress");
+        FarmCleanupRules.NewDay(persisted,4);check(persisted.CompletedToday==0&&persisted.Completed==8&&persisted.Status=="paused","next day preserves remaining work for model review without erasing cumulative progress");
         var recurring=new FarmCleanupOrder{Day=1,Recurring=true,Status="complete"};FarmCleanupRules.NewDay(recurring,2);
         check(recurring.Status=="active","daily maintenance rechecks new debris after a clean day");
         var zoneA=new FarmZone{X=2,Y=2,Width=4,Height=4};

@@ -41,12 +41,14 @@ public sealed class FarmMaintenance {
 public static class FarmCleanupRules {
     public static bool ZoneKind(string kind)=>kind is "crop" or "production" or "woodland" or "pasture" or "reserve";
     public static bool Overlap(FarmZone a,FarmZone b)=>a.X<b.X+b.Width&&b.X<a.X+a.Width&&a.Y<b.Y+b.Height&&b.Y<a.Y+a.Height;
-    public static bool Allowed(string kind,string zone,bool removeTrees,bool zoneAllowsTrees)=>kind is "weed" or "twig" or "stone"
+    public static bool Allowed(string kind,string zone,bool removeTrees,bool zoneAllowsTrees)=>kind=="grass"?zone is "crop" or "production" or "roads":kind is "weed" or "twig" or "stone"
         ?zone is not ("woodland" or "pasture" or "reserve")
         :kind is "tree" or "seedling"&&removeTrees&&zoneAllowsTrees&&zone is "crop" or "production";
     public static int Priority(string scope)=>scope switch{"roads"=>0,"courtyard"=>1,"fields"=>2,_=>3};
     public static void NewDay(FarmCleanupOrder order,int day) {
-        if(order.Day==day)return;order.Day=day;order.CompletedToday=0;order.RetryAt=0;order.Patch=null;
+        if(order.Day==day)return;
+        if(order.Day>=0&&order.Status=="active"&&!order.Recurring){order.Status="paused";order.Reason="new_day_replan_remaining_cleanup";}
+        order.Day=day;order.CompletedToday=0;order.RetryAt=0;order.Patch=null;
         if(order.Recurring&&order.Status=="complete")order.Status="active";
     }
     public static int RemainingBudget(FarmCleanupOrder order)=>order.DailyLimit<=0?999:Math.Max(0,order.DailyLimit-order.CompletedToday);

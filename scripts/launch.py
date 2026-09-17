@@ -6,9 +6,12 @@ import json
 import os
 import secrets
 import subprocess
+import sys
+import threading
 from build import GAME, ROOT
 
 p = argparse.ArgumentParser()
+p.add_argument('--keep-window', action='store_true', help='Keep native stdin open after supervisor exits')
 p.add_argument('--lab', action='store_true', help='Enable fixture commands restricted to AgentLab save')
 p.add_argument('--companion', action='store_true', help='Use the isolated Squad companion build')
 p.add_argument('--mods-dir', help='Independent runtime directory for this project')
@@ -37,4 +40,16 @@ if args.companion and (mods / 'Together').exists():
     settings.update(ApiKeyFile=str(ROOT/'.env'),EnableLab=args.lab)
     path.write_text(json.dumps(settings,ensure_ascii=False,indent=2))
 print('Launching isolated ' + config['Backend'] + ' + AgentBridge. Use AgentLab for tests.', flush=True)
-subprocess.run([str(GAME / 'StardewModdingAPI'), '--mods-path', str(mods)], cwd=GAME, check=True)
+command=[str(GAME / 'StardewModdingAPI'), '--mods-path', str(mods)]
+if args.keep_window:
+    game=subprocess.Popen(command,cwd=GAME,stdin=subprocess.PIPE,text=True)
+    def forward_console():
+        try:
+            for line in sys.stdin:
+                if game.poll() is not None:return
+                game.stdin.write(line);game.stdin.flush()
+        except (BrokenPipeError,OSError):pass
+        # Keep the owned pipe alive: upstream EOF must not terminate the game console.
+    threading.Thread(target=forward_console,daemon=True).start()
+    raise SystemExit(game.wait())
+subprocess.run(command,cwd=GAME,check=True)

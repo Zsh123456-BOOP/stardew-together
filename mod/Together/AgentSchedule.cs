@@ -29,6 +29,10 @@ public sealed class ScheduledAgentTask {
     public string? receipt {get;set;}
     public bool Terminal=>state is "succeeded" or "failed" or "partial" or "cancelled" or "blocked";
 }
+public sealed class PlanStepRejected : InvalidOperationException {
+    public string TaskId {get;}
+    public PlanStepRejected(string taskId,string reason):base(reason){TaskId=taskId;}
+}
 public sealed class AgentSchedule {
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
     public Action<AgentTaskSpec>? Prepare {get;set;}
@@ -70,7 +74,7 @@ public sealed class AgentSchedule {
             if(clone.intent_id.Length==0)clone.intent_id=submission;
             var predecessor=ordered?staged.LastOrDefault(t=>t.spec.actor==clone.actor):null;
             if(predecessor!=null&&!clone.after.Contains(predecessor.spec.id))clone.after.Add(predecessor.spec.id);
-            Prepare?.Invoke(clone);
+            try{Prepare?.Invoke(clone);}catch(InvalidOperationException e){throw new PlanStepRejected(clone.id,e.Message);}
             var task=new ScheduledAgentTask{spec=clone};staged.Add(task);known.Add(clone.id,task);
         }
         foreach(var t in staged)if(t.spec.after.Any(id=>!known.ContainsKey(id)))throw new InvalidOperationException("unknown_task_dependency");

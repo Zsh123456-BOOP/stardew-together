@@ -187,19 +187,8 @@ public sealed partial class ModEntry {
         if(Data.Calls>=Math.Clamp(Settings.AutoplayMaxCallsPerDay,1,2000)){EnterSurvival("routine","daily_model_call_budget_reached");return;}
         if(agentStarting){Data.Autoplay.Record("resume_observation",AgentJson.Encode(AgentSnapshot()));agentStarting=false;}
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
-        object ui=playerExecutor.OwnsFishing?new{type="executor_owned_fishing",note="玩家钓鱼由底层控杆，无需menu工具；可以安排空闲伙伴，等待真实回执。"}:agentTools.Execute("menu.read",JsonSerializer.SerializeToElement(new{}));
-        FrameStage("decision_ui",ref stage);
-        var inventoryPlan=InventoryPlanning();FrameStage("decision_inventory",ref stage);
-        var cleanup=FarmMaintenanceSummary();FrameStage("decision_cleanup",ref stage);
-        var day=AgentDay(true);FrameStage("decision_day",ref stage);
-        var production=ProductionSummary();FrameStage("decision_production",ref stage);
-        var opportunities=OperatingOpportunities();
-        WriteBusinessLog("operating_candidates",AgentJson.Encode(opportunities));
-        var context=new{planting_execution=PlantingExecutionFacts(),operating_candidates=opportunities,commitments=OperationCommitments(),run_id=Data.Autoplay.RunId,start_day=Data.Autoplay.StartDay,verified_actions=Data.Autoplay.VerifiedActions,verified_normal_sleeps=Data.Autoplay.SleepDays,goal=Data.Autoplay.Goal,plan=Data.Autoplay.Plan,now=AgentSnapshot(),inventory_plan=inventoryPlan,farm_cleanup=cleanup,inventory=AgentToolRegistry.Inventory(),day,progression=DailyProgressDigest(),business=new{production,policy=Data.Business,routine=Data.Autoplay.Routine,investment=InvestmentObservation(),planting_commitment=new{energy=PendingFarmEnergy(),recovery_nodes=Data.Autoplay.Schedule.Tasks.Where(t=>Data.FarmInvestment.Tasks.Contains(t.spec.id)&&t.state is "failed" or "blocked").Select(t=>new{t.spec.id,t.spec.tool,t.spec.args,t.error,t.spec.after})},pending_shipping_count=Game1.getFarm().getShippingBin(Game1.player).Count,note="farm.business_status查看产能与投资依据，算法已排任务不要重复提交"},schedule=AgentPlanRead(true),companions=AgentCompanions(true),ui,deliberation=new{queries_without_progress=decisionPacing.QueriesWithoutProgress,note="优先使用本轮事实安排高层工作，不重复轮询"},decision_reasons=agentWakeReasons.ToArray(),
-            recent=RecentAgentContext(),active_actors=ActiveActors.ToArray(),goals=GoalContext(),memory=AgentMemoryContext(),stamp=SnapshotStamp()};
-        FrameStage("decision_context",ref stage);
-        // Freeze on the game thread; no game objects or deferred enumeration cross the boundary.
-        var frozen=JsonSerializer.SerializeToElement(context,AgentJson.Options);FrameStage("decision_snapshot",ref stage);
+        if(!TryDecisionSnapshot(out var frozen))return;
+        FrameStage("decision_snapshot",ref stage);
         WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();

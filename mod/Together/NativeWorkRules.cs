@@ -29,7 +29,13 @@ public sealed partial class PlayerExecutor {
             foreach(var tile in Utility.getListOfTileLocationsForBordersOfNonTileRectangle(area)) {
                 if(WorkProtected?.Invoke(location,tile.ToPoint())==true)return false;
                 if(location.objects.TryGetValue(tile,out var item)&&!item.IsWeeds()&&!item.IsTwig()&&item.BaseName!="Stone")return false;
-                if(location.terrainFeatures.TryGetValue(tile,out var f)&&f is not Grass&&f is not HoeDirt {crop:null}&&f is not HoeDirt {crop.dead.Value:true})return false;
+                if(location.terrainFeatures.TryGetValue(tile,out var f)) {
+                    // Native Tree rejects melee damage from stage 3; fruit trees reject melee entirely.
+                    // Ordinary scythes do not destroy live hand-harvest crops (HoeDirt.performToolAction).
+                    bool harmless=f is Grass or FruitTree || f is Tree tree&&tree.growthStage.Value>=3&&!tree.hasMoss.Value
+                        || f is HoeDirt soil&&(soil.crop==null||soil.crop.dead.Value||scythe.ItemId!="66"&&soil.crop.GetHarvestMethod()!=StardewValley.GameData.Crops.HarvestMethod.Scythe);
+                    if(!harmless)return false;
+                }
             }
         }
         return true;
@@ -44,6 +50,7 @@ public sealed partial class PlayerExecutor {
         // Single-target axe is only a last resort for weeds with protected collateral.
         int axe=Enumerable.Range(0,Game1.player.Items.Count).FirstOrDefault(i=>Game1.player.Items[i] is Axe,-1);
         if(workSkill=="clear"&&axe>=0){workSlot=axe;if(workSteps.Count>workIndex)workSteps[workIndex]=(workSkill,axe);return preferred;}
+        Current!.effects.Add(new{kind="work_target_blocked",x=target.X,y=target.Y,reason="protected_scythe_sweep_no_safe_stand"});
         throw new InvalidOperationException("protected_scythe_sweep_no_safe_stand");
     }
 }

@@ -59,9 +59,9 @@ def main():
         nonlocal proc, stream, bridge
         stream = (out/f'game-{restarts}.log').open('w')
         proc = subprocess.Popen([sys.executable, 'scripts/launch.py', '--companion', '--lab',
-                                 '--mods-dir', str(mods), '--port', str(args.port)],
+                                 '--mods-dir', str(mods), '--port', str(args.port), *([] if args.exit_on_stop else ['--keep-window'])],
                                 cwd=ROOT, stdin=subprocess.PIPE, stdout=stream,
-                                stderr=subprocess.STDOUT, text=True)
+                                stderr=subprocess.STDOUT, text=True, start_new_session=True)
         event('process_started', pid=proc.pid, restart=restarts, save=name)
         until = time.monotonic()+120; commanded = False
         while time.monotonic()<until:

@@ -11,6 +11,7 @@ public sealed partial class PlayerExecutor {
     private int socialSlot,socialStack,socialPoints,socialGifts,socialPages;
     private bool socialTalked;
     private NPC? socialNpc;
+    private Microsoft.Xna.Framework.Point? socialApproachTile;
     private Quest? socialQuestObject;
     private object SocialEvidence()=>new {
         npc=socialName,mode=socialMode,
@@ -22,7 +23,7 @@ public sealed partial class PlayerExecutor {
         ,relationship_status=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Status.ToString(),spouse=Game1.player.spouse
     };
     private void StartSocial(JsonElement args) {
-        socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
+        socialApproachTile=null;socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
         if(socialMode is not ("recruit" or "talk" or "greet" or "gift" or "deliver" or "order_deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
         BindSocialOrder(args);
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
@@ -75,8 +76,15 @@ public sealed partial class PlayerExecutor {
         if(destination!=next){destination=next;edge=null;StopWalk();}
         if(Game1.currentLocation.NameOrUniqueName!=destination){Current.phase="social_travel";Travel();return;}
         if(Math.Abs(p.TilePoint.X-npc.TilePoint.X)+Math.Abs(p.TilePoint.Y-npc.TilePoint.Y)>1) {
-            if(DateTime.UtcNow>=nextInteraction){nextInteraction=DateTime.UtcNow.AddMilliseconds(500);Walk(Approach(npc.TilePoint,true));}
-            else if(ownedController!=null)MonitorWalk();Current.phase="social_approach";return;
+            if((ownedController==null||socialApproachTile!=npc.TilePoint)&&DateTime.UtcNow>=nextInteraction) {
+                nextInteraction=DateTime.UtcNow.AddMilliseconds(500);
+                try{Walk(Approach(npc.TilePoint,true));socialApproachTile=npc.TilePoint;}
+                catch(InvalidOperationException e)when(e.Message=="exit_unreachable") {
+                    Current.effects.Add(new{kind="npc_stand_blocked",npc=npc.Name,location=Game1.currentLocation.NameOrUniqueName,npc.TilePoint,player=Game1.player.TilePoint});
+                    throw new InvalidOperationException("npc_stand_unreachable");
+                }
+            }
+            if(ownedController!=null)MonitorWalk();Current.phase="social_approach";return;
         }
         StopWalk();
         if(socialMode=="recruit") {

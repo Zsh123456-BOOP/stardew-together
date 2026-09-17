@@ -7,6 +7,10 @@ public static class AgentScheduleChecks {
     public static void Run(Action<bool,string> check) {
         check(AgentPollingPolicy.Defer(true,false,new[]{"plan.submit","world.read","action.status"}),"busy actors do not trigger paid polling loops for redundant state reads");
         check(!AgentPollingPolicy.Defer(false,false,new[]{"world.read"})&&!AgentPollingPolicy.Defer(true,true,new[]{"action.status"})&&!AgentPollingPolicy.Defer(true,false,new[]{"knowledge.get"}),"idle actors, tool errors and new knowledge still wake model planning");
+        var guarded=new AgentSchedule{Prepare=t=>{if(t.id=="denied")throw new InvalidOperationException("known_failure_conditions_unchanged:door_closed");}};
+        PlanStepRejected? rejection=null;try{guarded.Submit("blocked",0,new(){Player("independent"),Player("denied")},0);}catch(PlanStepRejected e){rejection=e;}
+        check(rejection?.TaskId=="denied"&&rejection.Message.Contains("door_closed")&&guarded.Tasks.Count==0&&guarded.Revision==0,"rejected step preserves original cause and atomic submission, no unexecuted task claimed queued");
+        check(guarded.Submit("independent",0,new(){Player("independent")},0)&&guarded.Ready(0,600).Count==1,"independent work can be resubmitted without deleting real prerequisite dependencies");
         var spatial=new AgentSchedule();spatial.Submit("spatial",0,new(){Player("far"),Player("near"),Player("dependent","far")},0);
         var selection=spatial.Ready(0,600,ready=>ready.OrderBy(t=>t.spec.id=="near"?0:1));
         check(selection.Count==1&&selection[0].spec.id=="near","spatial policy sees all dependency-ready candidates before one-per-actor selection");

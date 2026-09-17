@@ -20,7 +20,8 @@ public sealed partial class ModEntry {
     private bool OperationActorOccupied(string actor)=>WorkActorBusy(actor)||(actor=="player"&&playerExecutor.Busy)||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&(t.state is "running" or "needs_review"||t.state=="queued"&&t.spec.day==Game1.Date.TotalDays&&t.spec.not_before<=Game1.timeOfDay&&t.wait_reason==null&&t.spec.after.All(id=>Data.Autoplay.Schedule.Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded"))));
     private bool FarmerHarvestCreditNeeded()=>Game1.player.questLog.OfType<StardewValley.Quests.ItemHarvestQuest>().Any(q=>!q.completed.Value);
 
-    private static string ServiceSubject(string tool,JsonElement args) {
+    private string ServiceSubject(string tool,JsonElement args) {
+        if(tool=="player.social")return Game1.getCharacterFromName(AgentToolRegistry.Text(args,"npc"))?.currentLocation?.NameOrUniqueName??"";
         if(tool is not ("player.service" or "player.procure" or "player.travel" or "player.acquire_animal" or "player.upgrade_house"))return "";
         return AgentToolRegistry.Text(args,"location",tool=="player.acquire_animal"?"AnimalShop":"");
     }
@@ -45,7 +46,6 @@ public sealed partial class ModEntry {
     }
     private void PrepareOperation(AgentTaskSpec spec) {
         CheckKnownFailure(new ScheduledAgentTask{spec=spec});
-        if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(spec.actor,spec.tool,spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
         if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);
         if(spec.id.StartsWith("routine-")){spec.source="daily_care";spec.priority=80;}

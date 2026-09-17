@@ -267,6 +267,11 @@ public sealed partial class ModEntry {
                 else if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
                 else if(error.StartsWith("capacity_")&&j.ReliefDepth>0){StopSemanticWork(j,"relief_prerequisite_failed:"+error);return;}
                 else if(error.StartsWith("capacity_")&&j.actor=="player"&&j.PickupTiles.Count>0) {j.PickupPending=true;j.Storing=true;j.phase="storage_for_pickup";}
+                else if(j.ChildKind is "labor" or "cleanup_labor"&&error=="protected_scythe_sweep_no_safe_stand") {
+                    if(r.TryGetProperty("effects",out var effects))foreach(var effect in effects.EnumerateArray())
+                        if(effect.TryGetProperty("kind",out var kind)&&kind.GetString()=="work_target_blocked")j.Excluded.Add($"{effect.GetProperty("x").GetInt32()},{effect.GetProperty("y").GetInt32()}");
+                    j.skipped++;j.phase="selecting";
+                }
                 else if(j.ChildKind is "labor" or "cleanup_labor" && error is "no_path" or "exit_unreachable" or "path_stalled" or "work_effect_not_observed" or "resource_no_longer_present" or "target_not_available") {j.Excluded.Add(j.Target);j.skipped++;j.phase="selecting";}
                 else {StopSemanticWork(j,error);return;}
             } else if(j.ChildKind is "labor" or "cleanup_labor") {j.phase="selecting";}

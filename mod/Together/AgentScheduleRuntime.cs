@@ -34,13 +34,19 @@ public sealed partial class ModEntry {
         if(list==null)throw new InvalidOperationException("tasks_required");
         if(list.Any(s=>s?.tool=="plan.submit"))return new{status="failed",error="invalid_plan_task_nested_submit",template=new{tool="player.procure",args=new{location="observed location",shop="observed shop id",item="quoted QID",count=1,max_unit_price="observed price",budget="explicit allowance",keep_gold="explicit reserve"}},note="tasks 中放实际执行工具，不能把 plan.submit 再嵌套为动作；先 player.service→shop.read 取得真实报价"};
         foreach(var spec in list.Where(s=>s!=null)) {
+            if(!AgentSchedule.Queueable(spec.tool))return new{status="failed",error="plan_query_requires_observation",rejected_task=new{spec.id,spec.tool},submitted_count=0,revision=Data.Autoplay.Schedule.Revision,note="该工具返回需要读取的观察结果，不能放入动作队列。先直接调用查询，按真实结果提交执行工具；本次没有提交任何步骤。"};
             if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("single_player_actor_required");
             if(spec.tool=="companion.assign" || spec.tool=="work.run"&&spec.actor!="player") {
                 // All NPC task lanes must name an actor actually observed in this save.
                 if(!World().GetProperty("actors").EnumerateArray().Any(a=>a.GetProperty("id").GetString()==spec.actor))throw new InvalidOperationException("actor_not_recruited");
             }
         }
-        bool added=Data.Autoplay.Schedule.Submit(AgentToolRegistry.Text(args,"submission_id"),AgentToolRegistry.Number(args,"expected_revision",-1),list,Game1.Date.TotalDays);
+        bool added;try{added=Data.Autoplay.Schedule.Submit(AgentToolRegistry.Text(args,"submission_id"),AgentToolRegistry.Number(args,"expected_revision",-1),list,Game1.Date.TotalDays);}
+        catch(PlanStepRejected e) {
+            var rejected=list.First(t=>t.id==e.TaskId);
+            return new{status="failed",error=e.Message,rejected_task=new{rejected.id,rejected.tool,rejected.args,rejected.after,rejected.purpose},unsubmitted=list.Select(t=>new{t.id,t.tool,t.after}),revision=Data.Autoplay.Schedule.Revision,submitted_count=0,
+                note="整份提交未执行、未占用物资。仅该步骤的前置检查失败；保留独立步骤重新提交，真实after依赖不能删除冒充满足。按原始阻碍条件变化后重查。"};
+        }
         return new{status=added?"queued":"already_submitted",revision=Data.Autoplay.Schedule.Revision,ids=list.Select(t=>t.id),note="任务尚未执行；只以任务回执作为完成证据"};
     }
     internal object AgentPlanCancel(JsonElement args) {
@@ -98,7 +104,7 @@ public sealed partial class ModEntry {
             }
         }
         Data.Autoplay.Schedule.Finish(task,state,error,AgentJson.Encode(result));
-        if(state=="failed"&&!RecoveryPolicy.CanWait(error))Data.Autoplay.Survival.Abandoned.Add(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText()));
+        // FailureKnowledge is the sole retry authority; a day-long hash blacklist cannot observe release conditions.
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
         Data.Autoplay.Record("task_finished",AgentJson.Encode(new{attempt_id=task.spec.id,id=task.spec.id,actor=task.spec.actor,state,error,command_id=task.command_id,capacity_version=Data.Autoplay.Capacity.Version}));
@@ -140,7 +146,6 @@ public sealed partial class ModEntry {
             bool purchasing=PlayerExecutor.AcceptsNativeMenu(task.spec.tool);
             if(task.spec.actor=="player" && (playerExecutor.Busy || Game1.activeClickableMenu!=null&&!purchasing || !Game1.player.CanMove&&!purchasing || Game1.player.UsingTool))continue;
             try {
-                if(Data.Autoplay.Survival.Abandoned.Contains(FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText())))throw new InvalidOperationException("known_failure_conditions_unchanged:target_abandoned_today");
                 if(task.spec.actor=="player"&&ToolLocationContract.RequiresObservedLocation(task.spec.tool)&&task.spec.location.Length>0 && task.spec.location!=Game1.currentLocation.NameOrUniqueName)throw new InvalidOperationException("planned_location_changed_replan");
                 if(task.spec.tool=="player.sleep" && schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player")) {
                     if(task.wait_reason!="companion_finishing_before_sleep")Data.Autoplay.Record("intent_deferred",AgentJson.Encode(new{task.spec.id,reason="companion_finishing_before_sleep",resume_when="companion_active_work_finished"}));

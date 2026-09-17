@@ -13,6 +13,16 @@ public sealed partial class ModEntry {
             bool collection=tool=="work.run"&&AgentToolRegistry.Text(args,"goal") is "wood" or "stone" or "fiber" or "resource" or "forage";
             if(collection&&PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location",l.NameOrUniqueName)) is {} target)l=target;
             string family=FailureKnowledge.Family(reason);
+            if(family=="access") {
+                var npc=tool=="player.social"?Game1.getCharacterFromName(AgentToolRegistry.Text(args,"npc")):null;
+                string destination=npc?.currentLocation?.NameOrUniqueName??AgentToolRegistry.Text(args,"location",l.NameOrUniqueName);
+                var window=ServiceWindow(destination);
+                return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,destination,window.Reason,open_now=Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close,
+                    npc=npc?.Name,npc_tile=npc==null?null:new[]{npc.TilePoint.X,npc.TilePoint.Y},sleeping=npc?.isSleeping.Value,invisible=npc?.IsInvisible,
+                    friendship=npc==null?0:p.getFriendshipHeartLevelForNPC(npc.Name),p.HasTownKey,
+                    origin=l.NameOrUniqueName,obstacles=l.objects.Pairs.Select(o=>new{o.Key,o.Value.QualifiedItemId}),
+                    local_characters=l.characters.Select(n=>new{n.Name,n.TilePoint}),mail=p.mailReceived.ToArray()}));
+            }
             string goal=AgentToolRegistry.Text(args,"goal"),item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709",_=>AgentToolRegistry.Text(args,"item")};
             if(family=="material_policy")return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,item,owned=item.Length>0?TeamStock(item):0,
                 approved=Data.Operating.MaterialTargets.GetValueOrDefault(item),agenda=Data.Autoplay.Agenda.Resources.Where(r=>r.Item==item).Select(r=>r.Count).ToArray()}));
@@ -63,7 +73,7 @@ public sealed partial class ModEntry {
         string exact=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string selection=FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         Data.Autoplay.Failures.Entries.RemoveAll(e=>e.Reason.StartsWith("no_approved_material_demand"));
-        foreach(var known in Data.Autoplay.Failures.Entries.Where(e=>e.Actor==task.spec.actor&&e.Tool==task.spec.tool&&(e.Key==semantic||e.Key==exact||e.Key==selection)).ToArray()) {
+        foreach(var known in Data.Autoplay.Failures.Entries.Where(e=>e.Actor==task.spec.actor&&e.Tool==task.spec.tool&&(e.Key==semantic||e.Key==exact||e.Key==selection||task.spec.tool=="player.social"&&e.Arguments.Length>0&&FailureKnowledge.Key(e.Actor,e.Tool,e.Arguments)==FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText()))).ToArray()) {
             string conditions=FailureConditions(task.spec.actor,task.spec.tool,task.spec.args,known.Reason);if(conditions=="unavailable")continue;
             var old=Data.Autoplay.Failures.Block(known.Key,conditions,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay));
             if(old!=null){old.Suppressed++;throw new InvalidOperationException("known_failure_conditions_unchanged:"+old.Reason+":evidence="+old.TaskEvidence);}

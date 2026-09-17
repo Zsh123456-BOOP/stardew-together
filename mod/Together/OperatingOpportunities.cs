@@ -3,15 +3,15 @@ using StardewValley;
 using StardewValley.Tools;
 
 namespace Together;
-public sealed record OperatingOpportunity(string Id,string Purpose,string Tool,object Args,string Evidence,int Energy,int Minutes);
+public sealed record OperatingOpportunity(string Id,string Purpose,string Tool,object Args,string Evidence,int Energy,int Minutes,object? Requirements=null);
 public sealed partial class ModEntry {
     private IEnumerable<T> AvailableTools<T>() where T:Tool=>Game1.player.Items.OfType<T>().Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().OfType<T>()));
     private bool AvailableTool<T>() where T:Tool=>AvailableTools<T>().Any();
     private List<OperatingOpportunity> OperatingOpportunities() {
-        var rows=new List<OperatingOpportunity>();var player=Game1.player;
+        var rows=new List<OperatingOpportunity>();var player=Game1.player;ReadGoalRecipes();
         AddBusinessOpportunities(rows);
         if(!SharedStorage().Any()&&Game1.player.craftingRecipes.ContainsKey("Chest")&&!Data.SharedGoals.Any(g=>g.Status=="active"&&g.Entity=="craft:Chest"))
-            rows.Add(new("infrastructure:storage","尚无共享仓库：比较先建仓或先劳动；配方依赖由程序执行，不会自动立项","goal.create",new{request_id="storage-"+Game1.Date.TotalDays,entity="craft:Chest",count=1,completion="placed",run=true,purpose="建立共享仓储"},"recipe_known;deployed_storage=0;free_slots="+CapacityAdapter.Of(player).FreeSlots,0,60));
+            rows.Add(new("infrastructure:storage","尚无共享仓库：比较先建仓或先劳动；配方依赖由程序执行，不会自动立项","goal.create",new{request_id="storage-"+Game1.Date.TotalDays,entity="craft:Chest",count=1,completion="placed",run=true,purpose="建立共享仓储"},"recipe_known;deployed_storage=0;free_slots="+CapacityAdapter.Of(player).FreeSlots,0,60,goalRecipes.TryGetValue("craft:Chest",out var storageRecipe)?new{entity=storageRecipe.Id,output=storageRecipe.Item,source=storageRecipe.Source,materials=storageRecipe.Inputs.Select(r=>new{item=r.Item,required=r.Count,owned=TeamStock(r.Item),missing=Math.Max(0,r.Count-TeamStock(r.Item))})}:null));
         if(Facts.RipeCrops>0)rows.Add(new("harvest","收获成熟作物并接入销售/加工","work.run",new{goal="harvest",location="Farm",count=0},$"ripe={Facts.RipeCrops}",0,20));
         if(Facts.DryCrops>0&&AvailableTool<WateringCan>())rows.Add(new("water","完成今日照料；工具会自动补水","work.run",new{goal="water",location="Farm",count=0},$"dry={Facts.DryCrops}",Facts.DryCrops*2,30));
         if(Game1.mailbox.Count>0)rows.Add(new("mail","读取实际邮件，检查经营解锁","player.read_mail",new{},$"mail={Game1.mailbox.Count}",0,20));

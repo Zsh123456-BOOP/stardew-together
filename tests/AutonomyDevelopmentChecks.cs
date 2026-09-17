@@ -14,6 +14,9 @@ public static class AutonomyDevelopmentChecks {
         check(ToolLocationContract.Bind("player.beach","Farm",null,"","")=="","semantic beach interaction owns its travel and native preconditions");
         bool rejectedUnknown=false;try{ToolLocationContract.Bind("player.move","Farm","player.social","","");}catch(InvalidOperationException){rejectedUnknown=true;}
         check(rejectedUnknown,"coordinates following dynamically moving NPC require an explicit map");
+        check(FailureKnowledge.Family("route_access_denied_check_opening_hours_or_friendship")=="access"&&FailureKnowledge.Family("npc_stand_unreachable")=="access","native access failures use condition memory instead of whole-day blacklist");
+        var access=new FailureKnowledge();access.Record("pierre","player","player.social","route_access_denied_check_opening_hours_or_friendship","closed","visit",1,500,true);
+        check(access.Block("pierre","closed",1,600)!=null&&access.Block("pierre","open",1,600)==null,"unchanged door prevents retries; changed opening conditions release failure on the same day");
         var failures=new FailureKnowledge();
         failures.Record("k","player","work.run","empty","state1","task1",1,600);
         check(failures.Block("k","state1",1,610)!=null,"repeat failure blocked only under unchanged conditions");

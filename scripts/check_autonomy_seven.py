@@ -3,7 +3,7 @@ import argparse,json,os,subprocess,sys,time,shutil,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--save',default='AgentLab_449672941');p.add_argument('--night-only',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--save',default='AgentLab_449672941');p.add_argument('--night-only',action='store_true');p.add_argument('--bare-only',action='store_true');a=p.parse_args()
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=ROOT/'work/Round4Mods';b=None;checks=[]
 def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
 def check(n,ok,data=None):
@@ -59,7 +59,12 @@ with (out/'game.log').open('w') as log:
   check('native-farm-exit',r.get('status')=='succeeded',r)
   paths=sc('round4',mode='autonomy7');write('paths.json',paths['paths'])
   check('planned-paths-match-map-collision',bool(paths['paths']) and all(not p['blocked'] for p in paths['paths']),paths['paths'])
-  if not a.night_only:
+  if a.bare_only:
+   for goal,location in [('harvest','Farm'),('forage','Town')]:
+    _,ev,d=chain([dict(tool='work.run',args=dict(goal=goal,location=location,count=1,reserve_stamina=0,until=2300))],goal,360)
+    tasks=[t for t in d['state']['Schedule']['Tasks'] if t['spec']['tool']=='work.run' and t['spec']['args'].get('goal')==goal]
+    check('native-bare-hand-'+goal,tasks and tasks[-1]['state']=='succeeded',tasks)
+  if not a.night_only and not a.bare_only:
    inventory=sc('preparation_read');write('storage-before.json',inventory)
    opportunities=sc('round4',mode='autonomy7')['opportunities']
    check('owned-stored-rod-produces-fishing-opportunity',any(x['Id']=='fish-income' for x in opportunities),opportunities)
@@ -76,17 +81,18 @@ with (out/'game.log').open('w') as log:
    tasks=[t for t in d['state']['Schedule']['Tasks'] if t['spec']['tool']=='work.run' and t['spec']['args'].get('goal')=='wood']
    check('native-budget-yield-is-partial-not-failure',tasks and tasks[-1]['state']=='partial',tasks)
    write('yield-state.json',sc('round4',mode='autonomy7'))
-  tool('farm.cleanup',request_id='seven-review-order',scopes=['general'],daily_limit=2,reserve_stamina=0,until=2200)
-  until=time.monotonic()+120
-  while time.monotonic()<until:
-   d=sc('round4',mode='autonomy7');orders=[o for o in d['orders'] if o['Id']=='seven-review-order']
-   if orders and orders[-1]['Completed']>=2:break
-   time.sleep(1)
-  check('mixed-cleanup-native-progress',orders and orders[-1]['Completed']>=2,orders)
-  r=wait(tool('player.sleep',reason='AgentLab组合验证跨日清理暂停，非经营选择'),'native-night',400);check('native-night-completes',r.get('status')=='succeeded',r)
-  d=sc('round4',mode='autonomy7');write('next-day.json',d)
-  order=next(o for o in d['orders'] if o['Id']=='seven-review-order')
-  check('old-cleanup-awaits-new-day-choice',order['Status']=='paused' and order['Reason']=='new_day_replan_remaining_cleanup',order)
+  if not a.bare_only:
+   tool('farm.cleanup',request_id='seven-review-order',scopes=['general'],daily_limit=2,reserve_stamina=0,until=2200)
+   until=time.monotonic()+120
+   while time.monotonic()<until:
+    d=sc('round4',mode='autonomy7');orders=[o for o in d['orders'] if o['Id']=='seven-review-order']
+    if orders and orders[-1]['Completed']>=2:break
+    time.sleep(1)
+   check('mixed-cleanup-native-progress',orders and orders[-1]['Completed']>=2,orders)
+   r=wait(tool('player.sleep',reason='AgentLab组合验证跨日清理暂停，非经营选择'),'native-night',400);check('native-night-completes',r.get('status')=='succeeded',r)
+   d=sc('round4',mode='autonomy7');write('next-day.json',d)
+   order=next(o for o in d['orders'] if o['Id']=='seven-review-order')
+   check('old-cleanup-awaits-new-day-choice',order['Status']=='paused' and order['Reason']=='new_day_replan_remaining_cleanup',order)
   sc('agent_pause');check('paused-preserves-process',proc.poll() is None)
   write('result.json',dict(passed=True,checks=checks))
  except Exception as e:

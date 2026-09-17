@@ -6,9 +6,21 @@ using StardewValley.Tools;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private IEnumerable<Item> OwnedSeeds()=>Game1.player.Items.Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74);
+    private object PlantingExecutionFacts()=>new {
+        unplanted_owned_seeds=OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Select(g=>new{item=g.Key,name=g.First().DisplayName,count=g.Sum(i=>i.Stack)}).ToArray(),
+        actual_farm_crops=Game1.getFarm().terrainFeatures.Values.OfType<HoeDirt>().Where(d=>d.crop!=null&&!d.crop.dead.Value).GroupBy(d=>d.crop.netSeedIndex.Value).Select(g=>new{seed=g.Key,planted=g.Count(),watered=g.Count(d=>d.state.Value==1),ripe=g.Count(d=>d.readyForHarvest())}).ToArray(),
+        queued_planting=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant").Select(t=>new{t.spec.id,t.state,t.spec.args}).ToArray(),
+        evidence="原生种子库存与地里作物分开计数；采购或口头计划不算播种完成。未种种子由模型安排，不自动派工。"
+    };
     private void AddBusinessOpportunities(List<OperatingOpportunity> rows) {
         var p=Game1.player;var farm=Game1.getFarm();
         int care=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
+        if(Game1.activeClickableMenu==null&&!AgentActorHasWork("player")&&AvailableTool<Hoe>()&&AvailableTool<WateringCan>())foreach(var seed in OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Take(4)) {
+            if(!DataLoader.Crops(Game1.content).TryGetValue(seed.First().ItemId,out var crop)||!crop.Seasons.Contains(farm.GetSeason())||crop.DaysInPhase.Sum()>28-Game1.dayOfMonth)continue;
+            int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
+            rows.Add(new("plan:owned-seeds:"+seed.Key,"已有未种种子：可选择规划播种，也可保留；购买完成不等于种植完成",atFarm?"farm.plan":"player.travel",atFarm?(object)new{seed=seed.Key,count=Math.Min(96,count)}:new{location="Farm"},$"native_unplanted_seed={seed.Key};owned={count};actual_existing_crops={care};tools_owned;next=farm.plan_then_work.run_plant;layout_and_labor_not_yet_evaluated",0,atFarm?1:30));
+        }
         bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>c.Seasons.Contains(farm.GetSeason())&&c.DaysInPhase.Sum()<=28-Game1.dayOfMonth);
         var window=ServiceWindow("SeedShop");
         if(seasonal&&SeedAllowance()>0&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))

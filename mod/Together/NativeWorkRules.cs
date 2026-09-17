@@ -35,6 +35,9 @@ public sealed partial class PlayerExecutor {
         return true;
     }
     private Point SafeWorkStand(Point target,Point preferred) {
+        // Bare-hand harvest/forage has no tool slot; it must never index Items[-1].
+        if(workSkill is "harvest" or "forage")return preferred;
+        if(workSlot<0||workSlot>=Game1.player.Items.Count)throw new InvalidOperationException("work_tool_slot_invalid");
         if(Game1.player.Items[workSlot] is not Tool { } tool||!tool.isScythe())return preferred;
         foreach(var stand in new[]{preferred,new Point(target.X,target.Y+1),new(target.X-1,target.Y),new(target.X+1,target.Y),new(target.X,target.Y-1)}.Distinct())
             if(Passable(Game1.currentLocation,stand)&&SafeSweep(Game1.currentLocation,target,stand,StandingBox(stand))&&(stand==Game1.player.TilePoint||PreviewPath(Game1.currentLocation,stand)!=null))return stand;

@@ -65,11 +65,15 @@ public sealed partial class ModEntry {
         }
         return reserve;
     }
-    private List<(string Tool,object Args)> BusinessShipment() {
+    private sealed record SaleStock(string item,int count,int price,int owned,int protected_count);
+    private SaleStock[] BusinessSaleStock() {
         UpdateOperatingTargets();var reserves=BusinessRawReserves();var cropOutputs=Game1.cropData.Values.Select(c=>ItemRegistry.QualifyItemId(c.HarvestItemId)).ToHashSet();
-        var stock=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>()
+        return Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>()
             .Where(o=>!o.bigCraftable.Value&&!o.questItem.Value&&!o.specialItem&&ApprovedMaterialSale(o.QualifiedItemId)&&o.canBeShipped()&&o.sellToStorePrice()>0&&(BusinessRetention.Materials.Contains(o.QualifiedItemId)||cropOutputs.Contains(o.QualifiedItemId)||o.Category is -5 or -6 or -18 or -26 or -4 or -81))
-            .GroupBy(o=>o.QualifiedItemId).Select(g=>new{item=g.Key,count=Math.Min(999,BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2)),price=g.Max(o=>o.sellToStorePrice())}).Where(x=>x.count>0).OrderByDescending(x=>(long)x.count*x.price).Take(12).ToArray();
+            .GroupBy(o=>o.QualifiedItemId).Select(g=>new SaleStock(g.Key,Math.Min(999,BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2)),g.Max(o=>o.sellToStorePrice()),g.Sum(i=>i.Stack),g.Sum(i=>i.Stack)-BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2))).Where(x=>x.count>0).OrderByDescending(x=>(long)x.count*x.price).Take(12).ToArray();
+    }
+    private List<(string Tool,object Args)> BusinessShipment() {
+        var stock=BusinessSaleStock();
         // Selling what's already carried releases real slots first. Never hold
         // every sale hostage to later mixed-quality warehouse withdrawals.
         var carried=stock.Select(i=>new{i.item,count=Math.Min(i.count,Game1.player.Items.Where(b=>b?.QualifiedItemId==i.item).Sum(b=>b.Stack))}).Where(i=>i.count>0).ToArray();

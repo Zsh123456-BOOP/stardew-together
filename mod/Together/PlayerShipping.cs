@@ -11,6 +11,7 @@ public sealed class ShipmentLine {
     public int quality {get;set;}
 }
 public sealed partial class PlayerExecutor {
+    public Action<object>? ShipmentObserved {get;set;}
     private List<ShipmentLine> shipment=new();
     private ShippingBin? shipmentBin;
     private Point shipmentTile;
@@ -28,7 +29,7 @@ public sealed partial class PlayerExecutor {
             if(remaining>0)throw new InvalidOperationException("shipment_missing_carried_unreserved_item");
         }
         ValidateConsumption?.Invoke(spending,"","shipping");
-        shipmentBin=null;destination="Farm";Current!.phase="shipping_travel";
+        shipmentBin=null;destination="Farm";Current!.phase="shipping_travel";ShipmentObserved?.Invoke(new{phase="start",command_id=Current.command_id,manifest=shipment,time=Game1.timeOfDay,bag=Game1.player.Items.Where(i=>i!=null).Select(i=>new{i.QualifiedItemId,i.Stack,i.Quality})});
     }
     private void TickShipping() {
         if(Game1.locationRequest!=null||Game1.fadeToBlack)return;
@@ -46,7 +47,7 @@ public sealed partial class PlayerExecutor {
             try{Game1.oldKBState=default;if(count==item.Stack)menu.receiveLeftClick(bounds.Center.X,bounds.Center.Y);else menu.receiveRightClick(bounds.Center.X,bounds.Center.Y);}finally{Game1.oldKBState=keyboard;}
             int removed=beforeBag-Game1.player.Items.Where(i=>i?.QualifiedItemId==id&&i.Quality==quality).Sum(i=>i.Stack),added=farm.getShippingBin(Game1.player).Where(i=>i?.QualifiedItemId==id&&i.Quality==quality).Sum(i=>i.Stack)-beforeBin;
             if(removed!=count||added!=count||menu.heldItem!=null)throw new InvalidOperationException("native_shipment_conservation_failed");
-            line.count-=count;Current!.completed+=count;
+            line.count-=count;Current!.completed+=count;ShipmentObserved?.Invoke(new{phase="native_click",command_id=Current.command_id,time=Game1.timeOfDay,item=id,quality,count,removed,added,beforeBag,beforeBin,remaining=line.count,click=count==beforeBag?"stack":"partial"});
             if(Current.effects.Count<128)Current.effects.Add(new{kind="native_shipment",item=id,quality,count,income="pending_native_overnight"});return;
         }
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("shipping_menu_interrupted");

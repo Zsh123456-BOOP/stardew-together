@@ -2,7 +2,7 @@ namespace Together;
 
 public readonly record struct FarmCell(int X,int Y);
 public sealed record LayoutCell(FarmCell Tile,bool Plantable,bool Passable,bool Watered,bool Irrigated,bool Protected,bool Tilled,int DistanceToWater,int ClearCost=0,bool Equipment=false,int PlanningPenalty=0);
-public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason);
+public sealed record LayoutResult(List<FarmCell> Tiles,int ManualWatering,int Unprotected,string StopReason,double Score=0);
 
 public static class FarmLayout {
     public static Dictionary<FarmCell,int> WalkDistances(IReadOnlyList<LayoutCell> source,FarmCell start)=>Distances(source.ToDictionary(c=>c.Tile),start,new());
@@ -68,7 +68,7 @@ public static class FarmLayout {
         }
         var limits=new List<string>();if(maxSpatial<count)limits.Add("space_or_access_limit");if(maxManual<maxSpatial)limits.Add("daily_water_limit");if(maxEnergy<maxSpatial)limits.Add("planting_energy_limit");
         string reason=string.Join("+",limits);if(reason.Length==0)reason="combined_labor_constraints";
-        if(best!=null)return new(best,bestManual,best.Count(t=>!cells[t].Protected),best.Count==count?"compact_plot_selected":reason);
+        if(best!=null)return new(best,bestManual,best.Count(t=>!cells[t].Protected),best.Count==count?"compact_plot_selected":reason,bestScore);
         return new(new(),0,0,reason);
     }
     // Used inside an already selected bed by the mixed-crop budget allocator.

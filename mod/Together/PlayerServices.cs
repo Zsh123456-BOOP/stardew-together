@@ -63,30 +63,18 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=destination){Travel();return;}
         var l=Game1.currentLocation;
         if(serviceTile==null) {
-            var candidates=new List<Point>();
-            for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++) {
-                var action=l.GetTilePropertySplitBySpaces("Action","Buildings",x,y);if(action.Length==0)continue;
-                bool match=service switch {
-                    "shop"=>ShopFromAction(l,action)==serviceShop,
-                    "daily_quests"=>action[0]=="Billboard"&&action.Length>1&&action[1]=="3",
-                    "special_orders"=>action[0]=="SpecialOrders","qi_orders"=>action[0]=="QiChallengeBoard",
-                    "museum_donate" or "museum_reward"=>action[0]=="Gunther",
-                    "build"=>action[0] is "Carpenter" or "WizardBook",
-                    "upgrade_house"=>action[0]=="Carpenter",
-                    "animals"=>action[0]=="AnimalShop",_=>action[0]=="Blacksmith"
-                };
-                if(match)candidates.Add(new(x,y));
-            }
+            var candidates=ServiceCounters(l,service,serviceShop);
+            Current.effects.Add(new{kind="service_counter_candidates",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates});
             foreach(var at in candidates.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile))) {
                 // Legacy counters require approaching from below. Explicit OpenShop
                 // direction is left to the native action's own condition validation.
                 foreach(var stand in new[]{new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}) {
                     if(!Passable(l,stand))continue;
-                    try{Walk(stand);serviceTile=at;Current.phase="service_walk";break;}catch(InvalidOperationException){ }
+                    try{Walk(stand);serviceTile=at;Current.effects.Add(new{kind="service_counter_stand",counter=at,stand,location=l.NameOrUniqueName});Current.phase="service_walk";break;}catch(InvalidOperationException){ }
                 }
                 if(serviceTile.HasValue)break;
             }
-            if(!serviceTile.HasValue)throw new InvalidOperationException("no_reachable_native_service_counter");
+            if(!serviceTile.HasValue){Current.effects.Add(new{kind="service_counter_failure",category=candidates.Count==0?"parameter_or_map_changed":"physical_stand_unreachable",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates,player=Game1.player.TilePoint});throw new InvalidOperationException("no_reachable_native_service_counter");}
         }
         if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var counter=serviceTile.Value;Adjacent(counter);Face(counter);
         if(service=="claim_tool") {

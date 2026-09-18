@@ -7,6 +7,7 @@ public sealed partial class ModEntry {
     private DateTime survivalRetryAt;
     private string? survivalSleepId;
     private bool survivalResetPending;
+    private int nightWarningDay=-1;
     private bool SurvivalOwnsDay=>Data.Autoplay.Survival.Mode!="model";
     private string ResumeConsentPath=>Path.Combine(Helper.DirectoryPath,"data",$"resume-{Game1.uniqueIDForThisGame}.json");
     private void SetResumeConsent(bool allowed) {
@@ -51,7 +52,11 @@ public sealed partial class ModEntry {
         if(!AutoplayRunning)return false;
         var s=Data.Autoplay.Survival;
         bool effective=playerExecutor.Busy || semanticJobs.Values.Any(j=>j.actor=="player"&&j.status=="running") || Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&t.state=="queued"&&t.spec.day==Game1.Date.TotalDays&&t.spec.not_before<=Game1.timeOfDay&&t.spec.deadline>=Game1.timeOfDay&&t.wait_reason==null&&t.spec.after.All(id=>Data.Autoplay.Schedule.Tasks.Any(p=>p.spec.id==id&&p.state=="succeeded")));
-        if(s.Mode=="model"&&SurvivalState.NightGuard(Game1.timeOfDay,effective))EnterSurvival("sleep","night_guard_no_effective_plan");
+        if(s.Mode=="model"&&Game1.timeOfDay>=2200&&nightWarningDay!=Game1.Date.TotalDays) {
+            nightWarningDay=Game1.Date.TotalDays;
+            SurvivalRecord("night_warning",NightStatus());WakeAgent("night_warning_review_remaining_work_and_return");
+        }
+        if(s.Mode=="model"&&SurvivalState.NightGuard(Game1.timeOfDay,effective,ReturnReserve()))EnterSurvival("sleep","night_guard_no_effective_plan");
         if(s.Mode=="model")return false;
         if(survivalResetPending) {
             // Respect an in-flight tool impact or save; do not lose its native receipt.

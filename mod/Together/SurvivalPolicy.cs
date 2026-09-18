@@ -18,6 +18,7 @@ public sealed class SurvivalState {
         Day=day;Mode="model";Reason="";ModelFailures=0;SleepAttempts=0;Abandoned.Clear();return true;
     }
     public bool ModelFailed()=>++ModelFailures>=3;
-    public static bool NightGuard(int time,bool effectivePlan)=>time>=2200&&!effectivePlan;
+    public static int GuardMinute(int returnMinutes)=>26*60-Math.Max(60,returnMinutes);
+    public static bool NightGuard(int time,bool effectivePlan,int returnMinutes=60)=>DailyBudget.Minutes(time)>=GuardMinute(returnMinutes)&&!effectivePlan;
     public static bool Fatal(string code)=>code.Contains("conservation")||code.Contains("world_inconsistent")||code.Contains("day_transition_not_verified")||code.Contains("logging_failed")||code.Contains("save_failed")||code.Contains("actor_restore");
 }

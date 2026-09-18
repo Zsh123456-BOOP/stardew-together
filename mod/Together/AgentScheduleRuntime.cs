@@ -103,6 +103,7 @@ public sealed partial class ModEntry {
                 if(goal.AutoExecute){RefreshFacts(true);goal.AutoBlockedConditions=GoalCondition(goal);goal.AutoReviewDay=Game1.Date.TotalDays;goal.AutoReviewMinute=DailyBudget.Minutes(Game1.timeOfDay);}
             }
         }
+        result=WithBlockedAlternatives(result);
         Data.Autoplay.Schedule.Finish(task,state,error,AgentJson.Encode(result));
         // FailureKnowledge is the sole retry authority; a day-long hash blacklist cannot observe release conditions.
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
@@ -153,9 +154,6 @@ public sealed partial class ModEntry {
                 }
                 if(task.wait_reason=="companion_finishing_before_sleep")task.wait_reason=null;
                 if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
-                if(Data.Business.Enabled&&task.spec.tool is "player.ship" or "player.ship_items"&&!task.spec.id.StartsWith("closing-")&&Game1.timeOfDay<1700&&CapacityAdapter.Of(Game1.player).FreeSlots>0) {
-                    CompleteScheduled(task,JsonSerializer.SerializeToElement(new{status="succeeded",deferred=true,note="未出货、未移动；可售物品留到晚间或收工统一交付，不重复请求"}));continue;
-                }
                 if(!PrepareTaskKit(task))continue;
                 if(!AdmitOperation(task))continue;
                 CheckKnownFailure(task);

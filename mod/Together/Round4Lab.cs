@@ -13,6 +13,7 @@ public sealed partial class ModEntry {
             return new{progress=DailyProgressDigest(),planting_execution=PlantingExecutionFacts(),opportunities=OperatingOpportunities(),orders=Data.Maintenance.Orders,paths,
                 tools=Game1.player.Items.OfType<Tool>().Select(t=>new{t.QualifiedItemId,energy=PlayerExecutor.SwingEnergy(t)}),snapshot=AgentSnapshot()};
         }
+        if(mode=="opportunity_receipt")return new{receipt=WithBlockedAlternatives(JsonSerializer.SerializeToElement(new{status="blocked",error="fixture_observation_only"})),protection_reasons=ProtectionReasons(),overlay=overlayLines,night=NightStatus()};
         if(mode=="diary")return new{diary=Data.Autoplay.Memory.Diary,context=AgentMemoryContext()};
         if(mode=="material_autonomy") {Data.Business.Enabled=true;businessAt=DateTime.UtcNow.AddHours(1);return new{enabled=true,material_targets=Data.Operating.MaterialTargets,note="policy-only fixture; native inventory unchanged"};}
         if(mode=="diary_replay") {

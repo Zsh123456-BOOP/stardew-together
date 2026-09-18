@@ -21,10 +21,10 @@ public sealed partial class ModEntry {
             int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
             rows.Add(new("plan:owned-seeds:"+seed.Key,"已有未种种子：可选择规划播种，也可保留；购买完成不等于种植完成",atFarm?"farm.plan":"player.travel",atFarm?(object)new{seed=seed.Key,count=Math.Min(96,count)}:new{location="Farm"},$"native_unplanted_seed={seed.Key};owned={count};actual_existing_crops={care};tools_owned;next=farm.plan_then_work.run_plant;layout_and_labor_not_yet_evaluated",0,atFarm?1:30));
         }
-        bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>c.Seasons.Contains(farm.GetSeason())&&c.DaysInPhase.Sum()<=28-Game1.dayOfMonth);
+        var land=ExpansionLand();bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>c.Seasons.Contains(farm.GetSeason())&&c.DaysInPhase.Sum()<=28-Game1.dayOfMonth);
         var window=ServiceWindow("SeedShop");
-        if(seasonal&&SeedAllowance()>0&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))
-            rows.Add(new("inspect:seed-offers","可去种子店核价比较是否扩种；已有作物照料负担供决策，无固定株数上限", "player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_season={farm.GetSeason()};cash_available={SeedAllowance()};existing_crops={care};open={window.Open}-{window.Close}",0,30));
+        if(seasonal&&land.Count>0&&SeedAllowance()>0&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))
+            rows.Add(new("inspect:seed-offers","可去种子店核价比较是否扩种；已有作物照料负担供决策，无固定株数上限", "player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_season={farm.GetSeason()};cash_available={SeedAllowance()};existing_crops={care};open={window.Open}-{window.Close}",0,30,new{land=new{observed_empty_diggable=land.Count,examples=land.Take(12),note="初步空地观察；连续田块、道路和每日劳动仍以farm.plan核验"},quotes=ObservedSeedBasis(),next="核对报价后由模型选品；价格未知不推测"}));
         if(!Data.Autoplay.Routine.Enabled&&(Facts.DryCrops>0||Facts.RipeCrops>0||Game1.mailbox.Count>0))
             rows.Add(new("configure:routine","可建立或调整跨日照料例行，不影响直接使用工具","day.routine",new{enabled=true,assignments=new Dictionary<string,string>{{"water","player"},{"harvest","player"},{"clear_dead","player"},{"mail","player"}}},$"routine_disabled;dry={Facts.DryCrops};ripe={Facts.RipeCrops};mail={Game1.mailbox.Count}",0,1));
         if(Game1.activeClickableMenu is ShopMenu shop) {
@@ -35,7 +35,7 @@ public sealed partial class ModEntry {
                 rows.Add(new("inspect:seed-counter","已经到店，走近真实柜台打开商店并自动读取报价；此动作不花钱","player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_location;owner_present;window={window.Open}-{window.Close};cash={p.Money}",0,5));
         }
         if(Data.FarmInvestment.Phase=="awaiting_selection"&&selectionDay==Game1.Date.TotalDays&&selectionEpoch==agentSaveEpoch)
-            rows.Add(new("select:seeds","根据真实报价、生长期和劳动需求选择种子与数量；不是采购完成","farm.select_seeds",new{quote_token=selectionQuote,candidates=selectionOffers,budget=SeedAllowance(),needs="items 与 reason 由模型选择"},"current_day_native_quotes;current_cash;selection_pending",0,1));
+            rows.Add(new("select:seeds","根据真实报价、生长期和劳动需求选择种子与数量；不是采购完成","shop.read",new{},"current_day_native_quotes;current_cash;selection_pending",0,1,new{quote_token=selectionQuote,candidates=selectionOffers,budget=SeedAllowance(),next="按真实报价用farm.select_seeds选择items和reason"}));
         // Queries only: expose unresolved dependencies without inventing their
         // acquisition requirements or duplicating the encyclopedia database.
         foreach(var g in Data.SharedGoals.Where(g=>g.Status=="active"&&g.Nodes.Any(n=>n.Status is "blocked" or "locked")).Take(2)) {

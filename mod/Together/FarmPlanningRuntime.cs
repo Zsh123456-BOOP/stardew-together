@@ -100,6 +100,7 @@ public sealed partial class ModEntry {
                 return c with{Irrigated=c.Irrigated||paddy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
             }).ToList();
             var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),data.IsRaised,manual,protectedOnly,energyBudget:AvailablePlantingEnergy());
+            Data.Autoplay.Record("plot_choice_evidence",AgentJson.Encode(new{seed=seed.Key,requested=max,chosen.Score,chosen.StopReason,selected=chosen.Tiles.Select(t=>seedGrid.First(c=>c.Tile==t)),available_tilled=seedGrid.Where(c=>c.Plantable&&c.Tilled),available_untilled=seedGrid.Count(c=>c.Plantable&&!c.Tilled),score_formula="entry*2+shape_difference*3+sum(planning_penalty+clear_cost*3+unirrigated*25+unprotected*8+untilled*6+water_distance*.2)",selection="maximal_feasible_compact_area_then_score"}));
             if(chosen.Tiles.Count==0)continue;
             int harvests=calc.NumHarvests(Game1.dayOfMonth,horizon);
             var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,Tiles=chosen.Tiles,AccessOrigin=new(p.TilePoint.X,p.TilePoint.Y),RaisedTiles=data.IsRaised?chosen.Tiles:new(),GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};

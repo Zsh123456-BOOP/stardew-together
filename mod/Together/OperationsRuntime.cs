@@ -45,6 +45,7 @@ public sealed partial class ModEntry {
         return (open,close,reason,conditions);
     }
     private void PrepareOperation(AgentTaskSpec spec) {
+        ValidateToolDeclaration(spec.tool,spec.args);
         CheckKnownFailure(new ScheduledAgentTask{spec=spec});
         if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(spec.tool=="work.run"&&WorkCapabilities.Validate(spec.actor,AgentToolRegistry.Text(spec.args,"goal")) is {} unavailable)throw new InvalidOperationException(unavailable);
@@ -92,6 +93,7 @@ public sealed partial class ModEntry {
         return true;
     }
     private void ValidateNativeOperation(string tool,JsonElement args) {
+        ValidateToolDeclaration(tool,args);
         if(!AutoplayRunning)return;
         GuardCapacity("player",tool,args);
         if(tool is "player.buy" or "player.procure") {

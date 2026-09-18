@@ -2,6 +2,7 @@ using System.Text.Json;
 namespace Together;
 public sealed partial class ModEntry {
     private void RecordToolAttempt(AgentCall call,JsonElement observed) {
+        RecordOpportunityAdoption(call,observed);
         string attemptId=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("task_id",out var taskId)?taskId.GetString()!:Guid.NewGuid().ToString("N");
         string actor=AgentToolRegistry.Text(call.args,"actor_id","player");
         string? cause=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String?error.GetString():null;
@@ -14,7 +15,7 @@ public sealed partial class ModEntry {
         if(string.IsNullOrEmpty(text))return new{};
         try {
             var r=JsonSerializer.Deserialize<JsonElement>(text);var fields=new Dictionary<string,object?>();
-            foreach(string key in new[]{"command_id","skill","goal","actor","status","phase","error","stop_reason","disposition","resume_policy","completed","requested","gained","skipped","refills","deposited"})if(r.TryGetProperty(key,out var v))fields[key]=v.Clone();
+            foreach(string key in new[]{"command_id","skill","goal","actor","status","phase","error","stop_reason","disposition","resume_policy","completed","requested","gained","skipped","refills","deposited","alternatives","protection_reasons"})if(r.TryGetProperty(key,out var v))fields[key]=v.Clone();
             if(r.TryGetProperty("after",out var after))fields["after"]=after.EnumerateObject().Where(p=>p.Name!="inventory").ToDictionary(p=>p.Name,p=>p.Value.Clone());
             if(r.TryGetProperty("evidence",out var evidence)&&evidence.ValueKind==JsonValueKind.Object)fields["evidence"]=evidence.Clone();
             fields["details"]= "完整回执可用action.status查询，背包用inventory.read";

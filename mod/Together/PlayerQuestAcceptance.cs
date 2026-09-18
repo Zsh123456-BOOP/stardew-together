@@ -8,7 +8,7 @@ public sealed partial class PlayerExecutor {
     internal static object ReadQuestBoard() {
         if(Game1.activeClickableMenu is Billboard billboard) {
             var q=Game1.questOfTheDay;
-            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value}};
+            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value,reward_gold=q.moneyReward.Value,deadline_days=q.daysLeft.Value}};
         }
         if(Game1.activeClickableMenu is SpecialOrdersBoard orders) {
             object? Entry(SpecialOrder? order,bool available)=>order==null?null:new{id=order.questKey.Value,title=order.GetName(),description=order.GetDescription(),deadline=order.dueDate.Value,available,objectives=order.objectives.Select(o=>new{type=o.GetType().Name,description=o.GetDescription(),current=o.GetCount(),required=o.GetMaxCount()})};

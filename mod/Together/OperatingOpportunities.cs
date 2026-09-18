@@ -37,8 +37,12 @@ public sealed partial class ModEntry {
                 rows.Add(new("forage:"+location.NameOrUniqueName,"空档顺路收取可用物资","work.run",new{goal="forage",location=location.NameOrUniqueName,item=item.QualifiedItemId,count=1,until=2100},$"reachable_tiles={path?.Count??0};capacity_checked;optional",0,minutes));break;
             }
         }
-        AddCapabilityOpportunities(rows);
-        return rows.Where(r=>DailyBudget.Fits(Game1.timeOfDay,player.Stamina,ReturnReserve(),r.Minutes,r.Energy)).Take(14).ToList();
+        AddCapabilityOpportunities(rows);AddDevelopmentOpportunities(rows);
+        var feasible=rows.Where(OpportunityFeasible).Where(r=>DailyBudget.Fits(Game1.timeOfDay,player.Stamina,ReturnReserve(),r.Minutes,r.Energy)).ToList();
+        // Preserve all represented families before adding more variants of any family.
+        var families=feasible.GroupBy(r=>OpportunityFamily(r)).ToArray();
+        var selected=families.Select(g=>g.First()).Concat(families.SelectMany(g=>g.Skip(1))).Take(20).ToList();
+        lastOpportunities=selected;return selected;
     }
     private object OperatingDecisionBasis()=>new {
         money=Game1.player.Money,

@@ -43,7 +43,7 @@ public sealed partial class ModEntry {
                 }catch(Exception e){result=new{status="failed",error=e is InvalidOperationException?e.Message:"tool_exception_"+e.GetType().Name};}
                 // Invocation has happened: receipt handling must never replay its side effects next tick.
                 batch.Index++;
-                var observed=JsonSerializer.SerializeToElement(result,AgentJson.Options);RecordToolAttempt(call,observed);
+                var observed=WithBlockedAlternatives(JsonSerializer.SerializeToElement(result,AgentJson.Options));RecordToolAttempt(call,observed);
                 foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!before.Contains(t.spec.id)))if(!batch.After.Contains(task.spec.id))batch.After.Add(task.spec.id);
                 if(DecisionBarrier.Text(observed,"task_id") is {} taskId&&!batch.After.Contains(taskId))batch.After.Add(taskId);
                 // menu.choose can start a native command directly rather than submit a task.

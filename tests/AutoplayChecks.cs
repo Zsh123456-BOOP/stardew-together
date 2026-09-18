@@ -48,8 +48,8 @@ public static class AutoplayChecks {
         foreach(var bad in new[]{"{\"calls\":[]}","{\"calls\":null}","{\"calls\":[{\"tool\":\"world.read\",\"args\":null}]}","{\"plan\":null,\"calls\":[{\"tool\":\"world.read\",\"args\":{}}]}"}) {
             bool rejected=false;try{AgentTurn.Parse(bad);}catch(InvalidOperationException){rejected=true;}check(rejected,"malformed model turn rejected before execution");
         }
-        check(DailyBudget.WorkMinutes(1200,90)==570 && DailyBudget.WorkMinutes(2250,45)==0,"normal-time work budget preserves return-home reserve");
-        check(!DailyBudget.Fits(1200,1,45,10,2) && !DailyBudget.Fits(2250,200,45,10,0),"tasks must fit both energy and return budget");
+        check(DailyBudget.WorkMinutes(1200,90)==690 && DailyBudget.WorkMinutes(2450,45)==0,"normal-time work budget preserves return-home reserve");
+        check(!DailyBudget.Fits(1200,1,45,10,2) && !DailyBudget.Fits(2450,200,45,10,0),"tasks must fit both energy and return budget");
         check(DailyBudget.SleepBlock(900,200,false,true,false,true,"种植完成")==null,"explicit sleep is a model choice; productivity is measured rather than enforced");
         check(DailyBudget.SleepBlock(900,10,true,true,false,true,"体力不足")==null,"optional forage cannot veto explicit sleep");
         check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,true,"今日必要农务已完成")==null,"low-energy evening close is not vetoed by optional forage");

@@ -81,8 +81,8 @@ public sealed partial class ModEntry {
         var origin=AgentMapOrigin(actor);
         if(WorkActorBusy(actor)||actor=="player"&&playerExecutor.Busy)throw new InvalidOperationException("actor_busy");
         int count=AgentToolRegistry.Number(args,"count",goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"?20:0);
-        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",DailyBudget.EnergyReserve),until=AgentToolRegistry.Number(args,"until",2200);
-        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<0||reserve>270||until<600||until>(goal is "withdraw" or "store"?2500:2300)||until%100>59)throw new InvalidOperationException("invalid_work_limits");
+        int reserve=AgentToolRegistry.Number(args,"reserve_stamina",DailyBudget.EnergyReserve),until=AgentToolRegistry.Number(args,"until",2400);
+        if(count<0||count>999||goal is "resource" or "hardwood" or "stone" or "wood" or "fiber"&&count==0||reserve<0||reserve>270||until<600||until>(goal is "withdraw" or "store"?2500:2400)||until%100>59)throw new InvalidOperationException("invalid_work_limits");
         string location=AgentToolRegistry.Text(args,"location",origin.Location.NameOrUniqueName);
         if(PlayerExecutor.LoadedLocation(location)==null)throw new InvalidOperationException("unknown_location");
         var job=new SemanticJob{actor=actor,goal=goal,location=location,requested=count,Day=Game1.Date.TotalDays,Reserve=reserve,Until=until,Item=goal switch{"hardwood"=>"(O)709","resource"=>AgentToolRegistry.Text(args,"item"),"stone"=>"(O)390","wood"=>"(O)388","fiber"=>"(O)771",_=>""}};

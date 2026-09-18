@@ -72,7 +72,7 @@ public sealed partial class ModEntry {
         targets??=CleanupTargets();
         var groups=targets.GroupBy(t=>new{t.Scope,t.Kind}).Select(g=>new{zone=g.Key.Scope,kind=g.Key.Kind,count=g.Count(),routine_allowed=g.Count(t=>FarmCleanupRules.Allowed(t.Kind,t.Zone,false,false)),estimated_energy=g.Sum(t=>t.Energy)}).OrderBy(g=>g.zone).ThenBy(g=>g.kind).ToArray();
         string revision=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(AgentJson.Encode(groups))))[..12];
-        return new{revision,automatic=Data.Maintenance.Enabled&&Data.Business.Enabled,areas=groups,
+        return new{revision,protection_reasons=ProtectionReasons(),automatic=Data.Maintenance.Enabled&&Data.Business.Enabled,areas=groups,
             loose_drops=PlayerExecutor.LooseDrops(Game1.getFarm()).GroupBy(d=>d.Item.QualifiedItemId).Select(g=>new{item=g.Key,chunks=g.Count()}),
             preserved=new{grass_tiles=Game1.getFarm().terrainFeatures.Values.Count(f=>f is Grass),fruit_trees=Game1.getFarm().terrainFeatures.Values.Count(f=>f is FruitTree),tapped_trees=Game1.getFarm().terrainFeatures.Values.Count(f=>f is Tree t&&t.tapped.Value)},
             orders=Data.Maintenance.Orders.Where(o=>o.Status!="complete"||o.Recurring).Take(8).Select(o=>new{o.Id,o.Scopes,o.Status,o.Reason,o.Completed,o.CompletedToday,o.DailyLimit,o.ReserveStamina,o.Until,allowance=CleanupAllowanceFor(o)}),

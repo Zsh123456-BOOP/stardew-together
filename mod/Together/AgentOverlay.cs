@@ -73,6 +73,7 @@ public sealed partial class ModEntry {
         var blocked=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>!t.Terminal&&t.wait_reason!=null);
         if(!AutoplayRunning)Add("暂停中，等待你继续");
         else if(preparation==null&&work==null&&!playerExecutor.Busy&&blocked!=null)Add("暂时受阻  "+OverlayBlock(blocked.error??blocked.wait_reason));
+        if(work?.goal is "cleanup" or "wood" or "fiber" or "store" || action?.skill is "player.ship_items" or "player.ship")foreach(string note in ProtectionReasons().Take(1))Add("保留  "+note);
         if(!SinglePlayerMode&&Data.Partner.Enabled)Add("伙伴状态以实际行动为准");
         overlayLines=lines.ToArray();
         int available=Math.Max(112,Math.Min(360,Game1.uiViewport.Height-y-100));

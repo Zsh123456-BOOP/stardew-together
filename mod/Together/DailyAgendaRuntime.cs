@@ -16,7 +16,7 @@ public sealed partial class ModEntry {
         return new {
             day=Game1.Date.TotalDays,time=Game1.timeOfDay,location=Game1.currentLocation.NameOrUniqueName,
             policy="正常时间；农务完成后选择有价值的下一批工作，不能只因种完就睡。程序估算时间与体力，模型决定优先级和分工。",
-            budget=new{stamina=Game1.player.Stamina,energy_reserve=DailyBudget.EnergyReserve,work_minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),return_reserve_minutes=ReturnReserve(),return_by=2300,home,estimate_note="路线格数来自当前地图原生寻路；耗时按移动速度加动作余量估算，跨图返家预留为保守预算，非到达保证"},
+            budget=new{stamina=Game1.player.Stamina,energy_reserve=DailyBudget.EnergyReserve,work_minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),return_reserve_minutes=ReturnReserve(),return_by=2500,home,estimate_note="路线格数来自当前地图原生寻路；耗时按移动速度加动作余量估算，跨图返家预留为保守预算，非到达保证"},
             planted_crops=Game1.getFarm().terrainFeatures.Values.OfType<HoeDirt>().Where(d=>d.crop!=null&&!d.crop.dead.Value).GroupBy(d=>"(O)"+d.crop!.indexOfHarvest.Value).Select(g=>new{item=g.Key,name=ItemRegistry.GetDataOrErrorItem(g.Key).DisplayName,count=g.Count(),ripe=g.Count(d=>d.readyForHarvest())}),
             chores=new{Facts.DryCrops,Facts.RipeCrops,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.MachinesReady},
             routine=Data.Autoplay.Routine,farm_investment=InvestmentObservation(),priorities=Data.Autoplay.Agenda.Priorities,resource_targets=Data.Autoplay.Agenda.Resources.Select(r=>new{r.Item,r.Count,r.Purpose,owned=Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count),missing=Math.Max(0,r.Count-Facts.Stock.Where(s=>s.Item==r.Item).Sum(s=>s.Count))}),

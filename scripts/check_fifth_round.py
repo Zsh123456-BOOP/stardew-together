@@ -91,6 +91,8 @@ with (out/'game.log').open('w') as log:
    d=chain([dict(tool='work.run',args=dict(goal='plant',plan_id=plan['options'][0]['plan_id'],until=2400,reserve_stamina=0))],'plant')
    task=[t for t in d['state']['Schedule']['Tasks'] if t['spec']['tool']=='work.run' and t['spec']['args'].get('goal')=='plant'][-1]
    check('buy-return-plant-chain',task['state']=='succeeded',task)
+  d=chain([dict(tool='knowledge.search',args=dict(query='初始种子'))],'array-receipt')
+  check('array-observation-does-not-break-adoption-telemetry',d['state']['Status']=='running' and not d.get('continuation'),d['state']['Status'])
   # Create a planning goal only (no resources or native counters written).
   goal=tool('goal.create',request_id='u5-knowledge',entity='craft:Keg',count=1,run=False)
   obs=snap();write('dependency.json',obs)

@@ -55,7 +55,7 @@ public sealed partial class ModEntry {
             }
             var quest=Game1.questOfTheDay;
             if(quest!=null&&!quest.accepted.Value&&!p.questLog.Contains(quest)&&PlayerExecutor.ServiceParameterError(JsonSerializer.SerializeToElement(new{location="Town",service="daily_quests"}))==null)
-                rows.Add(new("open:quest-board","查看今天原生任务板，比较实际要求与奖励后决定是否接取","player.service",new{location="Town",service="daily_quests"},AgentJson.Encode(new{id=NativeQuestIdentity.Id(quest),condition=quest.currentObjective,reward_gold=quest.moneyReward.Value,days_left=quest.daysLeft.Value,accepted=false,next="quest_board.read 然后按现场 id 接取"}),0,30));
+                rows.Add(new("open:quest-board","查看今天原生任务板，比较实际要求与奖励后决定是否接取","player.service",new{location="Town",service="daily_quests"},AgentJson.Encode(new{id=NativeQuestIdentity.Id(quest),condition=quest.currentObjective,reward_gold=quest.moneyReward.Value,deadline=PlayerExecutor.DailyQuestTiming(quest),accepted=false,next="quest_board.read 然后按现场 id 接取"}),0,30));
             foreach(var q in p.questLog.Where(q=>q.ShouldDisplayAsComplete()&&q.HasMoneyReward()).Take(2))rows.Add(new("advance:reward:"+NativeQuestIdentity.Id(q),"领取已完成任务的真实奖励","player.claim_reward",new{quest_id=NativeQuestIdentity.Id(q)},$"native_complete;reward={q.moneyReward.Value}",0,1));
             foreach(var q in p.questLog.OfType<SocializeQuest>().Where(q=>!q.completed.Value)) {
                 var npc=Game1.currentLocation.characters.Where(n=>q.whoToGreet.Contains(n.Name)).OrderBy(n=>Vector2.DistanceSquared(n.Tile,p.Tile)).FirstOrDefault(n=>WorkStand(n.currentLocation,n.TilePoint)!=null);
@@ -120,7 +120,13 @@ public sealed partial class ModEntry {
     }
     private object NightStatus()=>new{time=Game1.timeOfDay,stamina=Game1.player.Stamina,minutes_until_native_passout=Math.Max(0,1560-DailyBudget.Minutes(Game1.timeOfDay)),unfinished=Data.Autoplay.Schedule.Tasks.Count(t=>!t.Terminal),warning=Game1.timeOfDay>=2200,native_passout=2600,no_effective_plan_guard_minutes=SurvivalState.GuardMinute(ReturnReserve()),return_estimate_minutes=ReturnReserve(),consequence="凌晨两点原生昏倒可能损失金钱与次日体力；请计入返家、出货和上床时间"};
     private void RecordOpportunityAdoption(AgentCall call,JsonElement observed) {
+        if(call.tool=="plan.submit"&&call.args.TryGetProperty("tasks",out var tasks)&&tasks.ValueKind==JsonValueKind.Array)foreach(var raw in tasks.EnumerateArray()) {
+            if(raw.ValueKind!=JsonValueKind.Object||!raw.TryGetProperty("args",out var args)||args.ValueKind!=JsonValueKind.Object)continue;
+            string tool=AgentToolRegistry.Text(raw,"tool"),id=AgentToolRegistry.Text(raw,"id");if(tool.Length==0||tool=="plan.submit")continue;
+            var actual=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id);
+            RecordOpportunityAdoption(new AgentCall{tool=tool,args=args.Clone()},JsonSerializer.SerializeToElement(new{status=actual?.state??DecisionBarrier.Text(observed,"status"),task_id=actual?.spec.id}));
+        }
         var matches=lastOpportunities.Where(r=>r.Tool==call.tool&&JsonSerializer.SerializeToElement(r.Args).EnumerateObject().All(p=>call.args.TryGetProperty(p.Name,out var v)&&v.GetRawText()==p.Value.GetRawText())).Select(r=>new{r.Id,family=OpportunityFamily(r)}).ToArray();
-        Data.Autoplay.Record("candidate_adoption",AgentJson.Encode(new{call.tool,args=call.args,candidates=matches,status=AgentToolRegistry.Text(observed,"status"),task_id=AgentToolRegistry.Text(observed,"task_id"),basis=call.tool=="player.social"?SocialBasis(call.args):null}));
+        Data.Autoplay.Record("candidate_adoption",AgentJson.Encode(new{call.tool,args=call.args,candidates=matches,status=DecisionBarrier.Text(observed,"status"),task_id=DecisionBarrier.Text(observed,"task_id"),basis=call.tool=="player.social"?SocialBasis(call.args):null}));
     }
 }

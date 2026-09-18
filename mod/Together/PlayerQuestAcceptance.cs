@@ -5,10 +5,12 @@ using StardewValley.SpecialOrders;
 
 namespace Together;
 public sealed partial class PlayerExecutor {
+    // Native Billboard.receiveLeftClick initializes a daily quest to two days.
+    internal static object DailyQuestTiming(StardewValley.Quests.Quest q)=>new{remaining_days=q.accepted.Value?q.daysLeft.Value:2,expires_at_day_start=Game1.Date.TotalDays+(q.accepted.Value?q.daysLeft.Value:2),source="native_Billboard_acceptance_rule; accepted_quest_uses_live_daysLeft"};
     internal static object ReadQuestBoard() {
         if(Game1.activeClickableMenu is Billboard billboard) {
             var q=Game1.questOfTheDay;
-            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value,reward_gold=q.moneyReward.Value,deadline_days=q.daysLeft.Value}};
+            return new{kind="daily",available=billboard.acceptQuestButton.visible,quest=q==null?null:new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,objective=q.currentObjective,accepted=q.accepted.Value,reward_gold=q.moneyReward.Value,deadline=DailyQuestTiming(q)}};
         }
         if(Game1.activeClickableMenu is SpecialOrdersBoard orders) {
             object? Entry(SpecialOrder? order,bool available)=>order==null?null:new{id=order.questKey.Value,title=order.GetName(),description=order.GetDescription(),deadline=order.dueDate.Value,available,objectives=order.objectives.Select(o=>new{type=o.GetType().Name,description=o.GetDescription(),current=o.GetCount(),required=o.GetMaxCount()})};

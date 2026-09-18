@@ -70,7 +70,11 @@ public sealed partial class ModEntry {
         UpdateOperatingTargets();var reserves=BusinessRawReserves();var cropOutputs=Game1.cropData.Values.Select(c=>ItemRegistry.QualifyItemId(c.HarvestItemId)).ToHashSet();
         return Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).OfType<StardewValley.Object>()
             .Where(o=>!o.bigCraftable.Value&&!o.questItem.Value&&!o.specialItem&&ApprovedMaterialSale(o.QualifiedItemId)&&o.canBeShipped()&&o.sellToStorePrice()>0&&(BusinessRetention.Materials.Contains(o.QualifiedItemId)||cropOutputs.Contains(o.QualifiedItemId)||o.Category is -5 or -6 or -18 or -26 or -4 or -81))
-            .GroupBy(o=>o.QualifiedItemId).Select(g=>new SaleStock(g.Key,Math.Min(999,BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2)),g.Max(o=>o.sellToStorePrice()),g.Sum(i=>i.Stack),g.Sum(i=>i.Stack)-BusinessRetention.Sellable(g.Sum(i=>i.Stack),DisposableStock(g.Key),SaleFloor(g.Key),reserves.GetValueOrDefault(g.Key)+2))).Where(x=>x.count>0).OrderByDescending(x=>(long)x.count*x.price).Take(12).ToArray();
+            .GroupBy(o=>o.QualifiedItemId).Select(g=>{
+                int owned=g.Sum(i=>i.Stack);var allocation=AllocateMaterial(g.Key,reserves);
+                int count=Math.Min(999,BusinessRetention.Sellable(owned,DisposableStock(g.Key),allocation.Committed+allocation.Operations,reserves.GetValueOrDefault(g.Key)));
+                return new SaleStock(g.Key,count,g.Max(o=>o.sellToStorePrice()),owned,owned-count);
+            }).Where(x=>x.count>0).OrderByDescending(x=>(long)x.count*x.price).Take(12).ToArray();
     }
     private List<(string Tool,object Args)> BusinessShipment() {
         var stock=BusinessSaleStock();

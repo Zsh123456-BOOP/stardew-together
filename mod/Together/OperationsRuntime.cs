@@ -54,7 +54,7 @@ public sealed partial class ModEntry {
         else if(spec.id.StartsWith("farm-")||spec.id.StartsWith("invest-")){spec.source="investment";spec.priority=60;}
         else if(spec.id.StartsWith("business-")){spec.source="production";spec.priority=65;}
         if(spec.source=="goal")spec.priority=70;
-        if(spec.tool=="player.sleep")spec.priority=90;
+        if(spec.tool=="player.sleep"){spec.priority=90;spec.sleep_review_day=Game1.Date.TotalDays;spec.sleep_review_time=Game1.timeOfDay;spec.sleep_review_progress=Data.Autoplay.VerifiedActions;}
         if(spec.actor!="player"&&spec.tool=="work.run"&&AgentToolRegistry.Text(spec.args,"goal")=="harvest"&&FarmerHarvestCreditNeeded()) {
             var args=spec.args.Deserialize<Dictionary<string,JsonElement>>()!;args["actor_id"]=JsonSerializer.SerializeToElement("player");spec.args=JsonSerializer.SerializeToElement(args);spec.actor="player";
             spec.purpose="由Farmer执行原生收获，核验任务归属；"+spec.purpose;

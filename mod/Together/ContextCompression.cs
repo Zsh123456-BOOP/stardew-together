@@ -84,7 +84,7 @@ public static class ContextCompression {
             details="省略表示摘要，不代表没有目标；完整目标用progress.catalog，行动用action.status，历史用memory.search。当前任务/承诺/错误不做字符截断。"});
         return root.ToJsonString(AgentJson.Options);
     }
-    private static readonly string[] CapacityFields={"slot_count","free_slots","occupied","player_free_slots","capacity_constraints","capacity_version","capacity_release_conditions"};
+    private static readonly string[] CapacityFields={"slot_count","free_slots","occupied","player_free_slots","capacity_constraints","capacity_version","capacity_release_conditions","ownership"};
     public static JsonNode ModelToolObservation(string tool,JsonNode result,JsonObject packed,IReadOnlySet<string> degraded) {
         string? field=tool switch{"world.read"=>"inventory_plan","day.read" or "day.plan"=>"day","plan.read"=>"schedule","progress.roadmap"=>"progression",_=>null};
         // world.read includes farm/recruitment/full stocks absent from a snapshot.

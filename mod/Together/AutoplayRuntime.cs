@@ -133,7 +133,7 @@ public sealed partial class ModEntry {
         TickSurvivalQuality();TickBusinessTelemetry();if(!AutoplayRunning)return;
         try{if(TickAutomaticMenus())return;}catch(Exception e){EnterSurvival("sleep","automatic_menu_failed:"+e.Message);}
         if(TickSurvival())return;
-        TickCustomPartner();TickDailyAutomation();TickGoalAutomation();TickAgentSchedule();TickDecisionContinuation();FrameStage("schedule",ref stage);
+        TickCustomPartner();FrameStage("partner",ref stage);TickDailyAutomation();FrameStage("daily_pre",ref stage);TickGoalAutomation();FrameStage("goals_pre",ref stage);TickAgentSchedule();FrameStage("schedule",ref stage);TickDecisionContinuation();FrameStage("decision_apply",ref stage);
         if(deferredDecision!=null)return;
         if(SurvivalOwnsDay)return;
         TickDailyAutomation();FrameStage("daily",ref stage);

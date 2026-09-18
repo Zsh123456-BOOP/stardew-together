@@ -5,6 +5,11 @@ public static class AgentScheduleChecks {
     private static AgentTaskSpec Player(string id,params string[] deps)=>new(){id=id,actor="player",tool="player.move",args=JsonSerializer.SerializeToElement(new{x=1,y=2}),after=deps.ToList()};
     private static AgentTaskSpec Npc(string id)=>new(){id=id,actor="npc:Abigail",tool="companion.assign",args=JsonSerializer.SerializeToElement(new{actor_id="npc:Abigail",skill="follow"})};
     public static void Run(Action<bool,string> check) {
+        var independent=new AgentSchedule{Prepare=s=>{if(s.id=="store")throw new InvalidOperationException("capacity_all_candidates_infeasible");}};
+        independent.Submit("partial",0,new(){new(){id="store",tool="work.run"},new(){id="fish",tool="work.run",sequence_after=new(){"store"}},new(){id="needs-store",tool="player.buy",after=new(){"store"}}},0,retainIndependent:true);
+        var readyIndependent=independent.Ready(0,600);
+        check(readyIndependent.Count==1&&readyIndependent[0].spec.id=="fish"&&independent.Tasks.Single(t=>t.spec.id=="needs-store").state=="blocked","failed storage keeps independent fish but blocks real dependency");
+        check(DecisionBarrier.CanFollowFailure("world.read")&&DecisionBarrier.CanFollowFailure("work.run")&&!DecisionBarrier.CanFollowFailure("player.buy")&&!DecisionBarrier.CanFollowFailure("player.place"),"independent tail cannot bypass native service or production dependencies");
         check(AgentPollingPolicy.Defer(true,false,new[]{"plan.submit","world.read","action.status"}),"busy actors do not trigger paid polling loops for redundant state reads");
         check(!AgentPollingPolicy.Defer(false,false,new[]{"world.read"})&&!AgentPollingPolicy.Defer(true,true,new[]{"action.status"})&&!AgentPollingPolicy.Defer(true,false,new[]{"knowledge.get"}),"idle actors, tool errors and new knowledge still wake model planning");
         var guarded=new AgentSchedule{Prepare=t=>{if(t.id=="denied")throw new InvalidOperationException("known_failure_conditions_unchanged:door_closed");}};

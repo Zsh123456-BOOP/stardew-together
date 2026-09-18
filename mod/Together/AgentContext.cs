@@ -10,6 +10,7 @@ public sealed partial class ModEntry {
             cause=Data.Autoplay.Capacity.Constraints.Where(c=>c.Actor==actor&&c.CapacityVersion==Data.Autoplay.Capacity.Version&&CapacityState.IsCapacity(c.RootCause)).OrderByDescending(c=>c.RootCause=="capacity_all_candidates_infeasible").Select(c=>c.RootCause).FirstOrDefault()??cause;
         if(cause!=null)LearnActionResult(new ScheduledAgentTask{spec=new(){id=attemptId,actor=actor,tool=call.tool,args=call.args.Clone()}},"failed",cause);
         Data.Autoplay.Record("tool_result",AgentJson.Encode(new{attempt_id=attemptId,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,tool=call.tool,result=observed}));
+        if(observed.ValueKind==JsonValueKind.Object&&!observed.TryGetProperty("task_id",out _)&&!observed.TryGetProperty("command_id",out _))ObserveExecutionFailure(attemptId,actor,cause,"tool_result");
     }
     private static object ReceiptSummary(string? text) {
         if(string.IsNullOrEmpty(text))return new{};

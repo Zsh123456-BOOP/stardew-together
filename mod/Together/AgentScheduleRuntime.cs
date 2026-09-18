@@ -27,7 +27,7 @@ public sealed partial class ModEntry {
         revision=Data.Autoplay.Schedule.Revision,event_version=Data.Autoplay.Schedule.EventVersion,
         tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{t.spec,t.state,t.command_id,t.error}),
         recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=compact?ReceiptSummary(t.receipt):(object?)t.receipt}),
-        note="同一角色只能执行一个任务；after声明真正的前置条件，未来时间的任务不会挡住其他就绪工作。actor统一选择角色，args.actor_id省略时自动继承，显式冲突才拒绝。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
+        note="同一角色只能执行一个任务；after声明真正的前置条件；sequence_after仅保持执行顺序，前一步失败不影响独立工作。未来时间的任务不会挡住其他就绪工作。actor统一选择角色，args.actor_id省略时自动继承，显式冲突才拒绝。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
     };
     internal object AgentPlanSubmit(JsonElement args) {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
@@ -41,13 +41,20 @@ public sealed partial class ModEntry {
                 if(!World().GetProperty("actors").EnumerateArray().Any(a=>a.GetProperty("id").GetString()==spec.actor))throw new InvalidOperationException("actor_not_recruited");
             }
         }
-        bool added;try{added=Data.Autoplay.Schedule.Submit(AgentToolRegistry.Text(args,"submission_id"),AgentToolRegistry.Number(args,"expected_revision",-1),list,Game1.Date.TotalDays);}
+        bool added;try{added=Data.Autoplay.Schedule.Submit(AgentToolRegistry.Text(args,"submission_id"),AgentToolRegistry.Number(args,"expected_revision",-1),list,Game1.Date.TotalDays,retainIndependent:true);}
         catch(PlanStepRejected e) {
             var rejected=list.First(t=>t.id==e.TaskId);
             return new{status="failed",error=e.Message,rejected_task=new{rejected.id,rejected.tool,rejected.args,rejected.after,rejected.purpose},unsubmitted=list.Select(t=>new{t.id,t.tool,t.after}),revision=Data.Autoplay.Schedule.Revision,submitted_count=0,
                 note="整份提交未执行、未占用物资。仅该步骤的前置检查失败；保留独立步骤重新提交，真实after依赖不能删除冒充满足。按原始阻碍条件变化后重查。"};
         }
-        return new{status=added?"queued":"already_submitted",revision=Data.Autoplay.Schedule.Revision,ids=list.Select(t=>t.id),note="任务尚未执行；只以任务回执作为完成证据"};
+        var submitted=Data.Autoplay.Schedule.Tasks.Where(t=>list.Any(s=>s.id==t.spec.id)).ToArray();
+        foreach(var rejected in submitted.Where(t=>t.state=="blocked"&&t.error!=null))if(added) {
+            Data.Autoplay.Record("task_declaration_rejected",AgentJson.Encode(new{attempt_id=rejected.spec.id,rejected.spec.tool,rejected.error}));
+            ObserveExecutionFailure(rejected.spec.id,rejected.spec.actor,rejected.error,"declaration");
+        }
+        return new{status=added?(submitted.Any(t=>t.state=="blocked")?"queued_with_rejections":"queued"):"already_submitted",revision=Data.Autoplay.Schedule.Revision,
+            ids=submitted.Where(t=>t.state=="queued").Select(t=>t.spec.id),rejected=submitted.Where(t=>t.state=="blocked").Select(t=>new{t.spec.id,t.spec.tool,t.error,t.spec.after}),
+            note="排队不是完成；独立任务保留，受阻步骤及真实after后继不得冒充满足。sequence_after只表示执行顺序，前步结束后可检查自身条件继续。"};
     }
     internal object AgentPlanCancel(JsonElement args) {
         var ids=args.TryGetProperty("ids",out var raw)?JsonSerializer.Deserialize<List<string>>(raw.GetRawText()):null;
@@ -74,7 +81,7 @@ public sealed partial class ModEntry {
         if(duplicate!=null)return new{status="already_pending",task_id=duplicate.spec.id,duplicate.wait_reason,duplicate.spec.not_before,note="原目标已排队，未重复派单"};
         string location=actor=="player"?ToolLocationContract.Bind(call.tool,Game1.currentLocation.NameOrUniqueName,previous?.spec.tool,previous?.spec.location??"",previous==null?"":AgentToolRegistry.Text(previous.spec.args,"location"),AgentToolRegistry.Text(call.args,"location")):"";
         var task=new AgentTaskSpec{intent_id=decisionIntent,source="model",id="step-"+Guid.NewGuid().ToString("N"),actor=actor,tool=call.tool,args=call.args.Clone(),location=location,day=Game1.Date.TotalDays,purpose=Data.Autoplay.Plan[..Math.Min(160,Data.Autoplay.Plan.Length)]};
-        if(previous!=null)task.after.Add(previous.spec.id);
+        if(previous!=null){if(DecisionBarrier.CanFollowFailure(call.tool))task.sequence_after.Add(previous.spec.id);else task.after.Add(previous.spec.id);}
         Data.Autoplay.Schedule.Submit(task.id,Data.Autoplay.Schedule.Revision,new(){task},Game1.Date.TotalDays);
         return new{status="queued",task_id=task.id,actor,revision=Data.Autoplay.Schedule.Revision};
     }
@@ -109,6 +116,8 @@ public sealed partial class ModEntry {
         if(task.command_id!=null)agentClaims.Remove(task.command_id);
         Data.Autoplay.Record("action_result",AgentJson.Encode(result));
         Data.Autoplay.Record("task_finished",AgentJson.Encode(new{attempt_id=task.spec.id,id=task.spec.id,actor=task.spec.actor,state,error,command_id=task.command_id,capacity_version=Data.Autoplay.Capacity.Version}));
+        if(state=="failed")ObserveExecutionFailure(task.spec.id,task.spec.actor,error,"task_finished");
+        if(!AutoplayRunning)return;
         if(state is "succeeded" or "partial") {
             bool emptyWork=result.TryGetProperty("deferred",out var deferred)&&deferred.ValueKind==JsonValueKind.True || task.spec.tool=="work.run"&&new[]{"completed","gained","deposited","refills"}.All(k=>!result.TryGetProperty(k,out var n)||n.GetInt32()==0);
             if(outcome.BusinessProgress){agentFailures.Progress(task.spec.actor);agentFailures.Progress("decision");Data.Autoplay.VerifiedActions++;Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);Data.Autoplay.Agenda.CompletedBatches++;}
@@ -136,7 +145,7 @@ public sealed partial class ModEntry {
         PrepareServiceWindows();
         if(!AutoplayRunning || Game1.eventUp || Game1.fadeToBlack || Game1.locationRequest!=null)return;
         long version=schedule.EventVersion;
-        var ready=schedule.Ready(Game1.Date.TotalDays,Game1.timeOfDay,SpatialOrder);
+        var ready=schedule.Ready(Game1.Date.TotalDays,Game1.timeOfDay,SpatialOrder,WorkActorBusy);
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
@@ -153,7 +162,9 @@ public sealed partial class ModEntry {
                     task.wait_reason="companion_finishing_before_sleep";continue;
                 }
                 if(task.wait_reason=="companion_finishing_before_sleep")task.wait_reason=null;
+                if(ReviewQueuedSleep(task))continue;
                 if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
+                if(task.spec.tool=="player.sleep")sleepReview=null;
                 if(!PrepareTaskKit(task))continue;
                 if(!AdmitOperation(task))continue;
                 CheckKnownFailure(task);

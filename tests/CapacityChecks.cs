@@ -6,6 +6,14 @@ public static class CapacityChecks {
         foreach(var code in new[]{"loadout_stock_changed","loadout_storage_busy","loadout_native_capacity_changed"})check(!LoadoutSafety.MustStop(code,true)&&LoadoutSafety.MustStop(code,false)&&LoadoutSafety.MustStop(code,null)&&RecoveryPolicy.CanWait(code),"transfer interruption requires verified conservation: "+code);
         check(LoadoutSafety.MustStop("loadout_conservation_failed",true),"explicit conservation failure remains fatal");
         check(RecoveryPolicy.CanWait("loadout_shape_unsupported:multiple_storage")&&CapacityState.IsConstraint("loadout_shape_unsupported:multiple_storage")&&!CapacityState.IsCapacity("loadout_shape_unsupported:multiple_storage"),"shape constraint cannot globally block unrelated capacity-feasible work");
+        var scoped=new CapacityConstraint{Operation="store",RequiredSlots=6};
+        check(scoped.MatchesRelief("store",6,5,1)&&!scoped.MatchesRelief("store",4,5,1)&&!scoped.MatchesRelief("store",0,5,1),"six-slot failure does not ban four-slot or ordinary storage");
+        check(StorageTiming.StoreComplete(5,4,7,0)&&!StorageTiming.StoreComplete(5,6,0,0),"fulfilled capacity needs no fake transfer or warehouse trip");
+        var monitor=new ExecutionFailureWatch();
+        check(monitor.Observe("r","a","player","capacity_all_candidates_infeasible",1)==1&&monitor.Observe("r","a","player","capacity_all_candidates_infeasible",1)==0&&monitor.Observe("r","b","player","capacity_all_candidates_infeasible",1)==2&&monitor.Observe("r","c","player","capacity_all_candidates_infeasible",1)==3,"three distinct attempts stop synchronously; repeated receipt counts once");
+        check(monitor.Observe("r","d","player","capacity_all_candidates_infeasible",2)==1&&monitor.Observe("new","e","player","capacity_all_candidates_infeasible",2)==1,"physical version or new run separates failures");
+        var remembered=new ExecutionFailureWatch();
+        check(remembered.Observe("r","first","player","unknown_tool",0)==1&&remembered.Observe("r","second","player","known_failure_conditions_unchanged:unknown_tool:evidence=first",0)==2&&remembered.Observe("r","third","player","known_failure_conditions_unchanged:unknown_tool:evidence=first",0)==3,"first physical failure and remembered rejection retain one root, not separate evidence-key counters");
         var clicks=new MenuEffectWatch();
         check(clicks.Observe("a","c12",false)==1&&clicks.Observe("a","c12",false)==2&&clicks.Observe("a","c12",false)==3,"third same native no-effect is synchronous");
         check(clicks.Observe("b","c12",false)==1&&clicks.Observe("a","c13",false)==1,"different token or target not the same no-effect");

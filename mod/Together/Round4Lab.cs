@@ -5,6 +5,24 @@ namespace Together;
 public sealed partial class ModEntry {
     private object Round4NativeFixture(string mode) {
         if(!Settings.EnableLab||!Context.IsWorldReady||Game1.player.Name!="AgentLab")throw new InvalidOperationException("isolated_lab_required");
+        if(mode=="u6_read")return new{inventory_plan=InventoryPlanning(),sales=BusinessSaleStock(),sleep_review=sleepReview,schedule=AgentPlanRead(),snapshot=AgentSnapshot()};
+        if(mode=="u6_capacity_scope") {
+            if(playerExecutor.Busy||WorkActorBusy("player"))throw new InvalidOperationException("lab_requires_idle");
+            int free=CapacityAdapter.Of(Game1.player).FreeSlots;if(free<1||free>=12)throw new InvalidOperationException("lab_requires_partly_occupied_bag");
+            string before=AgentJson.Encode(AgentToolRegistry.Inventory());
+            RecordCapacityConstraint("capacity_all_candidates_infeasible","player",new[]{"fixture:larger_request_previously_infeasible"},"store",free+1);
+            string? large=null,small=null;
+            try{GuardCapacity("player","work.run",JsonSerializer.SerializeToElement(new{goal="store",required_free_slots=free+1}));}catch(InvalidOperationException e){large=e.Message;}
+            try{GuardCapacity("player","work.run",JsonSerializer.SerializeToElement(new{goal="store",required_free_slots=free}));}catch(InvalidOperationException e){small=e.Message;}
+            return new{free,large,small,inventory_unchanged=before==AgentJson.Encode(AgentToolRegistry.Inventory()),constraint=Data.Autoplay.Capacity.Constraints,
+                evidence="只注入声明缓存，未修改真实物品；随后必须实际执行已满足容量的存货任务核验零移动"};
+        }
+        if(mode=="u6_sleep_review") {
+            var task=new ScheduledAgentTask{spec=new(){id="lab-old-sleep",tool="player.sleep",source="model",day=Game1.Date.TotalDays,sleep_review_day=Game1.Date.TotalDays,sleep_review_time=Game1.timeOfDay-10,sleep_review_progress=Data.Autoplay.VerifiedActions}};
+            Data.Autoplay.Schedule.Tasks.Add(task);string before=AgentJson.Encode(AgentSnapshot());
+            bool reviewed=ReviewQueuedSleep(task);
+            return new{reviewed,task.state,task.error,sleepReview,native_state_unchanged=before==AgentJson.Encode(AgentSnapshot()),evidence="仅模拟先前排队时刻，进入实际睡眠派发前复核；未推进游戏时间或原生睡眠"};
+        }
         if(mode=="autonomy7") {
             RefreshFacts(true);var at=Game1.player.TilePoint;var l=Game1.currentLocation;var paths=new System.Collections.Generic.List<object>();
             foreach(var end in new[]{new Microsoft.Xna.Framework.Point(at.X+6,at.Y),new(at.X-6,at.Y),new(at.X,at.Y+6),new(at.X,at.Y-6)}) {

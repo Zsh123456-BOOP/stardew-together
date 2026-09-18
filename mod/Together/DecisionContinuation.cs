@@ -36,7 +36,10 @@ public sealed partial class ModEntry {
                 object result;
                 var before=Data.Autoplay.Schedule.Tasks.Select(t=>t.spec.id).ToHashSet();
                 try {
-                    if(!DecisionBarrier.Control(call.tool)&&barrier=="failed")throw new InvalidOperationException("decision_dependency_failed_replan");
+                    if((batch.Error||barrier=="failed")&&!DecisionBarrier.CanFollowFailure(call.tool)) {
+                        batch.Index++;batch.Followup=true;
+                        Data.Autoplay.Record("decision_dependency_not_applied",AgentJson.Encode(new{batch.Intent,call.tool,reason="prior_call_failed_requires_fresh_observation",batch.After}));continue;
+                    }
                     var args=call.tool=="plan.submit"?AgentSchedule.RebaseOwnTurn(call.args,batch.Revision,Data.Autoplay.Schedule.Revision):call.args;
                     if(!AgentSchedule.Queueable(call.tool)&&!DecisionBarrier.Control(call.tool))CheckKnownFailure(new ScheduledAgentTask{spec=new(){actor="player",tool=call.tool,args=args}});
                     result=AgentSchedule.Queueable(call.tool)?QueueLegacyAction(call):agentTools.Execute(call.tool,args);
@@ -44,6 +47,7 @@ public sealed partial class ModEntry {
                 // Invocation has happened: receipt handling must never replay its side effects next tick.
                 batch.Index++;
                 var observed=WithBlockedAlternatives(JsonSerializer.SerializeToElement(result,AgentJson.Options));RecordToolAttempt(call,observed);
+                if(!AutoplayRunning)return;
                 foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>!before.Contains(t.spec.id)))if(!batch.After.Contains(task.spec.id))batch.After.Add(task.spec.id);
                 if(DecisionBarrier.Text(observed,"task_id") is {} taskId&&!batch.After.Contains(taskId))batch.After.Add(taskId);
                 // menu.choose can start a native command directly rather than submit a task.
@@ -54,9 +58,10 @@ public sealed partial class ModEntry {
                 }
                 if(DecisionBarrier.Text(observed,"error") is {} error) {
                     RecordAgentFailure(error);batch.Followup=true;batch.Error=true;
-                    Data.Autoplay.Record("decision_tail_not_applied",AgentJson.Encode(new{batch.Intent,failed_tool=call.tool,remaining=batch.Calls.Skip(batch.Index)}));
-                    batch.Index=batch.Calls.Count;break;
+                    Data.Autoplay.Record("decision_independent_tail_review",AgentJson.Encode(new{batch.Intent,failed_tool=call.tool,remaining=batch.Calls.Skip(batch.Index),note="独立工具逐项检查；真实依赖仍不执行"}));
+                    if(!AutoplayRunning)return;
                 }
+                if(DecisionBarrier.Text(observed,"status")=="queued_with_rejections")batch.Followup=true;
                 if(!AgentSchedule.Queueable(call.tool)&&call.tool is not ("plan.submit" or "agent.wait" or "agent.pause"))batch.Followup=true;
             }
             if(deferredDecision==batch){deferredDecision=null;Data.Autoplay.Record("decision_continuation_finished",AgentJson.Encode(new{batch.Intent,batch.Error}));WakeAgent("deferred_tool_results");}

@@ -17,12 +17,13 @@ public sealed partial class ModEntry {
         var state=Data.Autoplay.Capacity;bool had=state.Constraints.Count>0;
         if(state.Observe(stamp)&&had)Data.Autoplay.Record("capacity_constraints_released",AgentJson.Encode(new{state.Version,reason="capacity_facts_changed"}));
     }
-    private void RecordCapacityConstraint(string code,string actor="player",string[]? excluded=null) {
+    private void RecordCapacityConstraint(string code,string actor="player",string[]? excluded=null,string operation="",int requiredSlots=0) {
         if(!CapacityState.IsConstraint(code))return;
         RefreshCapacityVersion();if(actor=="decision")actor="player";
         var state=Data.Autoplay.Capacity;
         if(state.Constraints.Any(c=>c.Actor==actor&&c.RootCause==code&&c.CapacityVersion==state.Version) )return;
         state.Block(actor,code,Game1.Date.TotalDays,Game1.timeOfDay,excluded);
+        state.Constraints.Last().Operation=operation;state.Constraints.Last().RequiredSlots=requiredSlots;
         Data.Autoplay.Record("capacity_constraint_created",AgentJson.Encode(state.Constraints.Last()));
     }
     private CapacityVerdict? CapacityAdmission(string tool,JsonElement args) {
@@ -49,9 +50,18 @@ public sealed partial class ModEntry {
     }
     private void GuardCapacity(string actor,string tool,JsonElement args) {
         if(actor!="player")return;
-        RefreshCapacityVersion();var state=Data.Autoplay.Capacity;
+        int required=AgentToolRegistry.Number(args,"required_free_slots",0),free=CapacityAdapter.Of(Game1.player).FreeSlots;
+        string goal=tool=="work.run"?AgentToolRegistry.Text(args,"goal"):"";
+        int storable=goal=="store"?Game1.player.Items.Where(i=>i!=null).Sum(StoreCount):0;
+        // A fulfilled postcondition never inherits an older, larger request.
+        if(goal=="store"&&StorageTiming.StoreComplete(free,required,storable,0))return;
+        var state=Data.Autoplay.Capacity;
+        // Successful work without a recorded capacity block needs no storage path search.
+        // RecordCapacityConstraint refreshes facts when a block is first established.
+        if(!state.Constraints.Any(c=>c.Actor==actor&&CapacityState.IsCapacity(c.RootCause)))return;
+        RefreshCapacityVersion();
         if(!state.Constraints.Any(c=>c.Actor==actor&&c.CapacityVersion==state.Version&&CapacityState.IsCapacity(c.RootCause)))return;
-        if(tool=="work.run"&&AgentToolRegistry.Text(args,"goal") is "store" or "storage_expand"&&state.Constraints.Any(c=>c.Actor==actor&&c.CapacityVersion==state.Version&&c.RootCause=="capacity_all_candidates_infeasible")) {
+        if(tool=="work.run"&&AgentToolRegistry.Text(args,"goal") is "store" or "storage_expand"&&state.Constraints.Any(c=>c.Actor==actor&&c.CapacityVersion==state.Version&&c.RootCause=="capacity_all_candidates_infeasible"&&c.MatchesRelief(goal,required,free,storable))) {
             Data.Autoplay.Record("capacity_dispatch_blocked",AgentJson.Encode(new{actor,tool,state.Version,reason="relief_already_proved_infeasible",excluded=state.Constraints.Where(c=>c.Actor==actor).SelectMany(c=>c.ExcludedCandidates),alternatives="重新检查实际可行的生产消耗与仓储材料前置；不要重复存货"}));
             throw new InvalidOperationException("known_failure_conditions_unchanged:capacity_relief:"+state.Version);
         }

@@ -3,7 +3,7 @@ namespace Together;
 // Storage is a prerequisite or a delivery, never a reward for finishing a batch.
 public static class StorageTiming {
     // Completion is a physical postcondition, independent of recovery stack depth.
-    public static bool StoreComplete(int freeSlots,int requiredSlots,int storable,int deposited)=>requiredSlots>0?freeSlots>=requiredSlots&&(deposited>0||storable==0):storable==0;
+    public static bool StoreComplete(int freeSlots,int requiredSlots,int storable,int deposited)=>requiredSlots>0?freeSlots>=requiredSlots:storable==0;
     public static bool NeedsRoom(int freeSlots,bool expectsOutput,bool stackHasRoom)=>expectsOutput&&!stackHasRoom&&!CapacityPlan.FreeFits(freeSlots,1);
     public static string DeliveryReason(int storable,int freeSlots,bool closesMaterialGap,bool endOfDay) {
         if(storable<=0)return "";

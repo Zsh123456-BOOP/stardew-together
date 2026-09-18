@@ -21,6 +21,13 @@ class FailureWatchChecks(unittest.TestCase):
    e=self.event(str(i));e['payload']['root_cause']='capacity_no_stackable_room'
    stop=w.observe(e)
   self.assertEqual(stop['root'],'capacity_no_stackable_room')
+ def test_remembered_rejection_keeps_original_root(self):
+  w=RootFailureWatch()
+  for i in range(3):
+   e=self.event(str(i));e['payload']['result']['error']='unknown_tool' if i==0 else 'known_failure_conditions_unchanged:unknown_tool:evidence=0'
+   stop=w.observe(e)
+   self.assertEqual(stop is not None,i==2)
+  self.assertEqual(stop['root'],'unknown_tool')
  def test_queued_and_terminal_not_double_counted(self):
   w=RootFailureWatch();e=self.event('one');e['payload']['result']['task_id']='one'
   self.assertIsNone(w.observe(e));self.assertIsNone(w.observe(self.event('one',tool=False)))

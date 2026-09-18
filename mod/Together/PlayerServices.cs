@@ -70,7 +70,7 @@ public sealed partial class PlayerExecutor {
                 // direction is left to the native action's own condition validation.
                 foreach(var stand in new[]{new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}) {
                     if(!Passable(l,stand))continue;
-                    try{Walk(stand);serviceTile=at;Current.effects.Add(new{kind="service_counter_stand",counter=at,stand,location=l.NameOrUniqueName});Current.phase="service_walk";break;}catch(InvalidOperationException){ }
+                    try{Walk(stand);serviceTile=at;Current.effects.Add(new{kind="service_counter_stand",counter=new{x=at.X,y=at.Y},stand=new{x=stand.X,y=stand.Y},location=l.NameOrUniqueName});Current.phase="service_walk";break;}catch(InvalidOperationException){ }
                 }
                 if(serviceTile.HasValue)break;
             }

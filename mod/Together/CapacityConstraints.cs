@@ -5,6 +5,9 @@ public sealed class CapacityConstraint {
     public string RootCause {get;set;}="";
     public long CapacityVersion {get;set;}
     public string[] ExcludedCandidates {get;set;}=Array.Empty<string>();
+    public string Operation {get;set;}="";
+    public int RequiredSlots {get;set;}
+    public bool MatchesRelief(string operation,int required,int free,int storable)=>Operation==operation&&(operation!="store"||required>free&&required>=RequiredSlots&&RequiredSlots>0||operation=="store"&&required==0&&RequiredSlots==0&&storable>0);
     public int Day {get;set;}
     public int Time {get;set;}
 }

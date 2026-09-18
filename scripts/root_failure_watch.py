@@ -18,7 +18,7 @@ class RootFailureWatch:
         version=p.get('capacity_version')
         prefix='known_failure_conditions_unchanged:'
         if root.startswith(prefix):
-            root=root[len(prefix):]
+            root=root[len(prefix):].split(':evidence=',1)[0]
             if root.startswith(('capacity:','capacity_relief:')):
                 try:version=int(root.rsplit(':',1)[1])
                 except ValueError:return None

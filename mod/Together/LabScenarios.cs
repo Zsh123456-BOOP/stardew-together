@@ -31,6 +31,7 @@ public sealed partial class ModEntry {
                 try{var result=ApplyDecisionCalls(turn.calls,Data.Autoplay.Schedule.Revision);return AgentJson.Encode(new{result.Followup,result.Error,pending=deferredDecision!=null,intent=decisionIntent});}
                 finally{decisionIntent="";}
             }
+            case "clearance_probe":return AgentJson.Encode(playerExecutor.ClearanceProbe(Num("offset")));
             case "round4":return AgentJson.Encode(Round4NativeFixture(Arg("mode","read")));
             case "round3":return AgentJson.Encode(Round3NativeFixture(Arg("mode","read")));
             case "round2_observation": {

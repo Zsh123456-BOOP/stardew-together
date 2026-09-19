@@ -59,7 +59,7 @@ public sealed partial class PlayerExecutor {
     private string eatingItem="";
     private object? workBefore,actionTargetBefore;
     public bool ClaimsTile(string location,int x,int y)=>Busy && origin==location && (Current!.skill=="player.work"?workTiles.Skip(workIndex).Any(p=>p.X==x&&p.Y==y):Current.skill is "player.use_tool" or "player.place" or "player.interact" && target.X==x&&target.Y==y);
-    public void ClearWorld(){Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;stowedForWalk=false;walkingItemSlot=walkingNeutralSlot=-1;}
+    public void ClearWorld(){ResetClearance();deferredDrops.Clear();Current=null;receipts.Clear();ownedController=null;boundaryDriving=false;stowedForWalk=false;walkingItemSlot=walkingNeutralSlot=-1;}
     public void ClearStopped(){if(!Busy){Current=null;receipts.Clear();}}
     public object Poll(string id) {
         if(!receipts.TryGetValue(id,out var r))throw new InvalidOperationException("unknown_player_action");
@@ -70,6 +70,7 @@ public sealed partial class PlayerExecutor {
     public object Cancel(string? id=null) {
         if(id!=null && (!receipts.TryGetValue(id,out var receipt) || receipt!=Current))return Poll(id);
         if(Busy) {
+            if(clearRoute!=null&&Game1.player.UsingTool){cancelAfterImpact=true;return Current!;}
             if(sleepConfirmed)return new{command_id=Current!.command_id,status="running",error="native_save_in_progress_cannot_cancel"};
             if(Current!.skill=="player.work"&&Current.phase=="work_impact") {
                 cancelAfterImpact=true;
@@ -94,7 +95,7 @@ public sealed partial class PlayerExecutor {
         Current=new(){skill=skill,before=Snapshot()};receipts.Add(Current.command_id,Current);
         started=lastProgress=nextInteraction=nextTravelInteraction=DateTime.UtcNow;origin=Game1.currentLocation.NameOrUniqueName;
         activeSeconds=0;lastActiveTick=started;pathSearches=pathRetries=0;pathSearchMs=0;approachPath=null;
-        ResetPickup();
+        ResetPickup();ResetClearance();workReserve=Math.Max(0,AgentToolRegistry.Number(args,"reserve_stamina",0));
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;routeAccessDenied=false;edge=null;
         try {
             switch(skill) {
@@ -221,7 +222,7 @@ public sealed partial class PlayerExecutor {
                     Finish("succeeded");break;
                 default:throw new InvalidOperationException("unsupported_player_skill");
             }
-        }catch(Exception e){Finish("failed",e is InvalidOperationException?e.Message:e.GetType().Name);}
+        }catch(Exception e){Finish(e.Message=="pickup_deferred_conditions_unchanged"?"partial":"failed",e is InvalidOperationException?e.Message:e.GetType().Name);}
         return Current;
     }
     private static Point Tile(JsonElement a) {
@@ -265,13 +266,14 @@ public sealed partial class PlayerExecutor {
     private bool AtWalkTarget=>Game1.player.TilePoint==target&&(ownedController?.pathToEndPoint?.Count??0)==0;
     private Stack<Point>? MeasuredPath(Point p) {
         var begin=System.Diagnostics.Stopwatch.GetTimestamp();
-        var path=PreviewPath(Game1.currentLocation,p);pathSearches++;
+        var path=ClearancePath(p,PreviewPath(Game1.currentLocation,p));pathSearches++;
         pathSearchMs+=(System.Diagnostics.Stopwatch.GetTimestamp()-begin)*1000.0/System.Diagnostics.Stopwatch.Frequency;return path;
     }
     private void Walk(Point p) {
         StopWalk();target=p;
         var path=approachPath!=null&&approachLocation==Game1.currentLocation&&approachStart==Game1.player.TilePoint&&approachEnd==p?approachPath:MeasuredPath(p);
         approachPath=null;
+        if(BeginClearance(path,p))return;
         RouteObserved?.Invoke(new{command_id=Current?.command_id,skill=Current?.skill,phase=Current?.phase,location=Game1.currentLocation.NameOrUniqueName,from=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},to=new[]{p.X,p.Y},path_tiles=path?.Count,planned_path=path?.Select(t=>new[]{t.X,t.Y}).ToArray(),destination});
         var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p);
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
@@ -311,6 +313,8 @@ public sealed partial class PlayerExecutor {
         if(gap>2)lastProgress=now; // Suspended app frames are not failed path attempts.
         if(Game1.game1.IsActive||!Game1.options.pauseWhenOutOfFocus)activeSeconds+=Math.Clamp(Game1.currentGameTime.ElapsedGameTime.TotalSeconds,0,.1);
         try {
+            if(cancelAfterImpact&&clearRoute!=null){if(Game1.player.UsingTool)return;TickClearance();Finish("cancelled","cancelled_after_native_impact");return;}
+            if(TickClearance())return;
             TryRoutePickup();
             if(cancelAfterImpact) {
                 if(Game1.player.UsingTool)return;
@@ -416,7 +420,7 @@ public sealed partial class PlayerExecutor {
             }
             if(Game1.activeClickableMenu!=null){Finish("failed","menu_interrupted_read_menu");return;}
             MonitorWalk();
-        }catch(Exception e){Finish("failed",e is InvalidOperationException?e.Message:e.GetType().Name);}
+        }catch(Exception e){Finish(e.Message=="pickup_deferred_conditions_unchanged"?"partial":"failed",e is InvalidOperationException?e.Message:e.GetType().Name);}
     }
     private static ResourceClump? ClumpAt(Point p)=>Game1.currentLocation.resourceClumps.FirstOrDefault(c=>p.X>=c.Tile.X&&p.X<c.Tile.X+c.width.Value&&p.Y>=c.Tile.Y&&p.Y<c.Tile.Y+c.height.Value);
     private static object TileState(Point p) {
@@ -614,7 +618,7 @@ public sealed partial class PlayerExecutor {
         }
         if(Context.IsWorldReady&&NativeMenuTools.HeldItem() is {} heldOutput)Current.effects.Add(new{kind="native_output_pending",item=AgentToolRegistry.ItemInfo(heldOutput),transaction=Current.command_id,recipe=productionRecipe,remaining=productionRemaining,already_crafted=Current.completed,resume="receive_via_native_menu_when_capacity_available",blocked="held_output_preserved; do_not_recollect_ingredients"});
         Current.effects.Add(new{kind="navigation_summary",path_searches=pathSearches,path_search_ms=pathSearchMs,path_retries=pathRetries,active_seconds=activeSeconds});
-        StopWalk();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
+        StopWalk();ResetClearance();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {
         foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp.TargetName=="VolcanoEntrance"?new Warp(warp.X,warp.Y,NormalizeWarpTarget(warp.TargetName),warp.TargetX,warp.TargetY,false):warp;

@@ -181,14 +181,15 @@ public sealed partial class ModEntry {
         if(order==null||order.Status!="active"||order.Recurring&&(!Data.Maintenance.Enabled||!Data.Business.Enabled)){StopSemanticWork(job,"cleanup_order_paused");return;}
         if(order.Scopes.Any(s=>s.StartsWith("zone:")&&!Data.Maintenance.Zones.Any(z=>s=="zone:"+z.Id))){StopSemanticWork(job,"cleanup_zone_removed_replan");return;}
         FarmCleanupRules.NewDay(order,Game1.Date.TotalDays);
-        if(order.PendingPickup.Count>0) {
+        if(order.PendingPickup.Any(p=>playerExecutor.PickupTileEligible(new Point(p.X,p.Y)))) {
             job.PickupTiles=order.PendingPickup.Select(p=>new Point(p.X,p.Y)).ToList();
             WorkChild(job,"player.collect_drops",new{tiles=job.PickupTiles.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;
         }
         var targets=CleanupTargets().Where(t=>CleanupMatches(order,t)).OrderBy(t=>FarmCleanupRules.Priority(t.Scope)).ThenBy(t=>Math.Abs(t.Tile.X-Game1.player.TilePoint.X)+Math.Abs(t.Tile.Y-Game1.player.TilePoint.Y)).ToArray();
         if(targets.Length==0){
-            var loose=CleanupLoose(order).OrderBy(p=>Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y)).Take(6).ToArray();
+            var loose=CleanupLoose(order).Where(playerExecutor.PickupTileEligible).OrderBy(p=>Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y)).Take(6).ToArray();
             if(loose.Length>0){job.PickupTiles=loose.ToList();WorkChild(job,"player.collect_drops",new{tiles=loose.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;}
+            if(order.PendingPickup.Count>0||CleanupLoose(order).Length>0){StopSemanticWork(job,"pickup_deferred_conditions_unchanged");return;}
             order.Status="complete";order.Reason="current_scope_clear";order.RetryAt=BusinessMinute+60;StopSemanticWork(job,"cleanup_scope_clear",true);return;
         }
         if(FarmCleanupRules.RemainingBudget(order)==0){StopSemanticWork(job,"cleanup_daily_budget_reached",true);return;}

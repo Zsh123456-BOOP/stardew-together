@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Xna.Framework;
 using StardewValley;
+using StardewValley.TerrainFeatures;
 
 namespace Together;
 
@@ -8,6 +9,32 @@ public sealed partial class PlayerExecutor {
     internal sealed record LooseDrop(Debris Source,Vector2 Pixel,Item Item);
     internal Func<bool>? LabPickupBlock;
     private Debris? pickupTarget;
+    private sealed record DeferredDrop(string Location,Point Tile,string Facts,string Reason,float Energy);
+    private readonly Dictionary<Debris,DeferredDrop> deferredDrops=new();
+    private string DropRouteFacts(GameLocation l,Point at) {
+        var facts=new List<string>();
+        for(int y=at.Y-5;y<=at.Y+5;y++)for(int x=at.X-5;x<=at.X+5;x++) {
+            var v=new Vector2(x,y);if(l.objects.TryGetValue(v,out var o))facts.Add($"{x},{y}:{o.QualifiedItemId}:{o.MinutesUntilReady}");
+            if(l.terrainFeatures.TryGetValue(v,out var f))facts.Add($"{x},{y}:{f.GetType().Name}:{(f as Tree)?.health.Value}");
+        }
+        facts.Add(string.Join(";",Game1.player.Items.Select(i=>i==null?"empty":$"{i.QualifiedItemId}:{i.Quality}:{i.Stack}")));
+        facts.Add(string.Join(";",Game1.player.Items.OfType<Tool>().Select(t=>$"{t.QualifiedItemId}:{t.UpgradeLevel}")));
+        return string.Join("|",facts);
+    }
+    internal bool PickupEligible(LooseDrop drop) {
+        if(!deferredDrops.TryGetValue(drop.Source,out var blocked))return true;
+        var at=(drop.Pixel/64).ToPoint();
+        if(blocked.Location!=Game1.currentLocation.NameOrUniqueName||Math.Abs(at.X-blocked.Tile.X)+Math.Abs(at.Y-blocked.Tile.Y)>1||Game1.player.Stamina>blocked.Energy+4||blocked.Facts!=DropRouteFacts(Game1.currentLocation,blocked.Tile)) {deferredDrops.Remove(drop.Source);return true;}
+        return false;
+    }
+    internal bool PickupTileEligible(Point tile)=>LooseDrops(Game1.currentLocation).Any(d=>Vector2.DistanceSquared(d.Pixel,tile.ToVector2()*64+new Vector2(32))<=320*320&&PickupEligible(d));
+    private void DeferPickup(IEnumerable<LooseDrop> drops,string reason) {
+        foreach(var g in drops.GroupBy(d=>d.Source)) {
+            var first=g.First();var at=(first.Pixel/64).ToPoint();deferredDrops[g.Key]=new(Game1.currentLocation.NameOrUniqueName,at,DropRouteFacts(Game1.currentLocation,at),reason,Game1.player.Stamina);
+        }
+        Current!.effects.Add(new{kind="pickup_deferred",reason,remaining=drops.Count(),positions=drops.Select(d=>new{item=d.Item.QualifiedItemId,pixel=new[]{d.Pixel.X,d.Pixel.Y}}),resume="local obstacles, inventory capacity, energy recovery, available tools or drop position changes; other work may continue"});
+        throw new InvalidOperationException("pickup_deferred_conditions_unchanged");
+    }
     private DateTime pickupProgressAt;
     private int pickupLastCount=-1,pickupWalks;
     private bool pickupWalking;
@@ -44,7 +71,10 @@ public sealed partial class PlayerExecutor {
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("pickup_location_changed");
         var observed=LooseDrops(Game1.currentLocation).ToArray();
         foreach(var drop in observed.Where(d=>centers.Any(p=>Vector2.DistanceSquared(d.Pixel,p.ToVector2()*64+new Vector2(32))<=320*320)))pickupTracked.Add(drop.Source);
-        var drops=observed.Where(d=>pickupTracked.Contains(d.Source)).ToArray();
+        foreach(var gone in deferredDrops.Keys.Where(d=>deferredDrops[d].Location==Game1.currentLocation.NameOrUniqueName&&!Game1.currentLocation.debris.Contains(d)).ToArray())deferredDrops.Remove(gone);
+        var tracked=observed.Where(d=>pickupTracked.Contains(d.Source)).ToArray();
+        var drops=tracked.Where(PickupEligible).ToArray();
+        if(tracked.Length>0&&drops.Length==0)DeferPickup(tracked,"unchanged_pickup_obstacle");
         if(drops.Length>0&&LabPickupBlock?.Invoke()==true){LabPickupBlock=null;StopWalk();Current!.effects.Add(new{kind="lab_injected_pickup_block",remaining=drops.Length,positions=drops.Select(d=>d.Pixel).ToArray(),note="fault injection, not a claim of measured path failure"});throw new InvalidOperationException("pickup_unreachable");}
         if(drops.Length==0) {
             StopWalk();Current!.effects.Add(new{kind="pickup_verified",remaining=0,walks=pickupWalks});return false;
@@ -74,7 +104,7 @@ public sealed partial class PlayerExecutor {
         }
         if(stalled&&++pickupRepositions>6) {
             Current!.effects.Add(new{kind="pickup_stalled_evidence",player=new[]{player.X,player.Y},radius,remaining=drops.Length,groups=available.Select(d=>new{item=d.Item.QualifiedItemId,at=new[]{d.Pixel.X,d.Pixel.Y},native_owner=d.Source.player.Value?.UniqueMultiplayerID,chunks=d.Source.Chunks.Count})});
-            throw new InvalidOperationException("pickup_not_progressing_after_reposition");
+            DeferPickup(drops,"pickup_not_progressing_after_reposition");
         }
         // Use the Farmer's actual standing offset; tile centre is not necessarily
         // the native attraction point. A stalled group gets a closer reachable
@@ -83,7 +113,7 @@ public sealed partial class PlayerExecutor {
         int approachRadius=stalled?Math.Min(radius,64):radius;
         foreach(var drop in available.OrderBy(d=>Vector2.DistanceSquared(d.Pixel,player))) {
             var at=(drop.Pixel/64).ToPoint();
-            var stands=(from y in Enumerable.Range(at.Y-1,3) from x in Enumerable.Range(at.X-1,3) select new Point(x,y))
+            var stands=(from y in Enumerable.Range(at.Y-(int)Math.Ceiling(approachRadius/64d)-1,2*(int)Math.Ceiling(approachRadius/64d)+3) from x in Enumerable.Range(at.X-(int)Math.Ceiling(approachRadius/64d)-1,2*(int)Math.Ceiling(approachRadius/64d)+3) select new Point(x,y))
                 .Where(p=>p!=Game1.player.TilePoint&&(!stalled||!pickupVisited.Contains(p))&&Passable(Game1.currentLocation,p)&&Math.Abs(p.X*64+offset.X-drop.Pixel.X)<=approachRadius&&Math.Abs(p.Y*64+offset.Y-drop.Pixel.Y)<=approachRadius)
                 .OrderBy(p=>stalled?Vector2.DistanceSquared(p.ToVector2()*64+offset,drop.Pixel):Math.Abs(p.X-Game1.player.TilePoint.X)+Math.Abs(p.Y-Game1.player.TilePoint.Y));
             foreach(var stand in stands) {
@@ -94,6 +124,6 @@ public sealed partial class PlayerExecutor {
                 Walk(stand);pickupTarget=drop.Source;pickupWalking=true;pickupWalks++;pickupBestDistance.Clear();pickupProgressAt=DateTime.UtcNow;Current!.phase="pickup_walk";return true;
             }
         }
-        throw new InvalidOperationException("pickup_unreachable");
+        DeferPickup(drops,"pickup_unreachable_after_clearance_search");return true;
     }
 }

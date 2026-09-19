@@ -201,7 +201,7 @@ public sealed partial class ModEntry {
         if(j.actor=="player"&&playerExecutor.Current is {} ended&&workFinishedAt.Remove(ended.command_id,out var finished))Data.Autoplay.Record("work_handoff",AgentJson.Encode(new{j.command_id,from=ended.command_id,to=tool,delay_ms=(DateTime.UtcNow-finished).TotalMilliseconds}));
         j.ChildKind=kind;j.Target=target;j.BeforeCount=WorkCount(j);j.Attempts++;
         var json=JsonSerializer.SerializeToElement(args);
-        if(tool=="player.work") {var enriched=System.Text.Json.Nodes.JsonNode.Parse(json.GetRawText())!.AsObject();enriched["reserve_stamina"]=j.Reserve;json=JsonSerializer.SerializeToElement(enriched);}
+        if(tool is "player.work" or "player.move" or "player.travel" or "player.collect_drops") {var enriched=System.Text.Json.Nodes.JsonNode.Parse(json.GetRawText())!.AsObject();enriched["reserve_stamina"]=j.Reserve;json=JsonSerializer.SerializeToElement(enriched);}
         if(tool=="player.work"&&json.TryGetProperty("tiles",out var tiles))j.PickupTiles=tiles.EnumerateArray().Select(t=>new Point(t.GetProperty("x").GetInt32(),t.GetProperty("y").GetInt32())).ToList();
         var result=JsonSerializer.SerializeToElement(tool=="companion.assign"?AgentCompanion(json):playerExecutor.Start(tool,json),AgentJson.Options);
         if(!result.TryGetProperty("command_id",out var id))throw new InvalidOperationException(result.TryGetProperty("error",out var e)?e.GetString():"work_child_not_started");
@@ -265,6 +265,7 @@ public sealed partial class ModEntry {
                 }
                 else if(j.goal=="mine_trip"&&j.ChildKind!="mine_exit") {if(j.ChildKind=="mine_stone"&&error is "no_path" or "path_stalled" or "resource_no_longer_present")j.Excluded.Add(j.Target);else if(j.ChildKind=="mine_combat"&&error=="current_area_clear_before_requested_kills"){}else j.MineReturnReason="mine_interrupted:"+error;}
                 else if(j.ChildKind=="care_batch"&&error is "eligible_animals_exhausted" or "eligible_animal_products_exhausted" or "all_resident_animals_already_have_feed"){StopSemanticWork(j,"native_daily_care_complete",j.requested==0);return;}
+                else if(error=="pickup_deferred_conditions_unchanged") {j.PickupPending=false;j.PickupTiles.Clear();j.phase="selecting";j.evidence.Add(new{kind="pickup_deferred_other_work_continues",receipt=r});}
                 else if(error.StartsWith("capacity_")&&j.ReliefDepth>0){StopSemanticWork(j,"relief_prerequisite_failed:"+error);return;}
                 else if(error.StartsWith("capacity_")&&j.actor=="player"&&j.PickupTiles.Count>0) {j.PickupPending=true;j.Storing=true;j.phase="storage_for_pickup";}
                 else if(j.ChildKind is "labor" or "cleanup_labor"&&error=="protected_scythe_sweep_no_safe_stand") {
@@ -292,6 +293,7 @@ public sealed partial class ModEntry {
         if(Game1.Date.TotalDays!=j.Day){StopSemanticWork(j,"day_changed_replan");return;}
         if(Game1.eventUp||Game1.activeClickableMenu!=null){if(j.actor=="player")StopSemanticWork(j,"interaction_requires_model");return;}
         if(Game1.fadeToBlack||Game1.locationRequest!=null||j.actor=="player"&&(!Game1.player.CanMove||Game1.player.UsingTool))return;
+        if(j.PickupPending&&!j.PickupTiles.Any(playerExecutor.PickupTileEligible))j.PickupPending=false;
         if(j.PickupPending) {
             if(j.Storing){TickWorkStorage(j);return;}
             if(Game1.currentLocation.NameOrUniqueName!=j.location){WorkChild(j,"player.travel",new{location=j.location},"pickup_return");return;}
@@ -322,7 +324,7 @@ public sealed partial class ModEntry {
         }
         if(j.actor=="player"&&j.goal is "cleanup" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "harvest" or "forage"
             &&!(j.goal=="cleanup"&&Data.Maintenance.Orders.Any(o=>o.Id==j.CleanupId&&o.PendingPickup.Count>0))) {
-            var loose=PlayerExecutor.LooseDrops(origin.Location).Where(d=>Vector2.DistanceSquared(d.Pixel,Game1.player.StandingPixel.ToVector2())<=256*256).Select(d=>(d.Pixel/64).ToPoint()).Distinct().Take(6).ToList();
+            var loose=PlayerExecutor.LooseDrops(origin.Location).Where(d=>playerExecutor.PickupEligible(d)&&Vector2.DistanceSquared(d.Pixel,Game1.player.StandingPixel.ToVector2())<=256*256).Select(d=>(d.Pixel/64).ToPoint()).Distinct().Take(6).ToList();
             if(loose.Count>0) {j.PickupTiles=loose;WorkChild(j,"player.collect_drops",new{tiles=loose.Select(p=>new{x=p.X,y=p.Y})},"pickup_recovery");return;}
         }
         if(j.goal=="cleanup"){if(j.actor=="player")TickCleanupWork(j);else TickCompanionCleanup(j);}

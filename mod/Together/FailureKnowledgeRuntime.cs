@@ -9,6 +9,7 @@ public sealed partial class ModEntry {
                 RefreshFacts(true);
                 return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,period=Game1.timeOfDay/100,energy=(int)p.Stamina/10,Facts.DryCrops,Facts.RipeCrops,Facts.FeedNeeded,reviewed=dayReviewed==Game1.Date.TotalDays}));
             }
+            if(reason.StartsWith("social_basis_required"))return FailureKnowledge.Hash(AgentJson.Encode(new{social=SocialObservation.Read(p),basis=SocialBasis(args),day=Game1.Date.TotalDays}));
             if(reason=="native_shop_not_open")return Game1.activeClickableMenu?.GetType().Name??"none";
             bool collection=tool=="work.run"&&AgentToolRegistry.Text(args,"goal") is "wood" or "stone" or "fiber" or "resource" or "forage";
             if(collection&&PlayerExecutor.LoadedLocation(AgentToolRegistry.Text(args,"location",l.NameOrUniqueName)) is {} target)l=target;

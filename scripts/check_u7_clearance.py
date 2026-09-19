@@ -3,8 +3,8 @@ import argparse,json,os,subprocess,sys,time,shutil,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);a=p.parse_args()
-out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=ROOT/'work/U7VerifiedMods';checks=[];b=None;initial=None
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');a=p.parse_args()
+out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=a.mods_dir.resolve();checks=[];b=None;initial=None
 
 def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
 def check(n,ok,data=None):
@@ -58,6 +58,9 @@ try:
  check('native-clear-and-original-destination',r.get('status')=='succeeded' and bool(clear),r)
  check('clearance-selection-and-native-impact-evidence',bool(selected) and all(e['before']!=e['after'] for e in clear),clear)
  check('maximum-three-cleared-obstacles',len({tuple(e['tile']) for e in clear})<=3,clear)
+ if a.social_checks:
+  tile=clear[0]['tile'];r=wait(tool('player.work',skill='clear',slot=3,tiles=[dict(x=tile[0],y=tile[1])],reserve_stamina=0),'already-cleared-target')
+  check('gone-target-does-not-swing-or-invent-progress',r.get('status')=='succeeded' and r.get('completed')==0 and r.get('before',{}).get('stamina')==r.get('after',{}).get('stamina') and any(e.get('kind')=='work_target_already_clear' for e in r.get('effects',[])),r)
  drops=sc('loose_drop_read');write('after-clear-drops.json',drops)
  # Complete actual pickup and a following unrelated resource task in the same session.
  if drops:
@@ -82,6 +85,33 @@ try:
  check('no-old-drop-block-on-independent-task',r.get('status')=='succeeded' and r.get('gained',0)>0,r)
  r=wait(tool('player.travel',location='FarmHouse'),'return-house');check('normal-route-after-clearing',r.get('status')=='succeeded',r)
  r=wait(tool('player.travel',location='Forest'),'cross-map-route');check('cross-map-clearance-state-ownership',r.get('status')=='succeeded',r)
+ if a.social_checks:
+  r=wait(tool('player.travel',location='Town'),'town-entry');check('ordinary-town-route-not-excavation',r.get('status')=='succeeded',r)
+  progress=tool('progress.read');write('social-progress-before.json',progress)
+  intros=progress.get('social',{}).get('introductions',[]);check('native-remaining-introduction-list-visible',bool(intros) and 'remaining_npcs' in intros[0].get('details',{}),progress)
+  if not intros:raise RuntimeError('native_introduction_quest_missing')
+  q=intros[0];qid=q['quest_id'];remaining=q['details']['remaining_npcs'];probe=sc('social_probe');write('social-probe.json',probe)
+  candidates=[n for n in probe['npcs'] if n['location']=='Town' and n['name'] in remaining and not n['sleeping'] and not n['invisible'] and not n['monster']]
+  deadline=time.monotonic()+180
+  while not candidates and time.monotonic()<deadline:
+   time.sleep(2);probe=sc('social_probe');candidates=[n for n in probe['npcs'] if n['location']=='Town' and n['name'] in remaining and not n['sleeping'] and not n['invisible'] and not n['monster']]
+  write('social-probe-selected.json',probe)
+  candidates.sort(key=lambda n:not n['moving'])
+  check('native-town-introduction-target-present',bool(candidates),candidates)
+  if not candidates:raise RuntimeError('no_real_town_social_case')
+  name=candidates[0]['name'];r=tool('player.social',npc=name,mode='greet',quest_id=qid);deadline=time.monotonic()+180
+  with (out/'social-route-samples.jsonl').open('w') as f:
+   while r.get('status')=='running' and time.monotonic()<deadline:
+    time.sleep(.4);r=tool('action.status',id=r['command_id']);f.write(json.dumps(dict(receipt=r,observation=sc('social_probe')),ensure_ascii=False)+'\n');f.flush()
+  write('native-greet.json',r);after=tool('progress.read');write('social-progress-after.json',after)
+  new_remaining=after.get('social',{}).get('introductions',[{}])[0].get('details',{}).get('remaining_npcs',[])
+  check('native-greet-removes-only-real-task-target',r.get('status')=='succeeded' and r.get('completed')==1 and name not in new_remaining and len(new_remaining)==len(remaining)-1,r)
+  for i in range(3):
+   r=wait(tool('player.social',npc=name,mode='greet',quest_id=qid),'repeat-greet-'+str(i))
+   check('known-introduction-is-idempotent-'+str(i),r.get('status')=='succeeded' and r.get('completed')==0 and r.get('disposition')=='already_satisfied' and r.get('stop_reason')=='introduction_target_already_met',r)
+  r=wait(tool('player.social',npc=name,mode='talk'),'talked-today');check('talked-today-is-observed-without-action',r.get('status')=='succeeded' and r.get('completed')==0 and r.get('stop_reason')=='talked_today',r)
+  stable=tool('progress.read');write('social-progress-stable.json',stable);check('repeats-do-not-change-native-progress',stable==after)
+  r=wait(tool('player.travel',location='Farm'),'return-after-social');check('work-can-continue-after-social-observation',r.get('status')=='succeeded',r)
  write('final-world.json',b.state());write('final-drops.json',sc('loose_drop_read'))
 except Exception as e:check('suite-exception',False,repr(e))
 finally:

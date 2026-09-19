@@ -88,7 +88,9 @@ public sealed partial class ModEntry {
     }
     private object? SocialBasis(JsonElement args) {
         string name=AgentToolRegistry.Text(args,"npc"),mode=AgentToolRegistry.Text(args,"mode","talk");var npc=Game1.getCharacterFromName(name);if(npc==null)return null;
-        string id=AgentToolRegistry.Text(args,"quest_id");var q=Game1.player.questLog.FirstOrDefault(q=>NativeQuestIdentity.Id(q)==id&&!q.completed.Value);
+        string id=AgentToolRegistry.Text(args,"quest_id");
+        if(SocialObservation.Satisfied(Game1.player,name,mode,id) is {} satisfied)return new{kind="already_satisfied",reason=satisfied,npc=name};
+        var q=Game1.player.questLog.FirstOrDefault(q=>NativeQuestIdentity.Id(q)==id&&!q.completed.Value);
         if(q is SocializeQuest intro&&intro.whoToGreet.Contains(name))return new{kind="quest",quest_id=id,npc=name};
         string? recipient=q switch{ItemDeliveryQuest d=>d.target.Value,ResourceCollectionQuest r=>r.target.Value,FishingQuest f=>f.target.Value,SlayMonsterQuest m=>m.target.Value,_=>null};
         if(mode=="deliver"&&recipient==name)return new{kind="quest_delivery",quest_id=id,npc=name};

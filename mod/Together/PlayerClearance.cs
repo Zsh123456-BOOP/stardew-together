@@ -6,6 +6,9 @@ namespace Together;
 public sealed partial class PlayerExecutor {
     private sealed record ClearTarget(Point Tile,int Slot,float Energy,double Cost,Item[] Drops);
     private List<Point>? clearRoute;
+    private Stack<Point>? plannedClearPath;
+    private GameLocation? plannedClearLocation;
+    private Point plannedClearEnd;
     private Point clearDestination,clearTile;
     private string clearLocation="";
     private int clearSlotBefore,clearHits,clearCount;
@@ -13,7 +16,7 @@ public sealed partial class PlayerExecutor {
     private object? clearBefore;
     private DateTime clearStarted;
     private bool clearInternalWalk;
-    private void ResetClearance(){clearRoute=null;clearSwing=false;clearCount=0;clearInternalWalk=false;}
+    private void ResetClearance(){plannedClearPath=null;plannedClearLocation=null;clearRoute=null;clearSwing=false;clearCount=0;clearInternalWalk=false;}
     private ClearTarget? ClearanceTarget(Point tile) {
         var l=Game1.currentLocation;var v=tile.ToVector2();
         if(l is not Farm||tile.X<0||tile.Y<0||tile.X>=l.Map.Layers[0].LayerWidth||tile.Y>=l.Map.Layers[0].LayerHeight||WorkProtected?.Invoke(l,tile)==true||!l.isTilePassable(v))return null;
@@ -47,6 +50,7 @@ public sealed partial class PlayerExecutor {
         return new{found=false,offset,next_offset=offset+12,body=Snapshot()};
     }
     private Stack<Point>? ClearancePath(Point end,Stack<Point>? ordinary) {
+        plannedClearPath=null;plannedClearLocation=null;
         if(clearInternalWalk||Game1.currentLocation is not Farm||ordinary?.Count<=12)return ordinary;
         var start=Game1.player.TilePoint;var pass=new Dictionary<Point,bool>();var targets=new Dictionary<Point,ClearTarget?>();var fits=new Dictionary<string,bool>();
         bool Bounds(Point p)=>p.X>=Math.Min(start.X,end.X)-4&&p.X<=Math.Max(start.X,end.X)+4&&p.Y>=Math.Min(start.Y,end.Y)-4&&p.Y<=Math.Max(start.Y,end.Y)+4;
@@ -57,11 +61,15 @@ public sealed partial class PlayerExecutor {
             Math.Max(0,Game1.player.Stamina-workReserve),maxClear:3-clearCount,maxCost:ordinary?.Count??double.PositiveInfinity);
         if(plan==null||plan.Clear.Count==0)return ordinary??(plan==null?null:new Stack<Point>(plan.Path.AsEnumerable().Reverse().Select(p=>new Point(p.X,p.Y))));
         if(Busy)Current!.effects.Add(new{kind="clearance_route_selected",from=new[]{start.X,start.Y},to=new[]{end.X,end.Y},ordinary_steps=ordinary?.Count,weighted_cost=plan.Cost,energy=plan.Energy,clears=plan.Clear.Select(p=>new[]{p.X,p.Y}),max_obstacles=3,note="native clearing before walking; capacity includes possible drops"});
-        return new Stack<Point>(plan.Path.AsEnumerable().Reverse().Select(p=>new Point(p.X,p.Y)));
+        plannedClearLocation=Game1.currentLocation;plannedClearEnd=end;
+        return plannedClearPath=new Stack<Point>(plan.Path.AsEnumerable().Reverse().Select(p=>new Point(p.X,p.Y)));
     }
     private bool BeginClearance(Stack<Point>? path,Point end) {
-        if(clearInternalWalk||path==null||!path.Any(p=>!Passable(Game1.currentLocation,p)))return false;
-        var points=path.ToList();var blocked=points.First(p=>!Passable(Game1.currentLocation,p));
+        // Ordinary/dynamic routes must never be reinterpreted as excavation plans.
+        if(clearInternalWalk||Game1.currentLocation is not Farm||path==null||!ReferenceEquals(path,plannedClearPath)||plannedClearLocation!=Game1.currentLocation||plannedClearEnd!=end)return false;
+        plannedClearPath=null;plannedClearLocation=null;
+        var points=path.ToList();var blockedTiles=points.Skip(1).Where(p=>!Passable(Game1.currentLocation,p)).ToArray();if(blockedTiles.Length==0)return false;
+        var blocked=blockedTiles[0];
         if(ClearanceTarget(blocked)==null)throw new InvalidOperationException("route_obstacle_conditions_changed");
         clearRoute=points;clearDestination=end;clearLocation=Game1.currentLocation.NameOrUniqueName;clearSlotBefore=Game1.player.CurrentToolIndex;clearStarted=DateTime.UtcNow;clearHits=0;clearSwing=false;
         AdvanceClearance();return true;
@@ -73,7 +81,7 @@ public sealed partial class PlayerExecutor {
     }
     private void AdvanceClearance() {
         if(clearRoute==null)return;
-        int blocked=clearRoute.FindIndex(p=>!Passable(Game1.currentLocation,p));
+        int blocked=clearRoute.FindIndex(1,p=>!Passable(Game1.currentLocation,p));
         if(blocked<0) {
             var path=clearRoute;var end=clearDestination;clearRoute=null;
             PlayerSelection.Set(Game1.player,Math.Clamp(clearSlotBefore,0,Game1.player.Items.Count-1));PlainWalk(end,path);return;

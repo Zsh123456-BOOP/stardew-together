@@ -99,7 +99,7 @@ public sealed class AgentToolRegistry {
         ["player.machine"]="{mode:load|collect,location?:string,machine?:设备ID,item?:原料ID,count?:0..100,goal_id?:string,output?:目标产物ID}: 到指定地点依次接近真实机器投料或收货，加载按原生规则消耗背包原料/燃料并核验，收货核验入包数量；0遍历当前符合条件设备。投料完成不等于产物出炉；缺料/满包须补给后再调",
         ["player.care"]="{mode?:pet|milk|shear|feed,count?:0..100}: 自动到真实动物所在地，逐只接近并原生抚摸/挤奶/剪毛/筒仓取草与食槽放草，0处理所有符合条件动物；需要真实工具、体力与背包，夜间停止；原生产物/照料状态核验",
         ["player.claim_reward"]="{quest_id:string}: 自动打开原生日志、找到已完成未领奖任务或订单、点击领取金币奖励、核验收入与已领取状态；不会直接设置完成或加钱",
-        ["player.social"]="{npc:原生人物名,mode?:talk|gift|deliver|relationship,item?:预期物品ID,slot?:int,quest_id?:string}: 自动跨图寻找并接近真实NPC，原生聊天/送礼/任务交付；送物需slot，交任务需活动quest_id，完成后核验原生关系或指定任务。普通对话自动翻页，分支选择保留；relationship显式允许求婚等特殊物品，不保证对方接受",
+        ["player.social"]="{npc:原生人物名,mode?:talk|greet|gift|deliver|relationship,item?:预期物品ID,slot?:int,quest_id?:string}: 自动跨图寻找并接近真实NPC，原生聊天/送礼/任务交付；送物需slot，交任务需活动quest_id，完成后核验原生关系或指定任务。介绍任务用greet和quest_id，progress.read提供remaining_npcs与talked_today；已认识的指定介绍对象或当天已聊天返回already_satisfied，不增加进度。自主模式社交须对应尚未完成的任务对象、生日、有效礼物或已设置关系目标；拒绝后依现场候选调整，不重复猜对象。普通对话自动翻页，分支选择保留；relationship显式允许求婚等特殊物品，不保证对方接受",
         ["orders.read"]="{}: 读取实际特殊订单每个目标的索引/条件/进度/失败条件/期限；投递与新采集、钓获、出货计数分别处理。",
         ["player.find_lost_item"]="{quest_id:已观察任务ID}: 自动走到原生失物地点，寻找已生成的真实任务物品、走近拾取及确认提示，按itemFound和入包核验；不会生成失物或更改任务标记。",
         ["player.combat"]="{order_id?:特殊订单ID,objective?:目标索引,quest_id?:已观察讨伐任务ID,count?:0..50,min_health?:20..200}: 指定quest_id时优先真实目标敌人且按该任务计数；选择背包近战武器，当前地图持续接近/原生挥击/换目标；0清理当前已出现怪物，原生击杀归属核验，低生命或无伤害停止请求撤退/换策略；不宣称已有全部敌种战术",
@@ -208,13 +208,13 @@ public sealed class AgentToolRegistry {
     private object Pause(string reason)=>mod.ModelRequestedStop(reason);
     internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name,upgrade_level=item is Tool tool?(int?)tool.UpgradeLevel:null,water_left=item is StardewValley.Tools.WateringCan can?(int?)can.WaterLeft:null};
     internal static object Inventory()=>new{selected=Game1.player.CurrentToolIndex,items=Game1.player.Items.Select((v,i)=>new{slot=i,item=ItemInfo(v)}).ToArray()};
-    private static object Progress()=>new{scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
+    private static object Progress()=>new{social=SocialObservation.Read(Game1.player),scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
         crafting=Game1.player.craftingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooking=Game1.player.cookingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         skills=new{farming=Game1.player.FarmingLevel,mining=Game1.player.MiningLevel,fishing=Game1.player.FishingLevel,foraging=Game1.player.ForagingLevel,combat=Game1.player.CombatLevel},
         shipped=Game1.player.basicShipped.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooked=Game1.player.recipesCooked.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         fish_caught=Game1.player.fishCaught.Pairs.ToDictionary(p=>p.Key,p=>p.Value),minerals=Game1.player.mineralsFound.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         deepest_mine=Game1.player.deepestMineLevel,mail=Game1.player.mailReceived.ToArray(),
-        quests=Game1.player.questLog.Select(q=>new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,completed=q.completed.Value}).ToArray(),
+        quests=Game1.player.questLog.Select(q=>new{id=NativeQuestIdentity.Id(q),title=q.questTitle,description=q.questDescription,completed=q.completed.Value,social=SocialObservation.Quest(q)}).ToArray(),
         note="未覆盖全部成就条件；缺少条目不能解释为已完成"};
     private object ReadMap(JsonElement args) {
         string actorId=Text(args,"actor_id","player");var origin=mod.AgentMapOrigin(actorId);

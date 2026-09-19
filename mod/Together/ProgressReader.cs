@@ -34,7 +34,7 @@ public static class ProgressReader {
                 _=>"读取目标与期限，陪同和备料；本任务的特殊交互由玩家完成。"
             };
             f.Goals.Add(goal);
-            var nativeCount=NativeQuestIdentity.Count(q);f.Objectives.Add(new{goal=goal.Id,type,current=nativeCount.Current,max=nativeCount.Required,completed=q.completed.Value,description=q.currentObjective});
+            var nativeCount=NativeQuestIdentity.Count(q);f.Objectives.Add(new{goal=goal.Id,type,current=nativeCount.Current,max=nativeCount.Required,completed=q.completed.Value,description=q.currentObjective,social=SocialObservation.Quest(q)});
         }
         foreach(var order in player.team.specialOrders) {
             var goal=new ProgressGoal{Id="order:"+Text(order,"questKey"),Kind="special_order",Title=order.GetName(),Complete=order.questState.Value.ToString()=="Complete",

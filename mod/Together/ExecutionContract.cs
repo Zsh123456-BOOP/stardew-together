@@ -14,7 +14,7 @@ public static class ExecutionContract {
         if(!fields.ContainsKey("actor")&&actor.Length>0)fields["actor"]=actor;
         string error=raw.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString()??"":"";
         string status=raw.TryGetProperty("status",out var st)?st.GetString()??"unknown":"unknown";
-        fields.TryAdd("stop_reason",error.Length>0?error:null);
+        if(!raw.TryGetProperty("stop_reason",out var stop)||stop.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)fields["stop_reason"]=error.Length>0?error:null;
         fields["retryable"]=error is "path_stalled" or "no_path" or "stale_menu_read_again" or "target_not_available" or "storage_busy";
         string tool=raw.TryGetProperty("skill",out var skill)?skill.GetString()??"":raw.TryGetProperty("goal",out var goal)?"work.run":"";
         var outcome=OperationsPolicy.Outcome(tool,raw);fields["disposition"]=outcome.Disposition;

@@ -28,6 +28,9 @@ public sealed partial class PlayerExecutor {
         BindSocialOrder(args);
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
         if(socialNpc.IsMonster||socialNpc.currentLocation==null)throw new InvalidOperationException("npc_not_available");
+        if(SocialObservation.Satisfied(Game1.player,socialName,socialMode,socialQuest) is {} satisfied) {
+            Current!.stop_reason=satisfied;Current.effects.Add(new{kind="social_already_satisfied",reason=satisfied,npc=socialName,quest_id=socialQuest,observation=SocialObservation.Read(Game1.player),action_executed=false});Finish("succeeded");return;
+        }
         socialQuestObject=socialMode is "deliver" or "greet"?NativeQuestIdentity.Find(socialQuest):null;
         if(socialMode is "deliver" or "greet"&&(socialQuestObject==null||socialQuestObject.completed.Value))throw new InvalidOperationException("active_quest_id_required");
         if(socialMode=="greet"&&socialQuestObject is not SocializeQuest)throw new InvalidOperationException("greet_requires_introductions_quest");
@@ -66,7 +69,7 @@ public sealed partial class PlayerExecutor {
                 "gift"=>(f?.GiftsToday??0)>socialGifts,
                 _=>p.Items.Where(i=>i?.QualifiedItemId==socialItem).Sum(i=>i.Stack)<socialStack&&RelationshipResult(f)
             };
-            Current.effects.Add(SocialEvidence());Finish(complete?"succeeded":"failed",complete?null:"native_social_goal_not_verified");return;
+            Current.effects.Add(SocialEvidence());if(complete)Current.completed=1;Finish(complete?"succeeded":"failed",complete?null:"native_social_goal_not_verified");return;
         }
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("social_travel_interrupted_by_menu");
         if(Game1.locationRequest!=null||Game1.fadeToBlack||!p.CanMove)return;

@@ -14,6 +14,7 @@ public sealed class PlayerAction {
     public string status {get;set;}="running";
     public string phase {get;set;}="starting";
     public string? error {get;set;}
+    public string? stop_reason {get;set;}
     public object? before {get;set;}
     public object? after {get;set;}
     public int completed {get;set;}
@@ -427,6 +428,13 @@ public sealed partial class PlayerExecutor {
         var l=Game1.currentLocation;var v=p.ToVector2();l.objects.TryGetValue(v,out var o);l.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;var clump=ClumpAt(p);
         return new{clump_id=clump?.parentSheetIndex.Value,clump_health=clump?.health.Value,x=p.X,y=p.Y,item=o?.QualifiedItemId,stack=o?.Stack,health=o?.getHealth(),remaining_work=o?.MinutesUntilReady,terrain=f?.GetType().Name,tree_health=(f as Tree)?.health.Value,tree_stump=(f as Tree)?.stump.Value,watered=dirt?.state.Value,fertilizer=dirt?.fertilizer.Value,crop=dirt?.crop?.indexOfHarvest.Value,phase=dirt?.crop?.currentPhase.Value,ready=dirt?.readyForHarvest()};
     }
+    private bool ObserveAlreadyCleared(Point tile) {
+        var l=Game1.currentLocation;var v=tile.ToVector2();
+        bool cleared=workSkill=="clear"&&!l.objects.ContainsKey(v)||workSkill=="grass"&&(!l.terrainFeatures.TryGetValue(v,out var grass)||grass is not Grass)||workSkill=="clear_dead"&&l.terrainFeatures.TryGetValue(v,out var feature)&&feature is HoeDirt {crop:null};
+        if(!cleared)return false;
+        Current!.effects.Add(new{kind="work_target_already_clear",tile=TileState(tile),work_skill=workSkill,disposition="already_satisfied",action_executed=false});
+        StopWalk();workIndex++;workHits=0;retries=0;Current.phase="work_next";return true;
+    }
     private void TickWork() {
         ObserveWorkDrops();
         if(Game1.currentLocation.NameOrUniqueName!=origin)throw new InvalidOperationException("work_location_changed");
@@ -446,6 +454,7 @@ public sealed partial class PlayerExecutor {
             workPickupDoneIndex=workIndex;Current.phase="work_next";
         }
         if(Current!.phase=="work_next") {
+            if(ObserveAlreadyCleared(tile))return;
             workBefore=TileState(tile);var v=tile.ToVector2();Game1.currentLocation.terrainFeatures.TryGetValue(v,out var f);var dirt=f as HoeDirt;
             if(workSkill=="break_clump") {
                 var clump=ClumpAt(tile)??throw new InvalidOperationException("resource_clump_gone");
@@ -499,7 +508,9 @@ public sealed partial class PlayerExecutor {
         }
         if(Current.phase=="work_walk") {
             if(!AtWalkTarget){MonitorWalk();return;}
-            StopWalk();Adjacent(tile);Face(tile);
+            StopWalk();
+            if(ObserveAlreadyCleared(tile))return;
+            workBefore=TileState(tile);Adjacent(tile);Face(tile);
             if(workSkill is not ("harvest" or "forage"))SelectSlot(JsonSerializer.SerializeToElement(new{slot=workSlot}),true);
             if(workSkill is "harvest" or "forage")PlayerSelection.Neutral(Game1.player);
             if(workSkill is "water" or "till" or "clear" or "grass" or "prune" or "chop" or "break_clump" or "clear_dead") {
@@ -618,7 +629,7 @@ public sealed partial class PlayerExecutor {
         }
         if(Context.IsWorldReady&&NativeMenuTools.HeldItem() is {} heldOutput)Current.effects.Add(new{kind="native_output_pending",item=AgentToolRegistry.ItemInfo(heldOutput),transaction=Current.command_id,recipe=productionRecipe,remaining=productionRemaining,already_crafted=Current.completed,resume="receive_via_native_menu_when_capacity_available",blocked="held_output_preserved; do_not_recollect_ingredients"});
         Current.effects.Add(new{kind="navigation_summary",path_searches=pathSearches,path_search_ms=pathSearchMs,path_retries=pathRetries,active_seconds=activeSeconds});
-        StopWalk();ResetClearance();Current.status=status;Current.error=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
+        StopWalk();ResetClearance();Current.status=status;Current.error=error;Current.stop_reason??=error;Current.phase=status;Current.after=Context.IsWorldReady?Snapshot():null;NativeFinished?.Invoke(Current);
     }
     public static IEnumerable<Warp> Exits(GameLocation location) {
         foreach(var warp in location.warps)if(!warp.npcOnly.Value)yield return warp.TargetName=="VolcanoEntrance"?new Warp(warp.X,warp.Y,NormalizeWarpTarget(warp.TargetName),warp.TargetX,warp.TargetY,false):warp;

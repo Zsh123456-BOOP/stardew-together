@@ -33,6 +33,10 @@ public static class Round4Checks {
         check(credits.Require(2,x=>x=="wood")==2,"later creation cannot supply earlier consumption");
         string cleaned=OverlayText.Clean("先购买种子 [stock_target]，再种田 request_id=123abc。",100);
         check(cleaned.Contains("购买种子")&&cleaned.Contains("种田")&&!cleaned.Contains("stock_target")&&!cleaned.Contains("request_id"),"clean technical fragments without discarding explanation");
+        var socialObserved=JsonSerializer.SerializeToElement(ExecutionContract.Receipt(new{command_id="social",skill="player.social",status="succeeded",stop_reason="introduction_target_already_met",completed=0},"epoch",0));
+        check(socialObserved.GetProperty("disposition").GetString()=="already_satisfied"&&socialObserved.GetProperty("stop_reason").GetString()=="introduction_target_already_met"&&!OperationsPolicy.Outcome("player.social",socialObserved).BusinessProgress,"already greeted native fact is visible without invented progress or retry failure");
+        var failure=JsonSerializer.SerializeToElement(ExecutionContract.Receipt(new{command_id="social",skill="player.social",status="failed",stop_reason=(string?)null,error="npc_stand_unreachable",completed=0},"epoch",0));
+        check(failure.GetProperty("stop_reason").GetString()=="npc_stand_unreachable"&&failure.GetProperty("disposition").GetString()=="failed","nullable stop reason cannot hide actual native failure");
         foreach(var pair in new[]{("succeeded","","already_satisfied"),("failed","remaining_targets_unreachable","no_candidates_found"),("failed","native_failure","failed")}) {
             var raw=new{command_id="check",status=pair.Item1,error=pair.Item2,completed=0};
             var result=JsonSerializer.SerializeToElement(ExecutionContract.Receipt(raw,"epoch",0));

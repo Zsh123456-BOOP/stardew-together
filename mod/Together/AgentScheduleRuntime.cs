@@ -49,6 +49,7 @@ public sealed partial class ModEntry {
         }
         var submitted=Data.Autoplay.Schedule.Tasks.Where(t=>list.Any(s=>s.id==t.spec.id)).ToArray();
         foreach(var rejected in submitted.Where(t=>t.state=="blocked"&&t.error!=null))if(added) {
+            RefreshCapacityVersion();
             Data.Autoplay.Record("task_declaration_rejected",AgentJson.Encode(new{attempt_id=rejected.spec.id,rejected.spec.tool,rejected.error}));
             ObserveExecutionFailure(rejected.spec.id,rejected.spec.actor,rejected.error,"declaration");
         }
@@ -97,6 +98,7 @@ public sealed partial class ModEntry {
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
         if(state is not("succeeded" or "cancelled" or "partial"))state="failed";
+        if(state=="failed")RefreshCapacityVersion();
         var outcome=OperationsPolicy.Outcome(task.spec.tool,result);
         if(CapacityState.IsConstraint(error))RecordCapacityConstraint(error!,task.spec.actor);
         if(state!="partial")LearnActionResult(task,state,error);

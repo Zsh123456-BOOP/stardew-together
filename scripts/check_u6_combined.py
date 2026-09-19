@@ -77,7 +77,13 @@ try:
  effects=r.get('effects',[]);coords=[e for e in effects if e.get('kind')=='service_counter_stand']
  check('native-counter-coordinates-explicit',r.get('status')=='succeeded' and bool(coords) and all('x' in e['counter'] and 'y' in e['stand'] for e in coords),r)
  # Last check deliberately triggers the stop: the fourth read must never execute.
- sc('preparation_probe');d=chain([dict(tool='tools.u6_invalid',args={}) for _ in range(3)]+[dict(tool='inventory.read',args={})],'synchronous-third-stop')
+ sc('preparation_probe')
+ d=chain([dict(tool='tools.u6_invalid',args={}) for _ in range(2)],'first-two-failures')
+ version=d['state']['Capacity']['Version'];check('failure-captures-current-capacity-version',version>0 and d['state']['Status']=='running',version)
+ transfer=wait(tool('work.run',goal='withdraw',item='(O)18',count=1,until=2500),'version-changing-native-withdraw')
+ check('real-stock-change-before-failure-retest',transfer.get('status')=='succeeded',transfer)
+ d=chain([dict(tool='tools.u6_invalid',args={}) for _ in range(3)]+[dict(tool='inventory.read',args={})],'synchronous-third-stop')
+ check('stock-change-advances-failure-version',d['state']['Capacity']['Version']>version,d['state']['Capacity']['Version'])
  check('third-identical-failure-stops-execution-layer',d['state']['Status']!='running' and 'same_root_three_distinct_attempts' in d['state']['Detail'],d['state']['Detail'])
 except Exception as e:
  check('suite-exception',False,repr(e))

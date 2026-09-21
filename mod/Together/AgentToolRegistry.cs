@@ -35,7 +35,7 @@ public sealed class AgentToolRegistry {
         ["player.acquire_animal"]="{type,name,location?:AnimalShop,budget,keep_gold}: 真实到牧场柜台选择动物、自动选已完工兼容畜舍并命名购买，核验原生动物和费用",
         ["player.procure"]="{location,shop,item,count,max_unit_price,budget,keep_gold,recipe?:bool}: 真实前往商店、读取现场商品并按上限原生采购，自动收货关菜单；配方与普通商品可区分；缺货/闭店返回原因",
         ["shop.sources"]="{item,recipe?:bool}: 游戏数据中的潜在商店、准确室内地图与今日门禁时间；不是当前报价，采购时现场重新核价",
-        ["services.read"]="{location?:原生室内地图名}: 真实入口开闭时间、今天是否可进与复查时间；不保证柜台有人。SeedShop是店内地图，Town只是室外；营业中仍需原生服务和报价校验",
+        ["services.read"]="{location?:原生室内地图名,npc?:人物原名}: npc查询返回真实位置、门禁、可达交谈站位、目的地图步数、跨图数与受阻条件。location查询返回真实入口开闭时间、今天是否可进与复查时间；不保证柜台有人。SeedShop是店内地图，Town只是室外；营业中仍需原生服务和报价校验",
         ["progress.pursue"]="{targets?:1..128个原生目标ID,enabled?:bool,budget_per_day?:-1或非负整数,keep_gold?:int,gift_value_per_day?:int,gift_value_limit?:int,income_shipping?:bool,income_keep_per_item?:0..999,nuts_per_day?:0..130,keep_nuts?:0..130,route?:community|joja}: 持久推进已绑定制作/烹饪、建筑、完美度分项、关系、钓鱼/蟹笼、献祭/Joja、修船、馆藏、交付、出货、地牢、锻造与街机目标；gift_value为礼物可售价值预算而非扣款，默认0仅聊天；算法备料和排队，按真实进度核验，每日金额预算先预留。暂停取消未执行依赖，未知后期目标仍明确阻碍",
         ["progress.dependencies"]="{id:成就/配方/任务/物品ID,depth?:1..8,limit?:10..600}: 展开原生证据依赖图、数量/品质/替代分支与具体工具入口，明确未适配和截断；只读不授予进度",
         ["capabilities.read"]="{}: 27类能力的已接工具、角色、核验方式及明确缺口；存在工具不代表完整验收",
@@ -175,7 +175,7 @@ public sealed class AgentToolRegistry {
             "farm.operating"=>mod.ConfigureOperating(args),
             "companion.configure"=>mod.ConfigurePartner(args),
             "farm.business"=>mod.ConfigureBusiness(args),"farm.business_status"=>mod.ReadBusiness(args),
-            "services.read"=>Text(args,"location").Length>0?mod.ServiceHours(Text(args,"location")):mod.KnownServiceHours(),
+            "services.read"=>Text(args,"npc").Length>0?mod.SocialAccess(Text(args,"npc")):Text(args,"location").Length>0?mod.ServiceHours(Text(args,"location")):mod.KnownServiceHours(),
             "shop.sources"=>PlayerExecutor.ShopSources(Text(args,"item"),args.TryGetProperty("recipe",out var recipe)&&recipe.GetBoolean()).Select(s=>new{s.Shop,s.Location,hours=mod.ServiceHours(s.Location)}),
             "perfection.read"=>PerfectionProgress.Read(),"progress.pursue"=>mod.ConfigureProgressCampaign(args),"progress.dependencies"=>mod.ReadProgressDependencies(args),"capabilities.read"=>CapabilityCatalog.Read(),"progress.catalog"=>mod.AgentProgressCatalog(args),
             "memory.search"=>mod.ReadAgentMemory(args),
@@ -210,7 +210,7 @@ public sealed class AgentToolRegistry {
     private object Pause(string reason)=>mod.ModelRequestedStop(reason);
     internal static object ItemInfo(Item? item)=>item==null?new{empty=true}:(object)new{id=item.QualifiedItemId,name=item.DisplayName,count=item.Stack,quality=item.Quality,kind=item.GetType().Name,upgrade_level=item is Tool tool?(int?)tool.UpgradeLevel:null,water_left=item is StardewValley.Tools.WateringCan can?(int?)can.WaterLeft:null};
     internal static object Inventory()=>new{selected=Game1.player.CurrentToolIndex,items=Game1.player.Items.Select((v,i)=>new{slot=i,item=ItemInfo(v)}).ToArray()};
-    private static object Progress()=>new{social=SocialObservation.Read(Game1.player),scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
+    private object Progress()=>new{social=SocialObservation.Read(Game1.player),social_availability=mod.SocialAvailability(),scope="native Farmer and team; platform achievements not verified",achievements=Game1.player.achievements.ToArray(),
         crafting=Game1.player.craftingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooking=Game1.player.cookingRecipes.Pairs.ToDictionary(p=>p.Key,p=>p.Value),
         skills=new{farming=Game1.player.FarmingLevel,mining=Game1.player.MiningLevel,fishing=Game1.player.FishingLevel,foraging=Game1.player.ForagingLevel,combat=Game1.player.CombatLevel},
         shipped=Game1.player.basicShipped.Pairs.ToDictionary(p=>p.Key,p=>p.Value),cooked=Game1.player.recipesCooked.Pairs.ToDictionary(p=>p.Key,p=>p.Value),

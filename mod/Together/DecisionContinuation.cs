@@ -20,6 +20,10 @@ public sealed partial class ModEntry {
         if(deferredDecision is not {} batch)return;
         if(batch.Day!=Game1.Date.TotalDays){CancelDecisionContinuation("day_changed_read_fresh_state");WakeAgent("deferred_day_changed");return;}
         if(NeedsAgentMenuDecision&&(playerExecutor.Busy||DecisionBarrier.State(batch.After.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)?.state))=="waiting")){CancelDecisionContinuation("native_action_requires_menu_choice");WakeAgent("menu_choice_required");return;}
+        var pending=batch.After.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).Where(t=>t!=null&&!t.Terminal).ToArray();
+        if(AgentDecisionPacing.ReleaseWindowBarrier(pending.Select(t=>(t!.state,t.spec.not_before>Game1.timeOfDay,t.wait_reason!=null)))) {
+            CancelDecisionContinuation("waiting_window_release_for_independent_planning");WakeAgent("waiting_window_needs_other_work");return;
+        }
         ContinueDecision(batch);
     }
     private void ContinueDecision(DecisionContinuation batch) {

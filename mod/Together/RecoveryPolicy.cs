@@ -8,7 +8,7 @@ public static class RecoveryPolicy {
         "capacity_no_free_slot","capacity_no_stackable_room","capacity_no_reachable_storage","capacity_all_candidates_infeasible","capacity_all_items_protected","player_in_danger","animal_care_energy_reserve","targets_claimed_by_other_actor",
         "fishing_resource_or_time_reserve_reached","fishing_attempt_budget_reached","fishing_trip_time_or_attempt_budget","fishing_trip_supply_reserve","target_fish_no_current_reachable_conditions_or_sites",
         "mine_execution_budget_return","mine_time_reserve_return","mine_supply_reserve_return","mine_inventory_return","mine_energy_before_next_stone","mine_no_reachable_progress_route",
-        "native_skull_order_forbids_food","native_nausea_requires_ginger","shop_closed","npc_unavailable_or_sleeping",
+        "native_skull_order_forbids_food","native_nausea_requires_ginger","shop_closed","npc_unavailable_or_sleeping","social_access_unavailable",
         "target_fish_window_closed","day_changed_replan"
     };
     public static bool CanWait(string? error)=>error!=null&&(WaitCodes.Contains(error)||error.StartsWith("loadout_shape_unsupported:")||error.StartsWith("loadout_missing:")||error.StartsWith("known_failure_conditions_unchanged:"));

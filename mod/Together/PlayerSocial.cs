@@ -48,17 +48,19 @@ public sealed partial class PlayerExecutor {
         }
         var f=Game1.player.friendshipData.GetValueOrDefault(socialName);socialPoints=f?.Points??0;socialGifts=f?.GiftsToday??0;socialTalked=f?.TalkedToToday??false;
         if(socialMode=="talk"&&socialTalked){Current!.effects.Add(SocialEvidence());Finish("succeeded");return;}
+        var access=SocialReach(socialNpc);
+        Current!.effects.Add(new{kind="social_preflight",access});
+        if(!access.reachable)throw new InvalidOperationException("social_access_unavailable");
         destination=socialNpc.currentLocation.NameOrUniqueName;Current!.phase="social_travel";
     }
     private Microsoft.Xna.Framework.Point SocialStand(NPC npc) {
-        var at=npc.StandingPixel;var center=new Microsoft.Xna.Framework.Point(at.X/64,at.Y/64);var p=Game1.player;
-        var options=Enumerable.Range(-1,3).SelectMany(x=>Enumerable.Range(-1,3).Select(y=>new Microsoft.Xna.Framework.Point(center.X+x,center.Y+y)))
-            .Where(t=>t!=center&&Passable(Game1.currentLocation,t)).OrderBy(t=>Microsoft.Xna.Framework.Vector2.DistanceSquared(t.ToVector2(),p.Tile));
-        foreach(var stand in options) {
-            var path=MeasuredPath(stand);
-            if(stand!=p.TilePoint&&path?.Count is not >0)continue;
-            approachPath=path;approachStart=p.TilePoint;approachEnd=stand;approachLocation=Game1.currentLocation;
-            Current!.effects.Add(new{kind="social_approach_selected",npc=npc.Name,npc_tile=new[]{center.X,center.Y},stand=new[]{stand.X,stand.Y},path_steps=path?.Count,native_radius_tiles=1});return stand;
+        var p=Game1.player;var access=SocialReach(npc);
+        if(access.reachable&&access.stand is {} selected) {
+            var stand=new Microsoft.Xna.Framework.Point(selected[0],selected[1]);var path=MeasuredPath(stand);
+            if(stand==p.TilePoint||path?.Count>0) {
+                approachPath=path;approachStart=p.TilePoint;approachEnd=stand;approachLocation=Game1.currentLocation;
+                Current!.effects.Add(new{kind="social_approach_selected",npc=npc.Name,access});return stand;
+            }
         }
         throw new InvalidOperationException("exit_unreachable");
     }
@@ -96,7 +98,7 @@ public sealed partial class PlayerExecutor {
                 try{Walk(SocialStand(npc));socialApproachTile=npc.TilePoint;}
                 catch(InvalidOperationException e)when(e.Message=="exit_unreachable") {
                     Current.effects.Add(new{kind="npc_stand_blocked",npc=npc.Name,location=Game1.currentLocation.NameOrUniqueName,npc_tile=new[]{npc.TilePoint.X,npc.TilePoint.Y},player=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},npc_bounds=npc.GetBoundingBox().ToString(),player_bounds=Game1.player.GetBoundingBox().ToString()});
-                    throw new InvalidOperationException("npc_stand_unreachable");
+                    throw new InvalidOperationException("social_access_unavailable");
                 }
             }
             if(ownedController!=null)MonitorWalk();Current.phase="social_approach";return;

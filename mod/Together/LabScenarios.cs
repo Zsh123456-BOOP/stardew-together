@@ -31,6 +31,7 @@ public sealed partial class ModEntry {
                 try{var result=ApplyDecisionCalls(turn.calls,Data.Autoplay.Schedule.Revision);return AgentJson.Encode(new{result.Followup,result.Error,pending=deferredDecision!=null,intent=decisionIntent});}
                 finally{decisionIntent="";}
             }
+            case "decision_facts_probe":return AgentJson.Encode(new{snapshot=AgentSnapshot(),access=SocialAvailability(),farm_water=WateringObservation("Farm"),unchanged=SocialAccessCondition("Penny")});
             case "social_probe":return AgentJson.Encode(new{social=SocialObservation.Read(Game1.player),npcs=Game1.locations.SelectMany(l=>l.characters.Select(n=>new{name=n.Name,location=l.NameOrUniqueName,tile=new[]{n.TilePoint.X,n.TilePoint.Y},moving=n.isMoving(),sleeping=n.isSleeping.Value,invisible=n.IsInvisible,monster=n.IsMonster})).ToArray()});
             case "clearance_probe":return AgentJson.Encode(playerExecutor.ClearanceProbe(Num("offset")));
             case "round4":return AgentJson.Encode(Round4NativeFixture(Arg("mode","read")));

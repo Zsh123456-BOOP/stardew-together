@@ -2,6 +2,10 @@ using System.Text.Json;
 using Together;
 public static class Round4Checks {
     public static void Run(Action<bool,string> check) {
+        check(AgentDecisionPacing.ReleaseWindowBarrier(new[]{("queued",true,false)}),"future social releases continuation for independent planning");
+        check(!AgentDecisionPacing.ReleaseWindowBarrier(new[]{("running",false,false),("queued",true,true)})&&!AgentDecisionPacing.ReleaseWindowBarrier(Array.Empty<(string,bool,bool)>()),"live action and empty barrier do not get cancelled");
+        var rain=ContextCompression.Pack(new{now=new{weather=new{farm_raining=true,farm_watering=new{dry_crops=0}}},recent=new[]{new{detail=new string('x',2000)}}},100);
+        check(rain.Contains("farm_raining")&&rain.Contains("dry_crops"),"weather and actual watering requirement survive compression");
         check(AgentDecisionPacing.MenuNeedsReview(false,false,true)&&!AgentDecisionPacing.CanDefer(true,AgentDecisionPacing.MenuNeedsReview(false,false,true)),"open board wakes model despite queued follow-up work");
         check(!AgentDecisionPacing.MenuNeedsReview(true,false,true)&&AgentDecisionPacing.MenuNeedsReview(true,true,true),"native executor keeps its menu unless it requests a choice");
         check(!AgentDecisionPacing.MenuNeedsReview(false,false,false),"no-menu ordinary work stays continuous");

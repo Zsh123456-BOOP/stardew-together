@@ -19,7 +19,7 @@ public sealed partial class ModEntry {
         string location=AgentToolRegistry.Text(a,"location");
         if(location.Length>0&&location!=Game1.currentLocation.NameOrUniqueName&&PlayerExecutor.NextExit(Game1.currentLocation,location)==null)return false;
         if(row.Tool=="player.service"&&PlayerExecutor.ServiceParameterError(a)!=null)return false;
-        if(row.Tool=="player.social"&&SocialBasis(a)==null)return false;
+        if(row.Tool=="player.social"&&(SocialBasis(a)==null||SocialPreflight(a)!=null))return false;
         // Observation must not increment retry/suppression counters or acquire leases.
         foreach(var e in Data.Autoplay.Failures.Entries.Where(e=>e.Tool==row.Tool&&e.Arguments.Length>0)) {
             if(FailureKnowledge.ConditionKey("player",row.Tool,a.GetRawText(),"")!=FailureKnowledge.ConditionKey("player",e.Tool,e.Arguments,e.Location))continue;
@@ -74,6 +74,12 @@ public sealed partial class ModEntry {
                 }
             }
         }
+        foreach(var failure in Data.Autoplay.Failures.Entries.Where(e=>e.Tool=="player.social"&&e.Reason=="social_access_unavailable").TakeLast(2)) {
+            if(!Knowledge.Ready||string.IsNullOrEmpty(failure.Arguments))continue;
+            var a=JsonSerializer.Deserialize<JsonElement>(failure.Arguments);string id="npc:"+AgentToolRegistry.Text(a,"npc");
+            bool read=Data.Autoplay.Journal.Any(e=>e.Kind=="tool_result"&&e.Text.Contains("knowledge.get")&&e.Text.Contains(id));
+            if(!read&&Knowledge.Index.Get(id) is {} entry&&Knowledge.Visible(entry))rows.Add(new("knowledge:access:"+id,"查询受阻人物的原生资料；实时站位仍以services.read为准","knowledge.get",new{id},"native_social_access_blocked;read_before_replanning",0,1));
+        }
         // An unresolved native quest requirement is an actual question, not a
         // recommendation to query the whole encyclopedia on every decision.
         foreach(var q in p.questLog.OfType<ItemDeliveryQuest>().Where(q=>!q.completed.Value).Take(2)) {
@@ -112,6 +118,7 @@ public sealed partial class ModEntry {
         try {obj["alternatives"]=JsonSerializer.SerializeToNode(OperatingOpportunities().Take(8),AgentJson.Options);}
         catch(Exception e){obj["alternatives"]=new JsonArray();obj["alternatives_unavailable"]=e.GetType().Name;Data.Autoplay.Record("alternatives_observation_error",e.Message);}
         if(error.StartsWith("parameter_service_location_mismatch")||error is "shop_closed" or "no_reachable_native_service_counter")obj["service_hours"]=JsonSerializer.SerializeToNode(KnownServiceHours());
+        if(error.Contains("social")||error.Contains("npc_")||error.Contains("route_access"))obj["social_access"]=JsonSerializer.SerializeToNode(SocialAvailability());
         obj["protection_reasons"]=JsonSerializer.SerializeToNode(ProtectionReasons());return JsonSerializer.SerializeToElement(obj);
     }
     private string[] ProtectionReasons() {

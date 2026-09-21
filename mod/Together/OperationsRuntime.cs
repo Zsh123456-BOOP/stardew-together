@@ -27,7 +27,7 @@ public sealed partial class ModEntry {
     }
     internal object ServiceHours(string location) {
         var w=ServiceWindow(location);bool known=Game1.locations.Any(l=>l.doors.Pairs.Any(p=>{var a=l.GetTilePropertySplitBySpaces("Action","Buildings",p.Key.X,p.Key.Y);return a.Length>=6&&a[0]=="LockedDoorWarp"&&a[3]==location;}));
-        return new{location,entry_hours_known=known,opens=known?(int?)w.Open:null,closes=known?(int?)w.Close:null,now=Game1.timeOfDay,can_enter_now=known?(bool?)(w.Reason=="available"&&Game1.timeOfDay>=w.Open&&Game1.timeOfDay<w.Close):null,reason=w.Reason,recheck_at=Game1.timeOfDay<w.Open?(int?)w.Open:null,note="原生地图门禁与今日关闭条件；能进门不保证店员在柜台，实际报价与服务仍在现场核验"};
+        return new{location,entry_hours_known=known,opens=known&&w.Reason=="available"?(int?)w.Open:null,closes=known?(int?)w.Close:null,now=Game1.timeOfDay,can_enter_now=known?(bool?)(w.Reason=="available"&&Game1.timeOfDay>=w.Open&&Game1.timeOfDay<w.Close):null,reason=w.Reason,closed_today=w.Reason!="available",recheck_at=w.Reason=="available"&&Game1.timeOfDay<w.Open?(int?)w.Open:null,note="原生地图门禁与今日关闭条件；能进门不保证店员在柜台，实际报价与服务仍在现场核验"};
     }
     internal object[] KnownServiceHours()=>new[]{"SeedShop","FishShop","Blacksmith","ScienceHouse","AnimalShop","Saloon","JojaMart","Hospital","AdventureGuild"}.Where(n=>Game1.getLocationFromName(n)!=null).Select(ServiceHours).ToArray();
     private (int Open,int Close,string Reason,string Conditions) ServiceWindow(string subject) {
@@ -42,7 +42,7 @@ public sealed partial class ModEntry {
             if(d.Location.IsGreenRainingHere()&&Game1.year==1&&d.Location is not (StardewValley.Locations.Beach or StardewValley.Locations.Forest)&&subject!="AdventureGuild"){open=600;close=2600;}
             if(GameLocation.AreStoresClosedForFestival()&&d.Location.InValleyContext())reason="festival_closed";
             else if(subject=="SeedShop"&&Game1.shortDayNameFromDayOfSeason(Game1.dayOfMonth)=="Wed"&&!Utility.HasAnyPlayerSeenEvent("191393")&&!key)reason="weekly_closed";
-            if(reason!="available")open=2600;
+
         }
         string owner=subject switch{"SeedShop"=>"Pierre","FishShop"=>"Willy","AnimalShop"=>"Marnie","Blacksmith"=>"Clint","ScienceHouse"=>"Robin",_=>""};
         var npc=owner.Length>0?Game1.getCharacterFromName(owner):null;
@@ -76,7 +76,7 @@ public sealed partial class ModEntry {
             string subject=ServiceSubject(task.spec.tool,task.spec.args);if(subject.Length==0)continue;
             var window=ServiceWindow(subject);
             var blocked=Data.Autoplay.Operations.Blocking(subject,window.Conditions,Game1.Date.TotalDays,Game1.timeOfDay);
-            string? reason=window.Open>Game1.timeOfDay?window.Reason=="available"?"before_open":window.Reason:Game1.timeOfDay>=window.Close?"after_close":blocked?.Reason;
+            string? reason=window.Reason!="available"?window.Reason:window.Open>Game1.timeOfDay?"before_open":Game1.timeOfDay>=window.Close?"after_close":blocked?.Reason;
             if(reason!=null) {
                 int next=reason=="before_open"?window.Open:2600;
                 if(!OperationsPolicy.ServiceWindowFitsToday(Game1.timeOfDay,next,window.Close,task.spec.deadline)) {
@@ -99,7 +99,7 @@ public sealed partial class ModEntry {
         string subject=ServiceSubject(task.spec.tool,task.spec.args);
         if(subject.Length>0) {
             var w=ServiceWindow(subject);var blocked=Data.Autoplay.Operations.Blocking(subject,w.Conditions,Game1.Date.TotalDays,Game1.timeOfDay);
-            if(Game1.timeOfDay<w.Open||Game1.timeOfDay>=w.Close||blocked!=null){task.wait_reason=blocked?.Reason??"service_window";task.spec.not_before=Math.Max(Game1.timeOfDay,w.Open);return false;}
+            if(w.Reason!="available"||Game1.timeOfDay<w.Open||Game1.timeOfDay>=w.Close||blocked!=null){task.wait_reason=blocked?.Reason??"service_window";task.spec.not_before=Math.Max(Game1.timeOfDay,w.Open);return false;}
         }
         Data.Autoplay.Record("lease_acquired",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,task.spec.actor,task.spec.purpose,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},Game1.player.Stamina,free_slots=CapacityAdapter.Of(Game1.player).FreeSlots}));
         return true;
@@ -116,7 +116,7 @@ public sealed partial class ModEntry {
         }
         string subject=ServiceSubject(tool,args);if(subject.Length==0)return;
         var w=ServiceWindow(subject);
-        if(Game1.timeOfDay<w.Open||Game1.timeOfDay>=w.Close)throw new InvalidOperationException("shop_closed");
+        if(w.Reason!="available"||Game1.timeOfDay<w.Open||Game1.timeOfDay>=w.Close)throw new InvalidOperationException("shop_closed");
         if(Data.Autoplay.Operations.Blocking(subject,w.Conditions,Game1.Date.TotalDays,Game1.timeOfDay)!=null)throw new InvalidOperationException("service_conditions_unchanged");
     }
     private void LearnServiceConstraint(ScheduledAgentTask task,string state,string? error) {

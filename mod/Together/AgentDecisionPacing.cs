@@ -9,6 +9,7 @@ public sealed class AgentDecisionPacing {
         else QueriesWithoutProgress++;
         return QueriesWithoutProgress<3?1:QueriesWithoutProgress<6?8:20;
     }
+    public static bool ReleaseWindowBarrier(IEnumerable<(string State,bool Future,bool Waiting)> pending) {var rows=pending.ToArray();return rows.Length>0&&rows.All(t=>t.State=="queued"&&(t.Future||t.Waiting));}
     public static bool CanDefer(bool workCovered,bool needsMenuChoice)=>workCovered&&!needsMenuChoice;
     // Completed executors no longer own their open menus. Every remaining menu
     // needs observation, including boards and menus supplied by other mods.

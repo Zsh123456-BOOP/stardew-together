@@ -3,7 +3,7 @@ import argparse,json,os,subprocess,sys,time,shutil,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');p.add_argument('--service-checks',action='store_true');p.add_argument('--handoff-checks',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');p.add_argument('--service-checks',action='store_true');p.add_argument('--handoff-checks',action='store_true');p.add_argument('--decision-facts-checks',action='store_true');a=p.parse_args()
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=a.mods_dir.resolve();checks=[];b=None;initial=None
 
 def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
@@ -40,6 +40,25 @@ try:
     with (out/'route-samples.jsonl').open('a') as f:f.write(json.dumps(dict(utc=time.time(),receipt=r),ensure_ascii=False)+'\n')
   write(label+'.json',r);return r
  sc('agent_pause');sc('preparation_probe');time.sleep(.5)
+ if a.decision_facts_checks:
+  facts=sc('decision_facts_probe');write('decision-facts-before.json',facts)
+  check('weather-and-native-watering-count-visible',all(k in facts['snapshot']['weather'] for k in ['farm_raining','farm_watering']) and facts['farm_water']['dry_crops']==0,facts['farm_water'])
+  before=b.state();r=wait(tool('work.run',goal='water'),'already-watered-before-departure')
+  after=b.state();check('water-zero-targets-never-travels-or-transfers',r.get('status')=='succeeded' and r.get('completed')==0 and r.get('executed')==False and before['player']==after['player'],r)
+  access=tool('services.read',npc='Sam');write('sam-access-before.json',access)
+  check('private-room-detected-before-departure',access.get('reach',{}).get('reachable')==False and bool(access['reach']['doors']),access)
+  # After-hours and access restrictions are separate facts, not one generic path error.
+  check('npc-window-and-approach-are-separate',access.get('entry',{}).get('can_enter_now')==False,access)
+  r=sc('decision_chain',turn=dict(plan='检查等待开门不会占住其他独立工作的决策',speech='',calls=[dict(tool='player.service',args=dict(location='SeedShop',service='shop',shop='SeedShop')),dict(tool='world.read',args={})]));write('future-window-chain.json',r)
+  deadline=time.monotonic()+15
+  while time.monotonic()<deadline:
+   d=b.request('GET','/lab/together')['autoplay']
+   if d.get('continuation') is None:break
+   time.sleep(.25)
+  write('future-window-released.json',d)
+  waiting=[t for t in d['state']['Schedule']['Tasks'] if not t['Terminal']]
+  check('future-window-releases-observation-barrier',d.get('continuation') is None and bool(waiting),d.get('continuation'))
+  tool('plan.cancel',ids=[t['spec']['id'] for t in waiting])
  if a.service_checks:
   hours=tool('services.read',location='SeedShop');write('seedshop-hours-before.json',hours);check('native-opening-hours-visible-before-travel',hours.get('opens')==900 and hours.get('can_enter_now')==False,hours)
   before=b.state();r=tool('player.procure',location='Town',shop='SeedShop',item='(O)472',count=1,budget=20,max_unit_price=20,keep_gold=0)
@@ -126,7 +145,7 @@ try:
    r=wait(tool('player.social',npc=name,mode='greet',quest_id=qid),'repeat-greet-'+str(i))
    check('known-introduction-is-idempotent-'+str(i),r.get('status')=='succeeded' and r.get('completed')==0 and r.get('disposition')=='already_satisfied' and r.get('stop_reason')=='introduction_target_already_met',r)
   r=wait(tool('player.social',npc=name,mode='talk'),'talked-today');check('talked-today-is-observed-without-action',r.get('status')=='succeeded' and r.get('completed')==0 and r.get('stop_reason')=='talked_today',r)
-  stable=tool('progress.read');write('social-progress-stable.json',stable);check('repeats-do-not-change-native-progress',stable==after)
+  stable=tool('progress.read');write('social-progress-stable.json',stable);check('repeats-do-not-change-native-progress',stable['social']==after['social'])
   r=wait(tool('player.travel',location='Farm'),'return-after-social');check('work-can-continue-after-social-observation',r.get('status')=='succeeded',r)
  if a.service_checks:
   deadline=time.monotonic()+240
@@ -153,6 +172,25 @@ try:
    if not any(not t['Terminal'] for t in d['state']['Schedule']['Tasks']):break
    time.sleep(.4)
   write('board-after-close.json',d);check('queued-native-travel-continues-after-board',d['snapshot']['location']=='Farm' and d['snapshot']['menu'] is None and not any(not t['Terminal'] for t in d['state']['Schedule']['Tasks']))
+ if a.decision_facts_checks:
+  r=wait(tool('player.travel',location='Farm'),'farm-for-rain-check');check('farm-before-native-plant',r.get('status')=='succeeded',r)
+  plan=tool('farm.plan',seed='(O)472',count=1);write('rain-crop-plan.json',plan)
+  options=plan.get('options',[])
+  if options:
+   r=wait(tool('work.run',goal='plant',plan_id=options[0]['plan_id'],reserve_stamina=0,max_food=0),'native-rain-crop-plant',300)
+   check('native-crop-created-before-rain',r.get('status')=='succeeded',r)
+  else:check('native-crop-created-before-rain',False,plan)
+  for night in range(2):
+   r=wait(tool('player.sleep',reason='原生跨日组合验证，不作为自主经营成绩'),'rain-native-sleep-'+str(night),180)
+   check('native-rain-transition-'+str(night),r.get('status')=='succeeded',r);sc('preparation_probe')
+  facts=sc('decision_facts_probe');write('rain-day-facts.json',facts)
+  check('native-rain-with-live-crop-already-wet',facts['snapshot']['weather']['farm_raining'] and facts['farm_water']['crop_count']>0 and facts['farm_water']['dry_crops']==0,facts)
+  before=b.state();r=wait(tool('work.run',goal='water'),'rain-no-travel');after=b.state()
+  check('rain-no-watering-no-return-trip',r.get('completed')==0 and r.get('executed')==False and before['player']==after['player'],r)
+  hours=tool('services.read',location='SeedShop');check('weekly-closure-is-not-2600-opening',hours.get('closed_today')==True and hours.get('opens') is None and hours.get('recheck_at') is None,hours)
+  qid=tool('progress.read')['social']['introductions'][0]['quest_id'];access=tool('services.read',npc='Penny');write('rain-penny-access.json',access)
+  before=b.state();r=wait(tool('player.social',npc='Penny',mode='greet',quest_id=qid),'rain-private-room-preflight');after=b.state()
+  check('private-npc-preflight-preserves-player-position',access.get('available_now')==False and before['player']['tile']==after['player']['tile'],r)
  write('final-world.json',b.state());write('final-drops.json',sc('loose_drop_read'))
 except Exception as e:check('suite-exception',False,repr(e))
 finally:

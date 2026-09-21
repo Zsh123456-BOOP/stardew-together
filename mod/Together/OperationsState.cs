@@ -23,6 +23,7 @@ public sealed class OperationsState {
 }
 public sealed record WorkOutcome(string Disposition,string StopReason,bool BusinessProgress,int Completed,int Gained,int Deposited,int Remaining);
 public static class OperationsPolicy {
+    public static bool ServiceWindowFitsToday(int now,int next,int close,int deadline)=>next<2600&&Math.Max(now,next)<close&&Math.Max(now,next)<=deadline;
     public static WorkOutcome Outcome(string tool,JsonElement result) {
         int Count(string key)=>result.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out var n)?n:0;
         string Text(string key)=>result.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??"":"";

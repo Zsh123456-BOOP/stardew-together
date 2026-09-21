@@ -72,13 +72,20 @@ public sealed partial class ModEntry {
         Data.Autoplay.Schedule.Prepare=PrepareOperation;
         string stamp=$"{agentSaveEpoch}:{Game1.Date.TotalDays}:{Game1.timeOfDay}:{Data.Autoplay.Schedule.Revision}";
         if(operationWindowStamp==stamp)return;operationWindowStamp=stamp;
-        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="queued"&&t.spec.day==Game1.Date.TotalDays)) {
+        foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="queued"&&t.spec.day==Game1.Date.TotalDays).ToArray()) {
             string subject=ServiceSubject(task.spec.tool,task.spec.args);if(subject.Length==0)continue;
             var window=ServiceWindow(subject);
             var blocked=Data.Autoplay.Operations.Blocking(subject,window.Conditions,Game1.Date.TotalDays,Game1.timeOfDay);
             string? reason=window.Open>Game1.timeOfDay?window.Reason=="available"?"before_open":window.Reason:Game1.timeOfDay>=window.Close?"after_close":blocked?.Reason;
             if(reason!=null) {
                 int next=reason=="before_open"?window.Open:2600;
+                if(!OperationsPolicy.ServiceWindowFitsToday(Game1.timeOfDay,next,window.Close,task.spec.deadline)) {
+                    // No native action ran. End this attempt, retaining its intent
+                    // for fresh planning, rather than inventing a 26:00 opening.
+                    var receipt=new{status="blocked",stop_reason="service_window_unavailable_today",reason,subject,opens=window.Open,closes=window.Close,task.spec.deadline,executed=false,completed=0,note="本次未执行；今天已无有效服务窗口。请改派独立工作或另日按真实条件重新安排。"};
+                    Data.Autoplay.Schedule.Finish(task,"blocked","service_window_unavailable_today",AgentJson.Encode(receipt));
+                    Data.Autoplay.Record("service_window_blocked",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,receipt}));WakeAgent("service_window_unavailable_today");continue;
+                }
                 if(task.wait_reason!=reason)Data.Autoplay.Record("intent_deferred",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,subject,reason,next,condition=window.Conditions}));
                 task.wait_reason=reason;task.spec.not_before=Math.Max(task.spec.not_before,next);
             }else if(task.wait_reason!=null) {

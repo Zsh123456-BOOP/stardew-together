@@ -2,6 +2,11 @@ using System.Text.Json;
 using Together;
 public static class Round4Checks {
     public static void Run(Action<bool,string> check) {
+        check(AgentDecisionPacing.MenuNeedsReview(false,false,true)&&!AgentDecisionPacing.CanDefer(true,AgentDecisionPacing.MenuNeedsReview(false,false,true)),"open board wakes model despite queued follow-up work");
+        check(!AgentDecisionPacing.MenuNeedsReview(true,false,true)&&AgentDecisionPacing.MenuNeedsReview(true,true,true),"native executor keeps its menu unless it requests a choice");
+        check(!AgentDecisionPacing.MenuNeedsReview(false,false,false),"no-menu ordinary work stays continuous");
+        check(OperationsPolicy.ServiceWindowFitsToday(700,900,1700,1800)&&OperationsPolicy.ServiceWindowFitsToday(900,900,1700,900),"reachable opening before task deadline can wait");
+        check(!OperationsPolicy.ServiceWindowFitsToday(2000,2600,2000,2500)&&!OperationsPolicy.ServiceWindowFitsToday(700,900,1700,800)&&!OperationsPolicy.ServiceWindowFitsToday(700,2600,2600,2600),"closed, missed-deadline and whole-day closure cannot queue forever");
         check(SlotInvariant.Check(0,12)==0&&SlotInvariant.Check(11,12)==11,"selected slots include both boundaries");
         foreach(int n in new[]{-1,12}) {bool rejected=false;try{SlotInvariant.Check(n,12);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid selected slot rejected before write");}
         check(DecisionBarrier.State(new[]{"running","queued"})=="waiting","queued action cannot satisfy observation prerequisite");

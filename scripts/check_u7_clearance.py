@@ -3,7 +3,7 @@ import argparse,json,os,subprocess,sys,time,shutil,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');p.add_argument('--service-checks',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');p.add_argument('--service-checks',action='store_true');p.add_argument('--handoff-checks',action='store_true');a=p.parse_args()
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=a.mods_dir.resolve();checks=[];b=None;initial=None
 
 def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
@@ -46,6 +46,16 @@ try:
   check('wrong-procure-map-rejected-before-movement',r.get('error','').startswith('parameter_service_location_mismatch') and b.state()['player']==before['player'],r)
   r=tool('player.procure',location='SeedShop',shop='SeedShop',item='(O)472',count=1,budget=20,max_unit_price=20,keep_gold=0)
   check('correct-shop-before-opening-is-window-not-path-failure',r.get('error')=='shop_closed' and b.state()['player']==before['player'],r)
+ if a.handoff_checks:
+  r=tool('plan.submit',submission_id='service-deadline-check',expected_revision=tool('plan.read')['revision'],tasks=[dict(id='missed-opening',actor='player',tool='player.service',args=dict(location='SeedShop',service='shop',shop='SeedShop'),deadline=800),dict(id='independent-after-window',actor='player',tool='player.travel',args=dict(location='Farm'),sequence_after=['missed-opening'])]);write('window-plan.json',r)
+  deadline=time.monotonic()+90
+  while time.monotonic()<deadline:
+   d=b.request('GET','/lab/together')['autoplay'];rows={t['spec']['id']:t for t in d['state']['Schedule']['Tasks']}
+   if rows.get('independent-after-window',{}).get('Terminal'):break
+   time.sleep(.4)
+  write('window-plan-result.json',d)
+  check('unreachable-opening-is-blocked-before-execution',rows.get('missed-opening',{}).get('state')=='blocked' and rows['missed-opening'].get('command_id') is None,rows.get('missed-opening'))
+  check('independent-work-after-blocked-window-runs',rows.get('independent-after-window',{}).get('state')=='succeeded',rows.get('independent-after-window'))
  r=wait(tool('player.travel',location='Farm'),'farm-entry');check('native-farm-entry',r.get('status')=='succeeded',r)
  # Search observed native clutter, not a fabricated obstacle fixture.
  found=[]
@@ -130,6 +140,19 @@ try:
   r=wait(tool('player.social',npc='Penny',mode='greet',quest_id=q['quest_id']),'penny-at-tree')
   check('screenshot-penny-approach-native-interaction',r.get('status')=='succeeded' and any(e.get('kind')=='native_social_interaction' and e.get('native_radius_verified') for e in r.get('effects',[])),r)
   r=wait(tool('player.travel',location='Farm'),'return-after-penny');check('normal-travel-after-dynamic-npc',r.get('status')=='succeeded',r)
+ if a.handoff_checks:
+  r=wait(tool('player.service',location='Town',service='daily_quests'),'native-board-open');check('native-board-opened',r.get('status')=='succeeded',r)
+  r=sc('decision_chain',turn=dict(plan='原生任务板后还有独立行程，读取不能被排队动作锁住',speech='',calls=[dict(tool='player.travel',args=dict(location='Farm')),dict(tool='quest_board.read',args={})]));time.sleep(.5)
+  d=b.request('GET','/lab/together')['autoplay'];write('board-handoff.json',d)
+  check('board-needs-model-even-with-queued-work',d.get('needs_menu_decision')==True and d['snapshot']['menu']=='Billboard' and any(not t['Terminal'] for t in d['state']['Schedule']['Tasks']))
+  check('board-releases-blocked-observation-continuation',d.get('continuation') is None,d.get('decision_reasons'))
+  write('native-board-observation.json',tool('quest_board.read'));tool('menu.close')
+  deadline=time.monotonic()+120
+  while time.monotonic()<deadline:
+   d=b.request('GET','/lab/together')['autoplay']
+   if not any(not t['Terminal'] for t in d['state']['Schedule']['Tasks']):break
+   time.sleep(.4)
+  write('board-after-close.json',d);check('queued-native-travel-continues-after-board',d['snapshot']['location']=='Farm' and d['snapshot']['menu'] is None and not any(not t['Terminal'] for t in d['state']['Schedule']['Tasks']))
  write('final-world.json',b.state());write('final-drops.json',sc('loose_drop_read'))
 except Exception as e:check('suite-exception',False,repr(e))
 finally:

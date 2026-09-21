@@ -50,6 +50,18 @@ public sealed partial class PlayerExecutor {
         if(socialMode=="talk"&&socialTalked){Current!.effects.Add(SocialEvidence());Finish("succeeded");return;}
         destination=socialNpc.currentLocation.NameOrUniqueName;Current!.phase="social_travel";
     }
+    private Microsoft.Xna.Framework.Point SocialStand(NPC npc) {
+        var at=npc.StandingPixel;var center=new Microsoft.Xna.Framework.Point(at.X/64,at.Y/64);var p=Game1.player;
+        var options=Enumerable.Range(-1,3).SelectMany(x=>Enumerable.Range(-1,3).Select(y=>new Microsoft.Xna.Framework.Point(center.X+x,center.Y+y)))
+            .Where(t=>t!=center&&Passable(Game1.currentLocation,t)).OrderBy(t=>Microsoft.Xna.Framework.Vector2.DistanceSquared(t.ToVector2(),p.Tile));
+        foreach(var stand in options) {
+            var path=MeasuredPath(stand);
+            if(stand!=p.TilePoint&&path?.Count is not >0)continue;
+            approachPath=path;approachStart=p.TilePoint;approachEnd=stand;approachLocation=Game1.currentLocation;
+            Current!.effects.Add(new{kind="social_approach_selected",npc=npc.Name,npc_tile=new[]{center.X,center.Y},stand=new[]{stand.X,stand.Y},path_steps=path?.Count,native_radius_tiles=1});return stand;
+        }
+        throw new InvalidOperationException("exit_unreachable");
+    }
     private void TickSocial() {
         var p=Game1.player;
         if(Current!.phase=="social_dialogue") {
@@ -78,12 +90,12 @@ public sealed partial class PlayerExecutor {
         string next=npc.currentLocation.NameOrUniqueName;
         if(destination!=next){destination=next;edge=null;StopWalk();}
         if(Game1.currentLocation.NameOrUniqueName!=destination){Current.phase="social_travel";Travel();return;}
-        if(Math.Abs(p.TilePoint.X-npc.TilePoint.X)+Math.Abs(p.TilePoint.Y-npc.TilePoint.Y)>1) {
+        if(!Utility.withinRadiusOfPlayer(npc.StandingPixel.X,npc.StandingPixel.Y,1,p)) {
             if((ownedController==null||socialApproachTile!=npc.TilePoint)&&DateTime.UtcNow>=nextInteraction) {
                 nextInteraction=DateTime.UtcNow.AddMilliseconds(500);
-                try{Walk(Approach(npc.TilePoint,true));socialApproachTile=npc.TilePoint;}
+                try{Walk(SocialStand(npc));socialApproachTile=npc.TilePoint;}
                 catch(InvalidOperationException e)when(e.Message=="exit_unreachable") {
-                    Current.effects.Add(new{kind="npc_stand_blocked",npc=npc.Name,location=Game1.currentLocation.NameOrUniqueName,npc.TilePoint,player=Game1.player.TilePoint});
+                    Current.effects.Add(new{kind="npc_stand_blocked",npc=npc.Name,location=Game1.currentLocation.NameOrUniqueName,npc_tile=new[]{npc.TilePoint.X,npc.TilePoint.Y},player=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},npc_bounds=npc.GetBoundingBox().ToString(),player_bounds=Game1.player.GetBoundingBox().ToString()});
                     throw new InvalidOperationException("npc_stand_unreachable");
                 }
             }
@@ -118,6 +130,7 @@ public sealed partial class PlayerExecutor {
         }
         // One genuine nearby interaction routes through native quest, gift and dialogue logic.
         // The boolean can be false for a valid temporary dialogue: verify state after dismissal.
+        Current.effects.Add(new{kind="native_social_interaction",npc=npc.Name,player_tile=new[]{p.TilePoint.X,p.TilePoint.Y},npc_standing=new[]{npc.StandingPixel.X,npc.StandingPixel.Y},native_radius_verified=Utility.withinRadiusOfPlayer(npc.StandingPixel.X,npc.StandingPixel.Y,1,p)});
         npc.checkAction(p,Game1.currentLocation);Current.phase="social_dialogue";nextInteraction=DateTime.UtcNow.AddMilliseconds(400);
     }
     private bool RelationshipResult(Friendship? friendship)=>socialItem switch {

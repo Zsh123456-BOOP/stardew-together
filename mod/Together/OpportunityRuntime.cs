@@ -111,6 +111,7 @@ public sealed partial class ModEntry {
         var obj=JsonNode.Parse(result.GetRawText())!.AsObject();
         try {obj["alternatives"]=JsonSerializer.SerializeToNode(OperatingOpportunities().Take(8),AgentJson.Options);}
         catch(Exception e){obj["alternatives"]=new JsonArray();obj["alternatives_unavailable"]=e.GetType().Name;Data.Autoplay.Record("alternatives_observation_error",e.Message);}
+        if(error.StartsWith("parameter_service_location_mismatch")||error is "shop_closed" or "no_reachable_native_service_counter")obj["service_hours"]=JsonSerializer.SerializeToNode(KnownServiceHours());
         obj["protection_reasons"]=JsonSerializer.SerializeToNode(ProtectionReasons());return JsonSerializer.SerializeToElement(obj);
     }
     private string[] ProtectionReasons() {

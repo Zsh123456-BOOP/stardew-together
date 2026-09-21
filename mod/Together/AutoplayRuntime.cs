@@ -235,7 +235,7 @@ public sealed partial class ModEntry {
             return (object)info;
         }).ToArray();
     }
-    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),recruitment=RecruitmentOptions(),goals=GoalContext()};}
+    internal object AgentWorld(){RefreshFacts(true);return new{snapshot=AgentSnapshot(),service_hours=KnownServiceHours(),inventory_plan=InventoryPlanning(),farm_cleanup=FarmMaintenanceSummary(),farm=new{Facts.Day,Facts.Time,Facts.Season,Facts.Route,Facts.Money,Facts.DryCrops,Facts.RipeCrops,Facts.DeadCrops,Facts.MachinesReady,Facts.AnimalsUnpetted,Facts.FeedNeeded,Facts.HayInSilo,animals=Facts.Animals,care_locations=Facts.CareLocations,machines=Facts.Machines.Take(12),crops=Facts.Crops.Take(16),stock=Facts.Stock.Take(30),quests=Facts.Quests.Take(8),bundles=Facts.Bundles.Where(b=>!b.Complete).Take(5)},companions=AgentCompanions(),recruitment=RecruitmentOptions(),goals=GoalContext()};}
     internal object AgentCompanion(JsonElement args) {
         if(SinglePlayerMode)throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");
         if(api==null)throw new InvalidOperationException("companion_api_unavailable");

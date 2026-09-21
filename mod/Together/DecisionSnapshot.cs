@@ -16,7 +16,7 @@ public sealed partial class ModEntry {
         switch(decisionSnapshotPart) {
             case 0:Add(new{inventory_plan=InventoryPlanning()});break;
             case 1:Add(new{farm_cleanup=FarmMaintenanceSummary()});break;
-            case 2:Add(new{day=AgentDay(true),progression=DailyProgressDigest()});break;
+            case 2:Add(new{day=AgentDay(true),progression=DailyProgressDigest(),service_hours=KnownServiceHours()});break;
             case 3:decisionSnapshot["production_temporary"]=JsonSerializer.SerializeToElement(ProductionSummary(),AgentJson.Options);break;
             case 4:
                 var opportunities=OperatingOpportunities();WriteBusinessLog("operating_candidates",AgentJson.Encode(opportunities));

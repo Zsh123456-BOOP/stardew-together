@@ -25,6 +25,11 @@ public sealed partial class ModEntry {
         if(tool is not ("player.service" or "player.procure" or "player.travel" or "player.acquire_animal" or "player.upgrade_house"))return "";
         return AgentToolRegistry.Text(args,"location",tool=="player.acquire_animal"?"AnimalShop":"");
     }
+    internal object ServiceHours(string location) {
+        var w=ServiceWindow(location);bool known=Game1.locations.Any(l=>l.doors.Pairs.Any(p=>{var a=l.GetTilePropertySplitBySpaces("Action","Buildings",p.Key.X,p.Key.Y);return a.Length>=6&&a[0]=="LockedDoorWarp"&&a[3]==location;}));
+        return new{location,entry_hours_known=known,opens=known?(int?)w.Open:null,closes=known?(int?)w.Close:null,now=Game1.timeOfDay,can_enter_now=known?(bool?)(w.Reason=="available"&&Game1.timeOfDay>=w.Open&&Game1.timeOfDay<w.Close):null,reason=w.Reason,recheck_at=Game1.timeOfDay<w.Open?(int?)w.Open:null,note="原生地图门禁与今日关闭条件；能进门不保证店员在柜台，实际报价与服务仍在现场核验"};
+    }
+    internal object[] KnownServiceHours()=>new[]{"SeedShop","FishShop","Blacksmith","ScienceHouse","AnimalShop","Saloon","JojaMart","Hospital","AdventureGuild"}.Where(n=>Game1.getLocationFromName(n)!=null).Select(ServiceHours).ToArray();
     private (int Open,int Close,string Reason,string Conditions) ServiceWindow(string subject) {
         int open=600,close=2600;string reason="available";
         var doors=Game1.locations.SelectMany(l=>l.doors.Pairs.Select(p=>(Location:l,Action:l.GetTilePropertySplitBySpaces("Action","Buildings",p.Key.X,p.Key.Y))))

@@ -240,7 +240,8 @@ public sealed partial class PlayerExecutor {
     public static bool Passable(GameLocation l,Point p) {
         if(p.X<0||p.Y<0||p.X>=l.Map.Layers[0].LayerWidth||p.Y>=l.Map.Layers[0].LayerHeight)return false;
         var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+40-box.Center.Y);
-        return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,true,false,false,true);
+        // Native pathfinding=true skips NPC collision; preview must match real Farmer movement.
+        return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,false,false,false,true);
     }
     // The native controller constructor teleports non-NPCs in unoccupied maps.
     // Preview only the path; remote planning starts at a real map entrance.
@@ -541,7 +542,8 @@ public sealed partial class PlayerExecutor {
     private void MonitorWalk() {
         if(Game1.player.TilePoint!=lastTile){lastTile=Game1.player.TilePoint;lastProgress=DateTime.UtcNow;}
         if(ownedController is PlayerRouteController {Blocked:true} blocked){
-            RouteObserved?.Invoke(new{kind="route_blocked_before_step",command_id=Current?.command_id,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{blocked.BlockedTile.X,blocked.BlockedTile.Y},bounds=Game1.player.GetBoundingBox().ToString()});
+            if(blocked.DynamicBlocker!=null&&blocked.BlockedSeconds<.35)return;
+            RouteObserved?.Invoke(new{kind="route_blocked_before_step",command_id=Current?.command_id,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{blocked.BlockedTile.X,blocked.BlockedTile.Y},bounds=Game1.player.GetBoundingBox().ToString(),npc=blocked.DynamicBlocker,wait_seconds=blocked.BlockedSeconds});
             if(++retries>2)throw new InvalidOperationException("path_stalled");pathRetries++;Walk(target);return;
         }
         if((DateTime.UtcNow-lastProgress).TotalSeconds<3)return;

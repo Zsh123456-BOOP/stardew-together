@@ -31,6 +31,7 @@ public sealed partial class PlayerExecutor {
 public sealed partial class ModEntry {
     internal void ValidateToolDeclaration(string tool,JsonElement args) {
         string? error=null;
+        if(tool=="player.procure")error=PlayerExecutor.ServiceParameterError(PlayerExecutor.ProcurementServiceArgs(args));
         if(tool=="player.service")error=PlayerExecutor.ServiceParameterError(args);
         if(tool=="player.place_facility"&&string.IsNullOrWhiteSpace(AgentToolRegistry.Text(args,"item")))error="parameter_required:item:player.place_facility";
         if(tool=="farm.plan"&&!Game1.currentLocation.IsGreenhouse&&(!Game1.currentLocation.IsFarm||!Game1.currentLocation.IsOutdoors))error="plan_on_farm_or_greenhouse_first_travel_to_Farm";

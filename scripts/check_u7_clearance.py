@@ -3,7 +3,7 @@ import argparse,json,os,subprocess,sys,time,shutil,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge,BridgeError
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18780);p.add_argument('--mods-dir',type=Path,default=ROOT/'work/U7VerifiedMods');p.add_argument('--social-checks',action='store_true');p.add_argument('--service-checks',action='store_true');a=p.parse_args()
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=a.mods_dir.resolve();checks=[];b=None;initial=None
 
 def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
@@ -40,6 +40,12 @@ try:
     with (out/'route-samples.jsonl').open('a') as f:f.write(json.dumps(dict(utc=time.time(),receipt=r),ensure_ascii=False)+'\n')
   write(label+'.json',r);return r
  sc('agent_pause');sc('preparation_probe');time.sleep(.5)
+ if a.service_checks:
+  hours=tool('services.read',location='SeedShop');write('seedshop-hours-before.json',hours);check('native-opening-hours-visible-before-travel',hours.get('opens')==900 and hours.get('can_enter_now')==False,hours)
+  before=b.state();r=tool('player.procure',location='Town',shop='SeedShop',item='(O)472',count=1,budget=20,max_unit_price=20,keep_gold=0)
+  check('wrong-procure-map-rejected-before-movement',r.get('error','').startswith('parameter_service_location_mismatch') and b.state()['player']==before['player'],r)
+  r=tool('player.procure',location='SeedShop',shop='SeedShop',item='(O)472',count=1,budget=20,max_unit_price=20,keep_gold=0)
+  check('correct-shop-before-opening-is-window-not-path-failure',r.get('error')=='shop_closed' and b.state()['player']==before['player'],r)
  r=wait(tool('player.travel',location='Farm'),'farm-entry');check('native-farm-entry',r.get('status')=='succeeded',r)
  # Search observed native clutter, not a fabricated obstacle fixture.
  found=[]
@@ -112,6 +118,18 @@ try:
   r=wait(tool('player.social',npc=name,mode='talk'),'talked-today');check('talked-today-is-observed-without-action',r.get('status')=='succeeded' and r.get('completed')==0 and r.get('stop_reason')=='talked_today',r)
   stable=tool('progress.read');write('social-progress-stable.json',stable);check('repeats-do-not-change-native-progress',stable==after)
   r=wait(tool('player.travel',location='Farm'),'return-after-social');check('work-can-continue-after-social-observation',r.get('status')=='succeeded',r)
+ if a.service_checks:
+  deadline=time.monotonic()+240
+  while b.request('GET','/lab/together')['autoplay']['snapshot']['time']<900 and time.monotonic()<deadline:time.sleep(2)
+  before=b.state();r=wait(tool('player.procure',location='SeedShop',shop='SeedShop',item='(O)472',count=1,budget=20,max_unit_price=20,keep_gold=0),'open-shop-native-purchase');after=b.state();write('purchase-world-before.json',before);write('purchase-world-after.json',after)
+  check('native-purchase-after-opening',r.get('status')=='succeeded' and after['player']['inventory'].get('(O)472:0',0)-before['player']['inventory'].get('(O)472:0',0)==1,r)
+  tool('menu.close');r=wait(tool('player.travel',location='Town'),'town-for-penny')
+  deadline=time.monotonic()+240
+  while b.request('GET','/lab/together')['autoplay']['snapshot']['time']<1030 and time.monotonic()<deadline:time.sleep(2)
+  write('penny-before.json',sc('social_probe'));progress=tool('progress.read');q=progress['social']['introductions'][0]
+  r=wait(tool('player.social',npc='Penny',mode='greet',quest_id=q['quest_id']),'penny-at-tree')
+  check('screenshot-penny-approach-native-interaction',r.get('status')=='succeeded' and any(e.get('kind')=='native_social_interaction' and e.get('native_radius_verified') for e in r.get('effects',[])),r)
+  r=wait(tool('player.travel',location='Farm'),'return-after-penny');check('normal-travel-after-dynamic-npc',r.get('status')=='succeeded',r)
  write('final-world.json',b.state());write('final-drops.json',sc('loose_drop_read'))
 except Exception as e:check('suite-exception',False,repr(e))
 finally:

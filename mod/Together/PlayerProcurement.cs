@@ -5,10 +5,11 @@ using StardewValley.Menus;
 namespace Together;
 public sealed partial class PlayerExecutor {
     private JsonElement procurementArgs;
+    internal static JsonElement ProcurementServiceArgs(JsonElement args)=>JsonSerializer.SerializeToElement(new{service="shop",shop=AgentToolRegistry.Text(args,"shop"),location=AgentToolRegistry.Text(args,"location",Game1.currentLocation.NameOrUniqueName)});
     private void StartProcurement(JsonElement args) {
         procurementArgs=args.Clone();
         if(AgentToolRegistry.Text(args,"item").Length==0||AgentToolRegistry.Number(args,"budget",-1)<0||AgentToolRegistry.Number(args,"max_unit_price",-1)<0)throw new InvalidOperationException("procurement_item_and_explicit_budget_required");
-        StartService(args);
+        StartService(ProcurementServiceArgs(args));
     }
     private void StartAcquireAnimal(JsonElement args) {
         procurementArgs=args.Clone();StartService(JsonSerializer.SerializeToElement(new{location=AgentToolRegistry.Text(args,"location","AnimalShop"),service="animals"}));

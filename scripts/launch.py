@@ -16,7 +16,11 @@ p.add_argument('--lab', action='store_true', help='Enable fixture commands restr
 p.add_argument('--companion', action='store_true', help='Use the isolated Squad companion build')
 p.add_argument('--mods-dir', help='Independent runtime directory for this project')
 p.add_argument('--port', type=int, default=18765)
+p.add_argument('--config-root', type=Path, help='Isolated lab XDG configuration/save root (must already exist)')
 args = p.parse_args()
+if args.config_root:
+    if not args.lab or not args.config_root.is_dir():p.error('--config-root requires --lab and an existing directory')
+    os.environ['XDG_CONFIG_HOME']=str(args.config_root.resolve())
 mods = Path(args.mods_dir).resolve() if args.mods_dir else ROOT / ('work/CompanionMods' if args.companion else 'work/Mods')
 if not 1024 <= args.port <= 65535:p.error('invalid port')
 runtime_lock = None

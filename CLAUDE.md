@@ -66,9 +66,9 @@ python3 evals/companion_control.py              # 关闭面板、停掉任务后
 
 ### 工具系统
 
-`AgentToolRegistry.Catalog` 是单一真相源：`工具名 → 中文参数与语义契约`，约 120 项。`ExecuteCore()` 的 switch 把工具路由到各 `ModEntry` partial 方法。
+`AgentToolRegistry.Catalog` 保存工具目录及参数/语义契约；`work.run` 的结构化来源是 `ToolSpecs`，Catalog 文本也从该来源生成。`ExecuteCore()` 的 switch 把工具路由到各 `ModEntry` partial 方法。
 
-新增工具需要三处同步：`Catalog` 条目、`ExecuteCore` 分支、必要时 `AgentToolDiscovery.CoreNames`。原生 API tools 由 NativeToolProtocol 从 Catalog 契约生成：明确类型映射到 JSON Schema，含歧义的参数继续由业务声明检查验证。当前使用普通 Tool Calls（未启用 Beta strict）；模型返回 tool_calls，按 API 调用 ID 回传接收回执，异步完成仍由原生事件核验。描述与参数 schema 都是运行时契约。
+新增工具需要三处同步：`Catalog` 条目、`ExecuteCore` 分支、必要时 `AgentToolDiscovery.CoreNames`。每个请求先冻结 ToolSpec；API tools 和 Decode（包括 plan.submit 内动作）共用该份参数 Schema。work.run 按农务/资源/仓储及按需加载的钓鱼/矿洞/畜牧/伙伴生产配置生成；其他工具从 Catalog 迁移到 ToolSpec，歧义参数继续由业务声明检查验证。当前使用普通 Tool Calls（未启用 Beta strict）；模型返回 tool_calls，按 API 调用 ID 回传接收回执，异步完成仍由原生事件核验。描述与参数 schema 都是运行时契约。
 
 `ExecutionContract.Receipt()` 给所有回执加统一信封：`stop_reason`、`retryable`、`resume_policy`、`resource_delta`、`native_progress_evidence`、`evidence_ids`。它**保留**各执行器的原生证据，绝不从 UI 点击或物品消失推断业务成功。
 
@@ -96,7 +96,7 @@ C# 高度紧凑：单行多语句、表达式体成员、少空行，一个文�
 
 注释只解释**为什么**，尤其是绕开上游行为或原生机制的地方（例：`// Replanning from a tile corner and smoothing a centre-to-centre ray can cut into a machine.`）。
 
-面向模型的字符串（`Catalog` 描述、`ModelClient` 的 system prompt）用中文，并明确写出能力边界与禁止事项——这些文字是运行时契约，改动等于改行为。文档在 `docs/`，中文，区分「实测＋代码 / 静态确认 / 待验证」三档证据强度。
+面向模型的字符串优先精简中文；可采用经过等义分词实测更省且清楚的英文，不双语重复。明确写出能力边界与必要约束——这些文字是运行时契约，改动等于改行为。文档在 `docs/`，中文，区分「实测＋代码 / 静态确认 / 待验证」三档证据强度。
 
 ## 当前工作
 

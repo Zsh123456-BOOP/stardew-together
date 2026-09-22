@@ -33,6 +33,7 @@ public sealed partial class ModEntry {
             }
             case "navigation_collision_probe":return LabNavigationProbe(Arg("mode","setup"));
             case "inventory_split_probe":return AgentJson.Encode(LabSplitInventory());
+            case "on_demand_probe":return AgentJson.Encode(OnDemandProbe());
             case "inventory_contract_probe":return AgentJson.Encode(new{capacity=ReadCapacityOptions(),opportunities=OperatingOpportunities(),fish_shop_has_site=HasReachableFishingSite(Game1.getLocationFromName("SeedShop"),new FishingRod(),""),goals=Data.SharedGoals.Select(g=>new{g.Id,g.Entity,g.Count,g.Reserved,g.CapacityBlockedTool,condition=GoalCondition(g)}).ToArray()});
             case "decision_facts_probe":return AgentJson.Encode(new{snapshot=AgentSnapshot(),access=SocialAvailability(),farm_water=WateringObservation("Farm"),unchanged=SocialAccessCondition("Penny")});
             case "social_probe":return AgentJson.Encode(new{social=SocialObservation.Read(Game1.player),npcs=Game1.locations.SelectMany(l=>l.characters.Select(n=>new{name=n.Name,location=l.NameOrUniqueName,tile=new[]{n.TilePoint.X,n.TilePoint.Y},moving=n.isMoving(),sleeping=n.isSleeping.Value,invisible=n.IsInvisible,monster=n.IsMonster})).ToArray()});

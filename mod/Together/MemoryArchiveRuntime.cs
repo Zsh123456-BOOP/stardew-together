@@ -43,7 +43,7 @@ public sealed partial class ModEntry {
     private object DiaryDisplay(DiaryRow r) {
         string item=r.Item.Split('|')[0],name=item;
         if(item.StartsWith("("))try{name=ItemRegistry.GetDataOrErrorItem(item).DisplayName;}catch{}
-        return new{r.Day,first=r.First,last=r.Last,activity=r.Kind,item=r.Item,name,location=r.Location,count=r.Count,cost=r.Cost,batches=r.Batches,evidence=r.Evidence};
+        return new{r.Day,first=r.First,last=r.Last,activity=r.Kind,item=r.Item,name,location=r.Location,count=r.Count,cost=r.Cost,batches=r.Batches,evidence=r.Evidence,supporting_evidence=r.SupportingEvidence};
     }
     private object AgentMemoryContext()=>new {
         daily_activity=DiaryContext(),

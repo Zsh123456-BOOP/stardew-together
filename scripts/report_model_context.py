@@ -12,9 +12,11 @@ def summarize(path):
     for line in Path(path).read_text().splitlines():
         event=json.loads(line);c=calls.setdefault(event['call_id'],{'call_id':event['call_id']})
         kind=event['kind'];p=event['payload']
-        if kind=='context_budget':c['packing']=p
+        if kind=='frozen_context':c['frozen_context_schema']=p.get('schema');c['field_revisions']=p.get('field_revisions',{})
+        elif kind=='context_budget':c['packing']=p
         elif kind=='request':
             body=json.loads(p['body']);messages=body['messages']
+            c['requested_model']=body.get('model')
             schema_chars=len(json.dumps(body['tools'],ensure_ascii=False,separators=(',',':'))) if body.get('tools') else 0
             message_chars=sum(len(m.get('content') or '')+ (len(json.dumps(m['tool_calls'],ensure_ascii=False,separators=(',',':'))) if m.get('tool_calls') else 0) for m in messages)
             c.update(start=event['utc'],input_characters=message_chars+schema_chars,tool_schema_characters=schema_chars,system_characters=len(messages[0]['content']),user_characters=len(messages[-1]['content']),native_feedback_count=sum(m.get('role')=='tool' for m in messages))
@@ -24,6 +26,7 @@ def summarize(path):
             except (ValueError,AttributeError):pass
         elif kind=='response':
             body=json.loads(p['body']);c.update(end=event['utc'],http_status=p['status'],usage=body.get('usage'))
+            c.update(served_model=body.get('model'),system_fingerprint=body.get('system_fingerprint'))
             if body.get('choices'):
                 choice=body['choices'][0];c['finish_reason']=choice.get('finish_reason');raw=choice['message'].get('content') or ''
                 try:
@@ -46,12 +49,13 @@ def summarize(path):
     def stats(values):
         values=sorted(v for v in values if isinstance(v,(int,float)))
         if not values:return None
-        return dict(count=len(values),total=sum(values),median=median(values),p95=values[min(len(values)-1,int(.95*(len(values)-1)))],max=max(values))
+        return dict(count=len(values),total=sum(values),mean=sum(values)/len(values),median=median(values),p95=values[min(len(values)-1,int(.95*(len(values)-1)))],max=max(values))
     usage=[c['usage'] for c in rows if c.get('usage')]
     total=sum(u.get('prompt_tokens',0) for u in usage)
     return dict(source=str(Path(path).resolve()),calls=len(rows),requests=sum('start' in c for c in rows),responses=sum('end' in c for c in rows),missing_usage=sum('start' in c and not c.get('usage') for c in rows),
         input_tokens=stats(u.get('prompt_tokens') for u in usage),output_tokens=stats(u.get('completion_tokens') for u in usage),cache_hit_ratio=sum(u.get('prompt_cache_hit_tokens',0) for u in usage)/total if total else None,
         input_characters=stats(c.get('input_characters') for c in rows),http_seconds=stats(c.get('http_seconds') for c in rows),tool_count=stats(c.get('packing',{}).get('tool_count') for c in rows),
+        character_components={k:stats(c.get(k) for c in rows) for k in ('system_characters','tool_schema_characters','user_characters')},requested_models=dict(Counter(c['requested_model'] for c in rows if c.get('requested_model'))),served_models=dict(Counter(c['served_model'] for c in rows if c.get('served_model'))),frozen_contexts=sum('frozen_context_schema' in c for c in rows),
         formats=dict(Counter(c.get('format','no_reply') for c in rows)),tool_calls=dict(Counter(t for c in rows for t in c.get('tools',[]))),undisclosed_calls=[dict(call_id=c['call_id'],tools=c['not_in_current_definitions']) for c in rows if c.get('not_in_current_definitions')],per_call=rows)
 
 

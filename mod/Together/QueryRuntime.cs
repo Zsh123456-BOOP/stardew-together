@@ -4,6 +4,7 @@ namespace Together;
 
 public sealed partial class ModEntry {
     private string[] queryRequestIds=Array.Empty<string>();
+    private readonly QueryFactMemo queryFactMemo=new();
     private bool HasPendingQueries=>Data.Autoplay.Memory.Queries.Any(q=>!q.Delivered);
     private object PendingQueries()=>QueryResult.Pending(Data.Autoplay.Memory.Queries);
     private string CaptureObservation(string tool,JsonElement result,string kind="query",string call="",JsonElement args=default) {
@@ -17,7 +18,13 @@ public sealed partial class ModEntry {
             Data.Autoplay.Memory.EquippedTools[p.Name]=Game1.Date.TotalDays;
             Data.Autoplay.Memory.EquippedToolsUntilDecision[p.Name]=Data.Autoplay.Decisions+3;
         }
-        return CaptureObservation(call.tool,observed,"query",call.id,call.args);
+        if(call.tool=="tools.lookup"&&observed.TryGetProperty("work_profiles",out var profiles)) {
+            var memory=Data.Autoplay.Memory;if(memory.WorkProfileDay!=Game1.Date.TotalDays)memory.WorkProfilesUntilDecision.Clear();memory.WorkProfileDay=Game1.Date.TotalDays;
+            foreach(var p in profiles.EnumerateArray())memory.WorkProfilesUntilDecision[p.GetString()!]=Data.Autoplay.Decisions+3;
+        }
+        var memo=queryFactMemo.Observe(call.tool,call.args,observed);
+        Data.Autoplay.Record("query_fact_revision",AgentJson.Encode(new{tool=call.tool,args=call.args,revision=memo.Revision,repeated=memo.Repeated,day=Game1.Date.TotalDays,time=Game1.timeOfDay,full_fact_returned=true}));
+        return CaptureObservation(call.tool,memo.Fact,"query",call.id,call.args);
     }
     private void AcknowledgeQueries() {
         foreach(var q in Data.Autoplay.Memory.Queries.Where(q=>queryRequestIds.Contains(q.Id)))q.Delivered=true;
@@ -33,12 +40,19 @@ public sealed partial class ModEntry {
         if(found==null&&Data.Autoplay.Memory.QueryEvidence.TryGetValue(id,out var evidence)&&memoryArchive!=null)found=memoryArchive.Query(evidence,id);
         return found?.Page(offset,AgentToolRegistry.Number(args,"count",12))??new{status="not_found",note="旧版未建索引的回执可用memory.search以result_id检索query_completed，再memory.evidence续读"};
     }
-    internal object ReadContextSection(JsonElement args)=>AgentToolRegistry.Text(args,"section") switch {
+    internal object ReadContextSection(JsonElement args) {
+        if(args.TryGetProperty("sections",out var batch)) {
+            if(args.TryGetProperty("section",out _)||batch.ValueKind!=JsonValueKind.Array||batch.GetArrayLength() is <1 or >4)throw new InvalidOperationException("context_sections_1_to_4_or_single_section");
+            var names=batch.EnumerateArray().Select(v=>v.GetString()??"").Distinct().ToArray();
+            return names.ToDictionary(n=>n,n=>ReadContextSection(JsonSerializer.SerializeToElement(new{section=n})));
+        }
+        return AgentToolRegistry.Text(args,"section") switch {
         "planting_execution"=>PlantingExecutionFacts(),"assets"=>FacilityAssets(),"labor_budget"=>FarmLaborBudget(),"farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
-        "progression"=>DailyProgressDigest(),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
+        "progression"=>DailyProgressDigest(true),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
         "earlier_observation_summaries" or "recent"=>RecentAgentContext(),"memory"=>AgentMemoryContext(),"goals"=>GoalContext(),"operating_candidates"=>OperatingOpportunities(),
         "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),"prerequisites"=>TaskPrerequisites(),_=>throw new InvalidOperationException("unknown_context_section")
-    };
+        };
+    }
     internal object SearchPlanningKnowledge(JsonElement args) {
         string exact=AgentToolRegistry.Text(args,"id"),kind=AgentToolRegistry.Text(args,"kind","all");
         var queries=args.TryGetProperty("queries",out var batch)&&batch.ValueKind==JsonValueKind.Array?batch.EnumerateArray().Select(v=>v.GetString()??"").ToArray():new[]{AgentToolRegistry.Text(args,"query")};

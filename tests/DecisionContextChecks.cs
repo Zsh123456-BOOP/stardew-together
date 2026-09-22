@@ -7,10 +7,11 @@ public static class DecisionContextChecks {
         var catalog=input.GetProperty("catalog").Deserialize<Dictionary<string,string>>()!;var rows=new List<object>();
         foreach(var row in input.GetProperty("requests").EnumerateArray()) {
             var context=row.GetProperty("context");var selected=AgentToolDiscovery.Select(catalog,context);
-            int reserved=ContextBudget.Estimate(AgentJson.Encode(selected))+2200;
+            var specs=ToolSpecs.Select(selected,context);var definitions=NativeToolProtocol.Definitions(specs);
+            int reserved=ContextBudget.Estimate(AgentJson.Encode(definitions))+2200;
             try {
                 var packed=ContextBudget.Pack(context,30000-reserved,Math.Max(256,16000-reserved));
-                rows.Add(new{id=row.GetProperty("id"),before_context_chars=context.GetRawText().Length,after_context_chars=packed.Json.Length,tools=selected.Keys,tools_chars=AgentJson.Encode(selected).Length,estimated_context_tokens=packed.EstimatedTokens,status="packed"});
+                rows.Add(new{id=row.GetProperty("id"),before_context_chars=context.GetRawText().Length,after_context_chars=packed.Json.Length,tools=selected.Keys,tools_chars=AgentJson.Encode(definitions).Length,estimated_context_tokens=packed.EstimatedTokens,status="packed",context=JsonSerializer.Deserialize<JsonElement>(packed.Json),definitions});
             }catch(Exception e){rows.Add(new{id=row.GetProperty("id"),status="failed",error=e.Message});}
         }
         Console.WriteLine(AgentJson.Encode(rows));

@@ -47,12 +47,26 @@ public sealed partial class ModEntry {
         RefreshFacts(true);
         string kind=AgentToolRegistry.Text(args,"kind");int offset=AgentToolRegistry.Number(args,"offset",0),limit=Math.Clamp(AgentToolRegistry.Number(args,"limit",30),1,80);
         if(offset<0)throw new InvalidOperationException("invalid_offset");
+        string view=AgentToolRegistry.Text(args,"view","summary"),series=AgentToolRegistry.Text(args,"series");
+        if(view is not ("summary" or "detail"))throw new InvalidOperationException("catalog_view_summary_or_detail");
+        bool nextOnly=args.TryGetProperty("next_only",out var nextFlag)&&nextFlag.GetBoolean();
+        if((series.Length>0||nextOnly)&&kind!="achievement")throw new InvalidOperationException("catalog_series_and_next_only_require_kind_achievement");
+        if(kind=="achievement"&&view=="summary") {
+            var summaries=AchievementSummaries();
+            if(nextOnly)summaries=AchievementView.Next(summaries);
+            if(series.Length>0)summaries=summaries.Where(r=>r.GetProperty("series").GetString()==series).ToArray();
+            return new{view,total=summaries.Length,offset,next_offset=offset+limit<summaries.Length?(int?)(offset+limit):null,goals=summaries.Skip(offset).Take(limit),details="progress.dependencies id；完整目录view=detail。earned与条件满足分别核验。"};
+        }
         var rows=ReadNativeGoalRows();
         var kinds=rows.Select(g=>g.kind).Distinct().OrderBy(k=>k).ToArray();
         if(kind.Length>0&&!kinds.Contains(kind))return new{status="invalid_kind",kind,allowed_kinds=kinds,note="recipe不是目录类别；制作使用crafting，烹饪使用cooking。参数错误不是没有配方。"};
         var filtered=rows.Where(g=>kind.Length==0||g.kind==kind).ToArray();
+        if(kind=="achievement"&&(series.Length>0||nextOnly)) {
+            var summaries=nextOnly?AchievementView.Next(AchievementSummaries()):AchievementSummaries();
+            var ids=summaries.Where(r=>series.Length==0||r.GetProperty("series").GetString()==series).Select(r=>r.GetProperty("id").GetString()).ToHashSet();filtered=filtered.Where(g=>ids.Contains(g.id)).ToArray();
+        }
         return new{schema_version=1,day=Game1.Date.TotalDays,save_id=Game1.uniqueIDForThisGame.ToString(),total=filtered.Length,offset,limit,next_offset=offset+limit<filtered.Length?(int?)(offset+limit):null,
-            goals=filtered.Skip(offset).Take(limit),policy=new{routes="路线互斥需逐条件核查，独立路线存档分开统计",repeatable="只枚举当前已接原生任务；重复委托没有有限全部完成终点",unknown="未适配条件明确标 gap，不伪造依赖或完成",actor="进度默认归属 Farmer，NPC 劳动不自动等于原生计数"}};
+            goals=filtered.Skip(offset).Take(limit).Select(g=>view=="detail"?(object)g:new{g.id,g.title,g.kind,g.completed,g.dependencies,detail="progress.dependencies"}),policy=new{routes="路线互斥需逐条件核查，独立路线存档分开统计",repeatable="只枚举当前已接原生任务；重复委托没有有限全部完成终点",unknown="未适配条件明确标 gap，不伪造依赖或完成",actor="进度默认归属 Farmer，NPC 劳动不自动等于原生计数"}};
     }
     private List<NativeGoalDefinition> ReadNativeGoalRows() {
         var rows=new List<NativeGoalDefinition>();var p=Game1.player;

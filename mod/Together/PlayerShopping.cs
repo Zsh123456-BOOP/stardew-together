@@ -76,7 +76,7 @@ public sealed partial class PlayerExecutor {
         int paid=beforeMoney-ShopMenu.getPlayerCurrencyAmount(Game1.player,purchaseCurrency);
         bool received=item.IsRecipe?recipeBook.ContainsKey(prototype.BaseName):upgrade?Game1.player.toolBeingUpgraded.Value?.QualifiedItemId==purchaseId&&Game1.player.daysLeftForToolUpgrade.Value>0:inHand+inBag-before>=item.Stack;
         if(paid!=offer.Price+(sharedCurrency?tradeCount:0)||trade.Length>0&&beforeTrade-TradeBalance()!=tradeCount+(sharedCurrency?offer.Price:0)||!received)throw new InvalidOperationException("native_purchase_result_not_verified");
-        Current.effects.Add(new{kind=upgrade?"native_tool_upgrade_started":item.IsRecipe?"native_recipe_learned":"native_purchase",shop=purchaseMenu.ShopId,item=purchaseId,recipe=item.IsRecipe?prototype.BaseName:null,units=inHand+inBag-before,currency=purchaseCurrency,cost=offer.Price,trade_item=trade,trade_count=tradeCount,days_remaining=upgrade?Game1.player.daysLeftForToolUpgrade.Value:0});
+        Current.effects.Add(new{kind=upgrade?"native_tool_upgrade_started":item.IsRecipe?"native_recipe_learned":"native_purchase",shop=purchaseMenu.ShopId,item=purchaseId,quality=prototype.Quality,recipe=item.IsRecipe?prototype.BaseName:null,units=inHand+inBag-before,currency=purchaseCurrency,cost=offer.Price,trade_item=trade,trade_count=tradeCount,days_remaining=upgrade?Game1.player.daysLeftForToolUpgrade.Value:0});
         purchaseSpent+=offer.Price;purchaseTradeSpent+=tradeCount;purchaseRemaining--;Current.completed++;
         if(upgrade)Current.phase="upgrade_confirmation";
     }

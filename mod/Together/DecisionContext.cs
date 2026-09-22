@@ -70,7 +70,7 @@ public static class DecisionContext {
             }
             if(memory["daily_activity"] is JsonObject diary) {
                 diary.Remove("today_maintenance");
-                foreach(string field in new[]{"today","previous"})if(diary[field] is JsonArray rows)foreach(var row in rows.OfType<JsonObject>()){row.Remove("evidence");row.Remove("batches");}
+                foreach(string field in new[]{"today","previous"})if(diary[field] is JsonArray rows)foreach(var row in rows.OfType<JsonObject>()){row.Remove("evidence");row.Remove("supporting_evidence");}
             }
         }
         if(root["progression"] is JsonObject progress) {
@@ -90,6 +90,7 @@ public static class DecisionContext {
             goal.Remove("history");
             if(goal["steps"] is JsonArray steps)foreach(var step in steps.OfType<JsonObject>())foreach(string field in new[]{"Source","Owner","DependsOn"})step.Remove(field);
         }
+        OnDemandContext.Project(root);
     }
     private static HashSet<string> pendingIds(JsonObject root)=>(root["pending_queries"] as JsonArray)?.OfType<JsonObject>().Select(q=>Text(q["result_id"])).Where(id=>id.Length>0).ToHashSet()??new();
 }

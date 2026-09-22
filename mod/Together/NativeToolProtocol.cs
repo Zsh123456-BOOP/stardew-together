@@ -38,14 +38,16 @@ public static class NativeToolProtocol {
         }
         return new(){["type"]="object",["properties"]=props,["required"]=required,["additionalProperties"]=true};
     }
-    public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>selected.Select(p=> {
-        var (start,end)=ParameterSpan(p.Value);
-        string description=end>start?p.Value[..start]+p.Value[(end+1)..].TrimStart(':',' '):p.Value;
+    public static ToolSpec LegacySpec(string name,string contract) {
+        var (start,end)=ParameterSpan(contract);
+        string description=end>start?contract[..start]+contract[(end+1)..].TrimStart(':',' '):contract;
         // Explicitly expose the planning argument: a prompt-only _plan was mistaken for a function name.
         // Optional result references are documented once and remain valid in the open parameter object.
-        var schema=Shape(p.Value);schema["properties"]!.AsObject()["_plan"]=new JsonObject{["type"]="string"};
-        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+description,parameters=schema}};
-    }).ToArray();
+        var schema=Shape(contract);schema["properties"]!.AsObject()["_plan"]=new JsonObject{["type"]="string"};
+        return new(name,description,JsonSerializer.SerializeToElement(schema),Array.Empty<string>());
+    }
+    public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>Definitions(selected.Select(p=>LegacySpec(p.Key,p.Value)).ToArray());
+    public static object[] Definitions(IReadOnlyList<ToolSpec> selected)=>selected.Select(s=>(object)new{type="function",function=new{name=Name(s.Name),description=s.Description,parameters=s.Parameters}}).ToArray();
     private static void Validate(JsonElement value,JsonElement schema,string path="args") {
         if(schema.TryGetProperty("type",out var type)) {
             bool valid=type.GetString() switch {"object"=>value.ValueKind==JsonValueKind.Object,"array"=>value.ValueKind==JsonValueKind.Array,"integer"=>value.TryInt(),"boolean"=>value.ValueKind is JsonValueKind.True or JsonValueKind.False,"string"=>value.ValueKind==JsonValueKind.String,_=>true};
@@ -57,7 +59,9 @@ public static class NativeToolProtocol {
         if(value.ValueKind==JsonValueKind.Array&&schema.TryGetProperty("items",out var item))foreach(var v in value.EnumerateArray())Validate(v,item,path+"[]");
     }
     private static bool TryInt(this JsonElement v)=>v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out _);
-    public static AgentTurn Decode(JsonElement choice,IReadOnlyDictionary<string,string> selected) {
+    public static AgentTurn Decode(JsonElement choice,IReadOnlyDictionary<string,string> selected)=>Decode(choice,selected.Select(p=>LegacySpec(p.Key,p.Value)).ToArray());
+    public static AgentTurn Decode(JsonElement choice,IReadOnlyList<ToolSpec> specs) {
+        var selected=specs.ToDictionary(s=>s.Name);
         if(choice.GetProperty("finish_reason").GetString()!="tool_calls")throw new InvalidOperationException("model_native_tool_reply_incomplete");
         var message=choice.GetProperty("message");var native=message.GetProperty("tool_calls");
         if(native.ValueKind!=JsonValueKind.Array||native.GetArrayLength() is <1 or >6)throw new InvalidOperationException("native_tool_call_count_1_to_6");
@@ -69,11 +73,11 @@ public static class NativeToolProtocol {
             string name=fn.GetProperty("name").GetString()??"";
             if(!map.TryGetValue(name,out string? tool))throw new InvalidOperationException("native_tool_not_loaded:"+name+":use_tools__lookup_or_current_tools");
             using var doc=JsonDocument.Parse(fn.GetProperty("arguments").GetString()!);var args=doc.RootElement;
-            Validate(args,JsonSerializer.SerializeToElement(Shape(selected[tool])),tool);
+            Validate(args,selected[tool].Parameters,tool);ToolSpecs.CheckProfile(selected[tool],args);
             if(tool=="plan.submit"&&args.TryGetProperty("tasks",out var tasks))foreach(var task in tasks.EnumerateArray()) {
                 string nested=task.GetProperty("tool").GetString()??"";
                 if(!selected.TryGetValue(nested,out var contract)||nested=="plan.submit")throw new InvalidOperationException("native_plan_tool_not_loaded");
-                Validate(task.GetProperty("args"),JsonSerializer.SerializeToElement(Shape(contract)),"plan.tasks."+nested);
+                Validate(task.GetProperty("args"),contract.Parameters,"plan.tasks."+nested);ToolSpecs.CheckProfile(contract,task.GetProperty("args"));
             }
             string[] Strings(string field)=>args.TryGetProperty(field,out var value)?value.Deserialize<string[]>()??throw new InvalidOperationException("invalid_tool_references"):Array.Empty<string>();
             if(args.TryGetProperty("_plan",out var plan)){if(plan.ValueKind!=JsonValueKind.String||plan.GetString()!.Length>1200)throw new InvalidOperationException("invalid_tool_plan");if(turn.plan.Length==0)turn.plan=plan.GetString()!;}

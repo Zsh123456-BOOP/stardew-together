@@ -6,6 +6,7 @@ if(args.Length==2&&args[0]=="--memory-replay"){MemoryRebuildChecks.Replay(args[1
 if(args.Length==2&&args[0]=="--observation-replay"){OperatingLoopChecks.Replay(args[1]);return;}
 if(args.Length==2&&args[0]=="--reply-replay"){OperatingLoopChecks.ReplayReplies(args[1]);return;}
 if(args.Length==2&&args[0]=="--decision-context-replay"){DecisionContextChecks.Replay(args[1]);return;}
+OnDemandChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 NativeToolChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 DecisionContextChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 

@@ -13,8 +13,8 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
-        ["context.read"]="{section:assets|labor_budget|planting_execution|farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card|prerequisites}: 按上下文省略指针补读完整字段；只读，结果可经query.read续读。",
-        ["tools.lookup"]="{names?:[工具名最多12个],query?:用途或名称,group?:farm|trade|storage_production|progress_social|animals|exploration|menu}: 按需加载完整工具定义，保留三轮；活跃任务按需延续；无参数返回名称索引。常用工具未覆盖的畜牧、加工、建造、社交、任务等先查定义再调用。",
+        ["context.read"]="{sections?:[string],section?:assets|labor_budget|planting_execution|farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card|prerequisites}: 读取会影响下一步的字段；section或sections(1..4)二选一，结果可用query.read续读。",
+        ["tools.lookup"]="{names?:[string],query?:string,group?:farm|trade|storage_production|progress_social|animals|exploration|menu,work_profiles?:[farm|resource|storage|fish|mine|animals|production]}: 加载所选工具/工作能力，names最多12，query最多100字；下轮可调用，保留三轮，活动任务持续保留。无参数返回索引。",
         ["beach.read"]="{}: 海滩桥梁和老水手实际状态。",
         ["player.beach"]="{mode:bridge|pendant,budget?:int,keep_gold?:int}: 自动走到海滩修桥或购买美人鱼吊坠，原生消耗300木材或5000金；等待原生动画，核验结果。",
         ["family.read"]="{}: 读取原生婚姻、孩子、预产期及持久家庭策略；未配置生育策略时不替模型决定。",
@@ -115,7 +115,7 @@ public sealed class AgentToolRegistry {
         ["farm.execute"]="{plan_id:string}: 幂等把规划的采购/共享箱取种子/实际布局播种接入队列，真实预算/供货/占地再次核验",
         ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:-1或0..9999,require_scarecrow?:bool,priority?:income|collection|low_labor}: 在农场/温室按已有种子和真实可达地形生成地块方案，为住宅保留门前院子、建筑缓冲和服务道路，再选紧凑田块；保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)先整块清障，再分批翻土、播种、浇水和补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
         ["perfection.read"]="{}: 原生完美度11类实绩、权重、关联目标、原生总分和豁免券分开读取；不是平台成就核验",
-        ["progress.catalog"]="{kind?:achievement|crafting|cooking|quest|order|route|bundle|house|boat|shipping|mastery|book|scope,offset?:int,limit?:1..80}: 当前原生目标及配方分页，含依赖、材料、完成证据、缺口；按next_offset继续，未知条件不能猜",
+        ["progress.catalog"]="{kind?:string,view?:summary|detail,series?:string,next_only?:bool,offset?:int,limit?:1..80}: 原生目标分页，默认summary；成就用kind=achievement,next_only=true按独立系列下一档。详情view=detail或progress.dependencies id；未知不猜。",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
         ["plan.submit"]="{submission_id:string,expected_revision:int,tasks:[{id:string,actor:player或真实actor_id,tool:string,args:{},after?:[任务id],sequence_after?:[任务id],location?:string,day?:绝对day,not_before?:HHMM,deadline?:HHMM,purpose?:string}]}: 一次提交1到24步，允许player动作与companion.assign；同角色互斥但不按提交顺序自动依赖；必须用after声明先到商店再购买等真实前置，独立任务可越过等待中的任务，不同角色并行。当前日默认，最远7天；跨地图后动作写明location；未观察的参数先查询。重复submission_id幂等。声明受阻时返回queued_with_rejections并保留独立任务，rejected列明未执行项；after是真实成功依赖，sequence_after只保持顺序，前一步结束后检查自身条件执行。",
         ["plan.cancel"]="{ids:[任务id]}: 取消指定任务；保存开始后不可取消。失败后取消受阻旧计划，再根据真实状态提交新任务",
@@ -129,7 +129,7 @@ public sealed class AgentToolRegistry {
         ["player.discard"]="{source:backpack|storage,location?:地图,x?:箱子横坐标,y?:箱子纵坐标,slot:int,item:QID,quality:int,count:int,expected_stack:int,reason:string}: 自主选择原生垃圾桶销毁未预留普通物品，不可恢复。先inventory.capacity取实时槽位与堆数，状态变化拒绝。部分销毁通常不腾格；仓库销毁仅腾仓库格。工具/任务物/已承诺材料受保护。仓库自动走近打开，通过原生菜单取出销毁；记录完整前后快照与销毁数量。",
         ["inventory.read"]="{}: 玩家背包slot、ID、数量、工具；含手持物",
         ["query.read"]="{id?:string,offset?:int,count?:1..40}: 不传id分页列出未交付观察，传id读取查询回执后续页，沿next使用；原始完整结果保留，不重复执行原查询",
-        ["knowledge.search"]="{query?:string,queries?:string[],kind?:string,id?:string,purpose?:string,limit?:int,offset?:int}: 模型自选词查询；精确ID优先，按百科范围筛选，批量最多6词；结果带来源/匹配原因/续读入口。百科售价不是原生采购报价",
+        ["knowledge.search"]="{query?:string,queries?:[string],kind?:string,id?:string,purpose?:string,limit?:int,offset?:int}: 模型自选词查询；精确ID优先，按百科范围筛选，批量最多6词；结果带来源/匹配原因/续读入口。百科售价不是原生采购报价",
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
         ["goal.rules"]="{item?:物品或配方ID,offset?:int}: 分页查询真实配方、原料、设施、解锁及解析覆盖缺口；解析不等于有能力执行。",
@@ -139,7 +139,7 @@ public sealed class AgentToolRegistry {
         ["progress.missing"]="{}: 按原生Data/Achievements列出未完成条目的名称、描述与ID；不等同于平台全成就检查",
         ["progress.roadmap"]="{}: 原生成就、实际技能与下一阶段建议；建议不是已经完成的成就，按季节与前置条件并行安排",
         ["progress.read"]="{}: 玩家原生任务、技能、配方计数、邮件、成就；不是Steam成就证明",
-        ["work.run"]="经营模式材料任务优先使用stock_target:int（全队目标库存，含货袋）；stock_target只表示全队库存目标，count始终表示本次新增数量，不能混用。无需批准项目即可自主备料；count>0按本次新增数量，stock_target按实际全队库存缺口；省略两者或count=0优先补当前项目缺口，没有缺口时默认新增20。整理空间使用farm.cleanup。已有足量返回完成，不重新追加。特殊任务按原生计数。withdraw可从标记共享箱或空闲自定义伙伴货袋取真实物资（自动走到相邻处交接）；order_id+objective（索引）绑定实际订单的采集/钓鱼/矿洞目标，排除fail_on_completion；quest_id可绑定真实采集/钓鱼/讨伐委托（仅玩家），使用本任务实际计数，达标后停止；mine_trip可选start_level为已解锁5倍数电梯层，探索真实生成地图。fish按item目标鱼种和count实际原生新增捕获数量连续钓鱼，自动选地图/水域/抛竿力度、补给/卸货/续作；省略item任意鱼。volcano_trip自动补给/装水/冷却熔岩/碎石/踩开关/跨层，target_level:1..10，10为Caldera；矿洞可选region:normal|skull,target_level为区域内层数，travel_budget明确授权巴士票预算；{actor_id?:player或真实伙伴ID,goal:cleanup|storage_expand|fish|volcano_trip|mine_trip|milk|shear|animal_collect|pet|feed|tend|collect|process|withdraw|plant|resource|hardwood|stone|wood|fiber|water|refill|harvest|forage|clear_dead|store,item?:物品ID,quality?:int,plan_id?:string,target_level?:1..120,include_trees?:bool,required_free_slots?:0..12,max_food?:0..10,location?:真实地图名,count?:int,reserve_stamina?:0..270,until?:HHMM<=2400}: 高层持续劳动，无需坐标/工具槽/target_id；location省略表示当前地图（农舍不是农场），跨图劳动请明确location。cleanup需farm.cleanup创建的cleanup_id（玩家或伙伴；伙伴仅清理区域内杂草/树枝/普通石块，不砍整树），已有整理队列不得重复派工。mine_trip限玩家，目标target_level默认下一5层里程碑；自动原生入矿/电梯/寻找梯子/挖石/近战/吃补给，深度达标或体力生命时间不足时走真实返程梯退出；普通矿1..120，骷髅矿和火山使用各自行程与原生通道。resource需item，自动寻找原生铜铁金铱煤/宝石等矿点；hardwood寻找等级允许的树桩/树干（限玩家）。石/木/纤维/矿物/硬木count为本次实际新增物品数量（省略或0优先补项目缺口，无缺口默认新增20），其它count为目标数；pet/feed玩家与伙伴可用；milk/shear/animal_collect限玩家，自动跨畜舍照料/收取地面和自动采集器产品、补给和卸货续接；tend/collect/process批量调用Squad生产控制器，仅伙伴；process表示从原料箱补机器，完成投料不代表成品出炉。0在可核验已清空时完成，缺候选但条件不明会报告阻碍。自动走到指定地图、选工具、逐次寻路换目标，玩家浇水自动补水再继续。木材默认比较树枝与可砍成熟未挂树液器的普通树，include_trees=false可禁用整树；plant用farm.plan返回的plan_id执行布局，plant/clear_dead/refill限玩家；NPC无原生体力条，按能力/货物/时间限制。中断或部分完成返回实际数量与stop_reason，不伪报达标。默认不额外保留体力，模型可指定本任务reserve_stamina、默认0点额外预留；体力不足可吃最多max_food份普通非预留食物（默认3），然后续作；采集按真实叠加容量判断；不要因仅剩一个空槽或刚完成一小批就存箱。实际产物放不下时寻找Farm及畜舍output箱卸货再回来；额外掉落保留拾取位置续收，不丢弃。不足按storage策略原生制作放置新箱。storage_expand用于确有容量缺口的扩建，现有仓库够用直接返回无需扩建；明确追加指定additional:true。存货用store，不要先调用storage_expand。store可主动存货；required_free_slots是完成条件，当前空格已满足就返回无需整理、不移动；保留工具/种子/补给，预留材料可入共享箱保持用途保护，不会丢弃出售。可取消/查进度。；withdraw的quality默认最低品质，可用exact_quality=true精确品质；存取货收尾until可至2500。",
+        ["work.run"]=ToolSpecs.Contract(),
         ["player.work"]="{skill:water|till|plant|fertilize|harvest|clear|chop|break_clump|clear_dead|forage,slot?:int,tiles:[{x:int,y:int}]}: 最多36格同图农活/资源收集（clear支持石块用镐、树枝用斧、杂草用镰刀；clear_dead仅镰刀清理枯死作物，不清理活苗；forage仅拾取真实野生采集物）；自动寻路、工具动画、逐格核验；避免每格请求模型",
         ["player.move"]="{x:int,y:int,location?:明确地图}: 原生寻路走到当前地图目标；返回动作ID",
         ["player.travel"]="{location:string}: 按实际出口/建筑门前往已加载地点；锁门会失败",

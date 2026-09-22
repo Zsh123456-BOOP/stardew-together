@@ -9,7 +9,7 @@ public static class AgentToolDiscovery {
         ["farm"]=new[]{"farm.plan","farm.cleanup","day.routine","player.collect_home_gifts"},
         ["trade"]=new[]{"player.service","shop.read","farm.select_seeds","player.buy","player.procure","player.ship_items"},
         ["storage_production"]=new[]{"inventory.capacity","goal.create","goal.run","farm.production","farm.business_status"},
-        ["progress_social"]=new[]{"progress.read","progress.dependencies","quest_board.read","player.social","player.accept_quest","player.claim_reward"},
+        ["progress_social"]=new[]{"progress.read","progress.catalog","progress.dependencies","quest_board.read","player.social","player.accept_quest","player.claim_reward"},
         ["animals"]=new[]{"animals.read","farm.business","player.acquire_animal"},
         ["exploration"]=new[]{"world.read","map.scan","fishing.options","player.read_mail"},
         ["menu"]=new[]{"menu.read","menu.choose","menu.close","menu.text"}
@@ -60,7 +60,8 @@ public static class AgentToolDiscovery {
         if(query.Length>100)throw new InvalidOperationException("lookup_query_too_long");
         var keys=names.Length>0?names.Distinct().ToArray():catalog.Keys.Where(k=>query.Length>0&&(k.Contains(query,StringComparison.OrdinalIgnoreCase)||catalog[k].Contains(query,StringComparison.OrdinalIgnoreCase))).OrderBy(k=>k).Take(12).ToArray();
         var unknown=keys.Where(k=>!catalog.ContainsKey(k)).ToArray();
-        bool fallback=!keys.Any(catalog.ContainsKey);
+        var workProfiles=ToolSpecs.LookupProfiles(args);
+        bool fallback=!keys.Any(catalog.ContainsKey)&&workProfiles.Length==0;
         if(fallback&&(query.Length>0||names.Length>0)) {
             string text=(query+" "+string.Join(" ",names)).ToLowerInvariant();
             var synonyms=new Dictionary<string,string>{{"social","社交"},{"greet","社交"},{"talk","社交"},{"gift","送礼"},{"seed","种子"},{"buy","采购"},{"shop","商店"},{"fish","钓鱼"},{"recipe","配方"},{"craft","制作"},{"quest","任务"},{"sleep","睡觉"},{"wood","木材"},{"storage","存货"}};
@@ -68,6 +69,7 @@ public static class AgentToolDiscovery {
             keys=catalog.Select(kv=>new{kv.Key,Score=terms.Count(t=>kv.Key.Contains(t,StringComparison.OrdinalIgnoreCase)||kv.Value.Contains(t,StringComparison.OrdinalIgnoreCase))}).Where(r=>r.Score>0).OrderByDescending(r=>r.Score).ThenBy(r=>r.Key).Take(8).Select(r=>r.Key).ToArray();
             if(keys.Length==0)keys=new[]{"knowledge.search","world.read","plan.read","work.run"}.Where(catalog.ContainsKey).ToArray();
         }
-        return new{definitions=keys.Where(catalog.ContainsKey).ToDictionary(k=>k,k=>catalog[k]),unknown,fallback,index=query.Length==0&&names.Length==0?catalog.Keys.OrderBy(k=>k).ToArray():null,note=fallback?"未精确匹配，已返回相近能力或世界/百科入口；不要重试同一不存在的工具名。":"完整参数定义；查询不执行动作。"};
+        if(workProfiles.Length>0)keys=keys.Append("work.run").Distinct().ToArray();
+        return new{definitions=keys.Where(catalog.ContainsKey).ToDictionary(k=>k,k=>catalog[k]),work_profiles=workProfiles,unknown,fallback,index=query.Length==0&&names.Length==0&&workProfiles.Length==0?catalog.Keys.OrderBy(k=>k).ToArray():null,note=fallback?"未精确匹配，已返回相近能力或世界/百科入口；不要重试同一不存在的工具名。":"完整参数定义；查询不执行动作。"};
     }
 }

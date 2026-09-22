@@ -150,7 +150,7 @@ public sealed class ModEntry : Mod {
     }
 
     private Response Process(Request r) {
-        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1, backend = config.Backend});
+        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1, backend = config.Backend, saves_path = config.EnableLab ? Constants.SavesPath : null});
         if (api == null || !Context.IsWorldReady) return new(503, "{\"error\":\"world_not_ready\"}");
         if (r.Method == "GET" && r.Path == "/state") {
             var state = JsonSerializer.Deserialize<Dictionary<string, object>>(api.GetState())!;

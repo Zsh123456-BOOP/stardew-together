@@ -2,10 +2,33 @@ using StardewValley;
 
 namespace Together;
 public sealed partial class ModEntry {
+    private string RouteStateKey()=>FailureKnowledge.Hash(AgentJson.Encode(new{
+        save=Game1.uniqueIDForThisGame,location=Game1.currentLocation.NameOrUniqueName,position=Game1.player.Position.ToString(),
+        body=Game1.player.GetBoundingBox().ToString(),season=Game1.currentSeason,
+        objects=Game1.currentLocation.objects.Pairs.Select(o=>new{o.Key,o.Value.QualifiedItemId}),
+        terrain=Game1.currentLocation.terrainFeatures.Pairs.Select(t=>new{t.Key,kind=t.Value.GetType().Name}),
+        people=Game1.locations.SelectMany(l=>l.characters.Select(n=>new{l.NameOrUniqueName,n.Name,position=n.Position.ToString(),n.IsInvisible})),mail=Game1.player.mailReceived}));
+    private static string[] RouteBlocks(RouteResolution route)=>route.Evidence.Select(e=>System.Text.Json.JsonSerializer.SerializeToElement(e,AgentJson.Options))
+        .Where(e=>e.TryGetProperty("layer",out var layer)&&layer.GetString()=="exit_stand")
+        .Select(e=>e.GetProperty("location").GetString()+":"+e.GetProperty("entry").GetRawText()+":"+e.GetProperty("exit").GetRawText()).Distinct().ToArray();
+    private static string RouteDestination(AgentTaskSpec spec)=>spec.tool switch {
+        "player.sleep"=>Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName,
+        "player.ship_items" or "player.ship"=>"Farm",
+        "player.travel" or "player.service"=>AgentToolRegistry.Text(spec.args,"location"),
+        "player.social"=>Game1.getCharacterFromName(AgentToolRegistry.Text(spec.args,"npc"))?.currentLocation?.NameOrUniqueName??"",
+        _=>""
+    };
     private string FailureConditions(string actor,string tool, System.Text.Json.JsonElement args,string reason="") {
         try {
             var origin=AgentMapOrigin(actor);var l=origin.Location;var p=Game1.player;
-            if(tool=="player.sleep") {
+            if(tool=="farm.plan")return FailureKnowledge.Hash(AgentJson.Encode(new{
+                day=Game1.Date.TotalDays,season=l.GetSeason(),location=l.NameOrUniqueName,stamina=p.Stamina,
+                bag=p.Items.Select(i=>new{id=i?.QualifiedItemId,count=i?.Stack}),
+                storage=SharedStorage().Select(c=>c.Chest.GetItemsForPlayer().Select(i=>new{id=i?.QualifiedItemId,count=i?.Stack}).ToArray()),
+                objects=l.objects.Pairs.Select(o=>new{o.Key,o.Value.QualifiedItemId}),
+                terrain=l.terrainFeatures.Pairs.Select(t=>new{t.Key,kind=t.Value.GetType().Name,crop=t.Value is StardewValley.TerrainFeatures.HoeDirt dirt?dirt.crop?.netSeedIndex.Value:null}),
+                reservations=AllReservations().Select(r=>new{r.Item,r.Count,r.Quality})}));
+            if(tool=="player.sleep"&&FailureKnowledge.Family(reason)!="access") {
                 RefreshFacts(true);
                 return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,period=Game1.timeOfDay/100,energy=(int)p.Stamina/10,Facts.DryCrops,Facts.RipeCrops,Facts.FeedNeeded,reviewed=dayReviewed==Game1.Date.TotalDays}));
             }
@@ -17,12 +40,12 @@ public sealed partial class ModEntry {
             string family=FailureKnowledge.Family(reason);
             if(family=="access") {
                 var npc=tool=="player.social"?Game1.getCharacterFromName(AgentToolRegistry.Text(args,"npc")):null;
-                string destination=npc?.currentLocation?.NameOrUniqueName??AgentToolRegistry.Text(args,"location",l.NameOrUniqueName);
+                string destination=npc?.currentLocation?.NameOrUniqueName??(tool=="player.sleep"?Utility.getHomeOfFarmer(p).NameOrUniqueName:tool=="player.ship_items"?"Farm":AgentToolRegistry.Text(args,"location",l.NameOrUniqueName));
                 var window=ServiceWindow(destination);
                 return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,destination,window.Reason,open_now=Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close,
                     npc=npc?.Name,npc_tile=npc==null?null:new[]{npc.TilePoint.X,npc.TilePoint.Y},sleeping=npc?.isSleeping.Value,invisible=npc?.IsInvisible,
                     friendship=npc==null?0:p.getFriendshipHeartLevelForNPC(npc.Name),p.HasTownKey,
-                    origin=l.NameOrUniqueName,obstacles=l.objects.Pairs.Select(o=>new{o.Key,o.Value.QualifiedItemId}),
+                    origin=l.NameOrUniqueName,entry=new[]{p.TilePoint.X,p.TilePoint.Y},terrain=l.terrainFeatures.Pairs.Select(t=>new{t.Key,kind=t.Value.GetType().Name}),obstacles=l.objects.Pairs.Select(o=>new{o.Key,o.Value.QualifiedItemId}),
                     local_characters=l.characters.Select(n=>new{n.Name,n.TilePoint}),mail=p.mailReceived.ToArray()}));
             }
             string goal=AgentToolRegistry.Text(args,"goal"),item=goal switch{"wood"=>"(O)388","stone"=>"(O)390","fiber"=>"(O)771","hardwood"=>"(O)709",_=>AgentToolRegistry.Text(args,"item")};
@@ -71,6 +94,18 @@ public sealed partial class ModEntry {
     }
     private void CheckKnownFailure(ScheduledAgentTask task) {
         GuardCapacity(task.spec.actor,task.spec.tool,task.spec.args);
+        var shared=Data.Autoplay.Failures.Entries.Where(e=>e.Actor==task.spec.actor&&e.RouteBlocks.Length>0).ToArray();
+        string destination=RouteDestination(task.spec);
+        if(shared.Length>0&&destination.Length>0&&task.spec.actor=="player") {
+            string state=RouteStateKey();shared=shared.Where(e=>e.RouteState==state).ToArray();
+            if(shared.Length>0) {
+                // Recheck native reachability (including current door windows).
+                // A changed or unrelated route is never blocked by another tool.
+                var route=PlayerExecutor.ResolveRoute(Game1.currentLocation,destination);var blocks=RouteBlocks(route);
+                var known=!route.Reachable?shared.FirstOrDefault(e=>e.RouteBlocks.Intersect(blocks).Any()):null;
+                if(known!=null){known.Suppressed++;throw new InvalidOperationException("known_failure_conditions_unchanged:"+known.Reason+":evidence="+known.TaskEvidence);}
+            }
+        }
         string semantic=FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string exact=FailureKnowledge.Key(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string selection=FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
@@ -92,6 +127,10 @@ public sealed partial class ModEntry {
         string conditions=FailureConditions(task.spec.actor,task.spec.tool,task.spec.args,error);if(conditions=="unavailable")return;
         Data.Autoplay.Failures.Record(key,task.spec.actor,task.spec.tool,error,conditions,task.spec.id,Game1.Date.TotalDays,DailyBudget.Minutes(Game1.timeOfDay),untilChanged);
         var learned=Data.Autoplay.Failures.Entries.Last();learned.Arguments=task.spec.args.GetRawText();learned.Location=task.spec.location;
+        if(error=="route_exit_unreachable"&&RouteDestination(task.spec) is {Length:>0} destination) {
+            var route=PlayerExecutor.ResolveRoute(Game1.currentLocation,destination);
+            if(!route.Reachable){learned.RouteBlocks=RouteBlocks(route);learned.RouteState=RouteStateKey();}
+        }
         Data.Autoplay.Record("failure_experience",AgentJson.Encode(Data.Autoplay.Failures.Entries.Last()));
     }
 }

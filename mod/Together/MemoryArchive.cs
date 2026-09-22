@@ -2,6 +2,11 @@ using System.Text.Json;
 
 namespace Together;
 public sealed class MemoryCheckpoint {
+    public List<JsonElement> QueryDrafts {get;set;}=new();
+    public List<QueryResult> Queries {get;set;}=new();
+    public int SchemaVersion {get;set;}=2;
+    public List<MemoryReflection> Reflections {get;set;}=new();
+    public List<MemoryDocument> Index {get;set;}=new();
     public ActivityDiary Diary {get;set;}=new();
     public Dictionary<string,int> Cursors {get;set;}=new();
     public List<MemoryDaySummary> Days {get;set;}=new();
@@ -44,6 +49,7 @@ public sealed class MemoryArchive {
         string key=bucket+"-"+day;int sequence=checkpoint.Cursors.GetValueOrDefault(key)+1;
         var entry=new ArchivedMemory(key+":"+sequence,sequence,day,actor,kind,text,checkpoint.ActorGenerations.GetValueOrDefault(actor));
         checkpoint.Cursors[key]=sequence;checkpoint.Pending.Add(entry);
+        if(MemoryProjector.Project(entry) is {} projected){checkpoint.Index.Add(projected);if(checkpoint.Index.Count>512)checkpoint.Index.RemoveRange(0,checkpoint.Index.Count-512);}
         if(kind=="action_result")Summarize(entry);
         if(deferredWrites&&checkpoint.Pending.Count<128)QueueFlush();else Flush();
     }
@@ -73,7 +79,17 @@ public sealed class MemoryArchive {
         foreach(var entry in result.Written)checkpoint.Pending.Remove(entry);
         checkpoint.LastError=result.Error;
     }
+    private void RefreshDerivedIndex() {
+        foreach(var old in checkpoint.Index.Where(d=>d.ProjectionVersion<2).Take(4).ToArray()) {
+            var parts=old.Evidence.Split(':');
+            if(parts.Length!=2||!int.TryParse(parts[1],out int sequence)||sequence>checkpoint.Cursors.GetValueOrDefault(parts[0])){checkpoint.Index.Remove(old);continue;}
+            var raw=Find(parts[0],sequence);if(raw==null){checkpoint.Index.Remove(old);continue;}
+            int at=checkpoint.Index.IndexOf(old);var replacement=MemoryProjector.Project(raw);
+            if(replacement==null)checkpoint.Index.Remove(old);else checkpoint.Index[at]=replacement;
+        }
+    }
     public void QueueFlush() {
+        RefreshDerivedIndex();
         if(writer is {IsCompleted:true}){ApplyWrite(writer.GetAwaiter().GetResult());writer=null;}
         if(writer!=null||checkpoint.Pending.Count==0)return;
         var batch=checkpoint.Pending.ToArray(); // Only immutable entries cross threads.
@@ -98,6 +114,14 @@ public sealed class MemoryArchive {
             if(r.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String){string code=e.GetString()!;day.RepeatedErrors[code]=day.RepeatedErrors.GetValueOrDefault(code)+1;}
             day.Evidence.Add(entry.Id);if(day.Evidence.Count>12)day.Evidence.RemoveAt(0);
         }catch(JsonException){checkpoint.LastError="memory_event_invalid_json";}
+    }
+    public object Recall(string query,int day,int limit=6) {
+        bool Visible(MemoryDocument d) {
+            var parts=d.Evidence.Split(':');
+            return d.ProjectionVersion>=2&&parts.Length==2&&int.TryParse(parts[1],out int sequence)&&sequence<=checkpoint.Cursors.GetValueOrDefault(parts[0])&&d.Generation==checkpoint.ActorGenerations.GetValueOrDefault(d.Actor);
+        }
+        var matches=MemoryRetriever.Rank(checkpoint.Index.Where(Visible),query,day).Take(Math.Clamp(limit,1,12)).ToArray();
+        return new{query,entries=matches.Select(m=>new{m.Document.Evidence,m.Document.Day,m.Document.Kind,m.Document.Tool,m.Document.Status,m.Document.Reason,m.Document.Entities,m.Document.Summary,score=m.Score}),source="derived_index",historical_not_current=true,details="memory.evidence",legacy_fallback="memory.search",indexed=checkpoint.Index.Count};
     }
     public object Read(string query,string actor,int limit,int offset=0) {
         limit=Math.Clamp(limit,1,20);if(offset<0||offset>1000)throw new InvalidOperationException("invalid_memory_offset");

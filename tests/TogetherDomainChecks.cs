@@ -1,6 +1,10 @@
 using System.Text.Json;
 using Together;
 
+if(args.Length==2&&args[0]=="--memory-replay"){MemoryRebuildChecks.Replay(args[1]);return;}
+
+MemoryRebuildChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 LocalWalkChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 ModelBudgetChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 

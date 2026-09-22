@@ -17,7 +17,7 @@ public sealed partial class ModEntry {
         var p=Game1.player;var farm=Game1.getFarm();
         int care=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
         if(Game1.activeClickableMenu==null&&!AgentActorHasWork("player")&&AvailableTool<Hoe>()&&AvailableTool<WateringCan>())foreach(var seed in OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Take(4)) {
-            if(!DataLoader.Crops(Game1.content).TryGetValue(seed.First().ItemId,out var crop)||!crop.Seasons.Contains(farm.GetSeason())||crop.DaysInPhase.Sum()>28-Game1.dayOfMonth)continue;
+            var possible=NativeSeedPlan.Options(seed.Key,farm);if(possible.Count==0||possible.Values.Any(c=>!NativeSeedPlan.Fits(c,farm)))continue;
             int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
             var ready=farmPlantPlans.Values.LastOrDefault(plan=>plan.Epoch==agentSaveEpoch&&plan.Day==Game1.Date.TotalDays&&plan.Seed==seed.Key&&plan.Tiles.Any(t=>!farm.terrainFeatures.TryGetValue(new(t.X,t.Y),out var f)||f is HoeDirt {crop:null}));
             if(ready!=null) {

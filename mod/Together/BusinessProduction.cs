@@ -100,15 +100,4 @@ public sealed partial class ModEntry {
         var actions=BusinessShipment();
         return actions.Count>0&&QueueBusiness("shipping-batch",actions,"集中交付当天可售产品，保留经营材料；只记原生次日收入");
     }
-    private bool QueueClosingShipment(ScheduledAgentTask sleep) {
-        if(!Data.Business.Enabled)return false;
-        int transit=Game1.currentLocation.NameOrUniqueName is "Farm" or "FarmHouse"?30:90;
-        if(DailyBudget.Minutes(Game1.timeOfDay)+transit+30>1500)return false; // retain native return/save time before 1am
-        if(Data.Autoplay.Schedule.Tasks.Count(t=>t.spec.source=="closing:"+sleep.spec.id)>=24)return false;
-        CheckAgentSleep(sleep.spec.args);
-        var actions=BusinessShipment();if(actions.Count==0)return false;
-        var tasks=actions.Select(a=>new AgentTaskSpec{id="closing-"+Guid.NewGuid().ToString("N"),tool=a.Tool,args=JsonSerializer.SerializeToElement(a.Args),day=Game1.Date.TotalDays,deadline=2500,intent_id=sleep.spec.intent_id,source="closing:"+sleep.spec.id,purpose="睡前分批交付真实可售产品；按品质容量取货，不卖承诺材料"}).ToList();
-        Data.Autoplay.Schedule.InsertBefore(sleep,tasks);
-        Data.Autoplay.Record("closing_shipment",AgentJson.Encode(new{sleep=sleep.spec.id,tasks}));return true;
-    }
 }

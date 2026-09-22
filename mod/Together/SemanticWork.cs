@@ -239,6 +239,7 @@ public sealed partial class ModEntry {
         if(j.child_id!=null) {
             var r=JsonSerializer.SerializeToElement(AgentReceipt(j.child_id,false),AgentJson.Options);
             if(r.GetProperty("status").GetString()=="running")return;
+            ObservePlantedTiles(j,r);
             bool ok=r.GetProperty("status").GetString()=="succeeded";
             if(!ok)PreserveCleanupPickup(j);
             j.evidence.Add(new{command_id=j.child_id,kind=j.ChildKind,target=j.Target,status=r.GetProperty("status").GetString(),error=r.TryGetProperty("error",out var failure)?failure.GetString():null,gained=Math.Max(0,WorkCount(j)-j.BeforeCount)});

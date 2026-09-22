@@ -32,8 +32,15 @@ public sealed partial class ModEntry {
             while(batch.Index<batch.Calls.Count) {
                 if(!AutoplayRunning||SurvivalOwnsDay){CancelDecisionContinuation("run_interrupted");return;}
                 var call=batch.Calls[batch.Index];
+                if(call.depends_on_query.Length>0) {
+                    if(!Data.Autoplay.Memory.QueryDrafts.Any(d=>d.GetProperty("call").GetRawText()==JsonSerializer.Serialize(call)))Data.Autoplay.Memory.QueryDrafts.Add(JsonSerializer.SerializeToElement(new{batch.Intent,call,day=Game1.Date.TotalDays,executed=false}));
+                    batch.Index++;batch.Followup=true;
+                    Data.Autoplay.Record("query_dependent_draft",AgentJson.Encode(new{batch.Intent,call,reason="read_query_results_then_decide",executed=false}));continue;
+                }
+                if(QueryResult.IsRead(call.tool)==false&&call.uses_results.Length>0)Data.Autoplay.Memory.QueryDrafts.RemoveAll(d=>QueryResult.ResolvesDraft(d,call.tool,call.uses_results,Data.Autoplay.Memory.Queries));
+                if(call.uses_results.Length>0)Data.Autoplay.Record("query_result_reference",AgentJson.Encode(new{batch.Intent,call.tool,call.uses_results,known=call.uses_results.All(id=>Data.Autoplay.Memory.Queries.Any(q=>q.Id==id&&q.Delivered))}));
                 string barrier=DecisionBarrier.State(batch.After.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)?.state));
-                if(!DecisionBarrier.Control(call.tool)&&!AgentSchedule.Queueable(call.tool)&&barrier=="waiting") {
+                if(!DecisionBarrier.Control(call.tool)&&!QueryResult.IsRead(call.tool)&&!AgentSchedule.Queueable(call.tool)&&barrier=="waiting") {
                     if(deferredDecision!=batch)Data.Autoplay.Record("decision_continuation_wait",AgentJson.Encode(new{batch.Intent,call.tool,batch.After}));
                     deferredDecision=batch;return;
                 }

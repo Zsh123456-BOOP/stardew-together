@@ -9,6 +9,7 @@ public sealed partial class PlayerExecutor {
     public Func<string,string>? RecruitCompanion {get;set;}
     private string socialName="",socialMode="",socialItem="",socialQuest="";
     private int socialSlot,socialStack,socialPoints,socialGifts,socialPages;
+    private float socialBestDistance;private DateTime socialLastApproachProgress;
     private bool socialTalked;
     private NPC? socialNpc;
     private Microsoft.Xna.Framework.Point? socialApproachTile;
@@ -23,7 +24,7 @@ public sealed partial class PlayerExecutor {
         ,relationship_status=Game1.player.friendshipData.GetValueOrDefault(socialName)?.Status.ToString(),spouse=Game1.player.spouse
     };
     private void StartSocial(JsonElement args) {
-        socialApproachTile=null;socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
+        socialBestDistance=float.MaxValue;socialLastApproachProgress=DateTime.UtcNow;socialApproachTile=null;socialName=AgentToolRegistry.Text(args,"npc");socialMode=AgentToolRegistry.Text(args,"mode","talk");socialQuest=AgentToolRegistry.Text(args,"quest_id","");
         if(socialMode is not ("recruit" or "talk" or "greet" or "gift" or "deliver" or "order_deliver" or "relationship"))throw new InvalidOperationException("invalid_social_mode");
         BindSocialOrder(args);
         socialNpc=Game1.getCharacterFromName(socialName)??throw new InvalidOperationException("unknown_npc");
@@ -51,6 +52,11 @@ public sealed partial class PlayerExecutor {
         var access=SocialReach(socialNpc);
         Current!.effects.Add(new{kind="social_preflight",access});
         if(!access.reachable)throw new InvalidOperationException("social_access_unavailable");
+        if(access.stand is {} stand) {
+            var back=ResolveRoute(socialNpc.currentLocation,Utility.getHomeOfFarmer(Game1.player).NameOrUniqueName,new Microsoft.Xna.Framework.Point(stand[0],stand[1]));
+            Current.effects.Add(new{kind="social_return_route",from=socialNpc.currentLocation.NameOrUniqueName,back.Reachable,back.Reason,back.Evidence,note="按当前门禁核验；时间及人物移动后仍重新核验"});
+            if(!back.Reachable)throw new InvalidOperationException("social_return_route_unavailable");
+        }
         destination=socialNpc.currentLocation.NameOrUniqueName;Current!.phase="social_travel";
     }
     private Microsoft.Xna.Framework.Point SocialStand(NPC npc) {
@@ -90,10 +96,13 @@ public sealed partial class PlayerExecutor {
         var npc=socialNpc??throw new InvalidOperationException("npc_missing");
         if(npc.currentLocation==null||npc.IsInvisible||npc.isSleeping.Value)throw new InvalidOperationException("npc_unavailable_or_sleeping");
         string next=npc.currentLocation.NameOrUniqueName;
-        if(destination!=next){destination=next;edge=null;StopWalk();}
+        if(destination!=next){var route=ResolveRoute(Game1.currentLocation,next);if(!route.Reachable)throw new InvalidOperationException(route.Reason);Current.effects.Add(new{kind="npc_changed_map",next,route.Reason});destination=next;edge=null;StopWalk();socialBestDistance=float.MaxValue;socialLastApproachProgress=DateTime.UtcNow;}
         if(Game1.currentLocation.NameOrUniqueName!=destination){Current.phase="social_travel";Travel();return;}
         if(!Utility.withinRadiusOfPlayer(npc.StandingPixel.X,npc.StandingPixel.Y,1,p)) {
-            if((ownedController==null||socialApproachTile!=npc.TilePoint)&&DateTime.UtcNow>=nextInteraction) {
+            float distance=Microsoft.Xna.Framework.Vector2.DistanceSquared(p.Tile,npc.Tile);
+            if(distance<socialBestDistance-1){socialBestDistance=distance;socialLastApproachProgress=DateTime.UtcNow;}
+            if((DateTime.UtcNow-socialLastApproachProgress).TotalSeconds>30){Current.effects.Add(new{kind="social_no_approach_progress",npc=npc.Name,distance_tiles=Math.Sqrt(distance),elapsed_seconds=activeSeconds,next="模型决定继续追赶或稍后再找"});throw new InvalidOperationException("social_chase_no_progress");}
+            if((ownedController==null||AtWalkTarget||ownedController is PlayerRouteController {Blocked:true})&&DateTime.UtcNow>=nextInteraction) {
                 nextInteraction=DateTime.UtcNow.AddMilliseconds(500);
                 try{Walk(SocialStand(npc));socialApproachTile=npc.TilePoint;}
                 catch(InvalidOperationException e)when(e.Message=="exit_unreachable") {

@@ -42,7 +42,7 @@ public sealed partial class ModEntry {
         long started=System.Diagnostics.Stopwatch.GetTimestamp();
         int width=Math.Clamp(Game1.uiViewport.Width/3,280,340),x=Math.Max(8,Game1.uiViewport.Width-width-20),y=Math.Min(290,Math.Max(50,Game1.uiViewport.Height/3));
         bool compact=overlayCollapsed||Game1.activeClickableMenu!=null||Game1.uiViewport.Height<500;
-        string mode=!AutoplayRunning?"已暂停":preparation!=null?"准备物资":agentPending!=null?"安排接下来的事":WorkActorBusy("player")||playerExecutor.Busy?"正在忙碌":Game1.eventUp?"观看剧情":"等待安排";
+        string mode=!AutoplayRunning?"已暂停":preparation!=null?"准备物资":agentPending!=null?(HasPendingQueries?"核对查询结果并规划":"安排接下来的事"):WorkActorBusy("player")||playerExecutor.Busy?"正在忙碌":Game1.eventUp?"观看剧情":"等待安排";
         overlayTitle="同行 · "+mode;
         var lines=new List<string>();
         void Add(string text) {

@@ -166,7 +166,6 @@ public sealed partial class ModEntry {
                 }
                 if(task.wait_reason=="companion_finishing_before_sleep")task.wait_reason=null;
                 if(ReviewQueuedSleep(task))continue;
-                if(task.spec.tool=="player.sleep"&&QueueClosingShipment(task))continue;
                 if(task.spec.tool=="player.sleep")sleepReview=null;
                 if(task.spec.tool=="work.run"&&AgentToolRegistry.Text(task.spec.args,"goal")=="water"&&WateringNoWork(task.spec.args) is {} noWater) {CompleteScheduled(task,JsonSerializer.SerializeToElement(noWater,AgentJson.Options));continue;}
                 if(task.spec.tool=="player.social"&&SocialPreflight(task.spec.args) is {} access) {CompleteScheduled(task,JsonSerializer.SerializeToElement(access,AgentJson.Options));continue;}

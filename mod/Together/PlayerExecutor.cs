@@ -240,9 +240,18 @@ public sealed partial class PlayerExecutor {
     }
     public static bool Passable(GameLocation l,Point p) {
         if(p.X<0||p.Y<0||p.X>=l.Map.Layers[0].LayerWidth||p.Y>=l.Map.Layers[0].LayerHeight)return false;
+        if(!StaticMapPassable(l,p))return false;
         var box=Game1.player.GetBoundingBox();box.Offset(p.X*64+32-box.Center.X,p.Y*64+40-box.Center.Y);
         // Native pathfinding=true skips NPC collision; preview must match real Farmer movement.
         return !l.isCollidingPosition(box,Game1.viewport,true,0,false,Game1.player,false,false,false,true);
+    }
+    internal static bool StaticMapPassable(GameLocation l,Point p) {
+        if(!l.isTileOnMap(p))return false;
+        var back=l.Map.GetLayer("Back").Tiles[p.X,p.Y];var building=l.Map.GetLayer("Buildings").Tiles[p.X,p.Y];
+        // The native movement collision query exempts corners already occupied
+        // by this Farmer. That exception is not evidence that a wall is a road.
+        return (back==null||!back.TileIndexProperties.ContainsKey("Passable")&&!back.Properties.ContainsKey("Passable"))&&
+            (building==null||building.TileIndexProperties.ContainsKey("Shadow")||building.TileIndexProperties.ContainsKey("Passable")||building.Properties.ContainsKey("Passable"));
     }
     // The native controller constructor teleports non-NPCs in unoccupied maps.
     // Preview only the path; remote planning starts at a real map entrance.
@@ -254,6 +263,8 @@ public sealed partial class PlayerExecutor {
         }
         var cache=new Dictionary<FarmCell,bool>();
         var path=AutonomyPolicy.Path(new(start.X,start.Y),new(end.X,end.Y),p=>cache.TryGetValue(p,out bool valid)?valid:cache[p]=Passable(location,new(p.X,p.Y)));
+        if(path==null&&location==Game1.currentLocation&&PlayerRouteController.EscapeTile() is {} escape)
+            path=AutonomyPolicy.Path(new(escape.X,escape.Y),new(end.X,end.Y),p=>cache.TryGetValue(p,out bool valid)?valid:cache[p]=Passable(location,new(p.X,p.Y)));
         return path==null?null:new Stack<Point>(path.AsEnumerable().Reverse().Select(p=>new Point(p.X,p.Y)));
     }
     private void StopWalk(){
@@ -554,7 +565,10 @@ public sealed partial class PlayerExecutor {
     private void Travel() {
         var l=Game1.currentLocation;
         if(origin!=l.NameOrUniqueName || edge==null) {
-            origin=l.NameOrUniqueName;edge=NextExit(l,destination)??throw new InvalidOperationException("no_known_route");
+            origin=l.NameOrUniqueName;var route=ResolveRoute(l,destination);
+            var proof=new{kind="route_resolution",location=origin,from=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},destination,route.Reason,route.Transitions,route.Evidence};
+            Current!.effects.Add(proof);RouteObserved?.Invoke(proof);
+            edge=route.First??throw new InvalidOperationException(route.Reason);
             Walk(Approach(new(edge.X,edge.Y)));nextTravelInteraction=DateTime.UtcNow;retries=0;
         }
         var at=new Point(edge.X,edge.Y);var standing=Game1.player.TilePoint;
@@ -656,35 +670,6 @@ public sealed partial class PlayerExecutor {
         if(MineShaft.IsGeneratedLevel(name))return MineShaft.activeMines.FirstOrDefault(l=>l.NameOrUniqueName==name);
         return Game1.getLocationFromName(name);
     }
-    internal static Warp? NextExit(GameLocation from,string destination) {
-        // Pick a topological route first. Previously every call ran A* for ALL
-        // Town doors even when only the BusStop exit was relevant. Validate only
-        // the chosen first exit; if blocked, exclude it and try an alternative.
-        var blocked=new HashSet<(int X,int Y,string Target)>();
-        int alternatives=Exits(from).Count();
-        for(int attempt=0;attempt<=alternatives;attempt++) {
-            var queue=new PriorityQueue<(GameLocation Location,Warp? First),int>();queue.Enqueue((from,null),0);
-            var best=new Dictionary<string,int>{{from.NameOrUniqueName,0}};int examined=0;Warp? candidate=null;
-            while(queue.TryDequeue(out var node,out int cost)&&examined++<200) {
-                var l=node.Location;if(cost!=best[l.NameOrUniqueName])continue;
-                if(l.NameOrUniqueName==destination){candidate=node.First;break;}
-                foreach(var edge in Exits(l)) {
-                    if(node.First==null&&blocked.Contains((edge.X,edge.Y,edge.TargetName)))continue;
-                    var next=LoadedLocation(edge.TargetName);if(next==null)continue;
-                    int nextCost=cost+1+(next.IsFarm&&l.NameOrUniqueName!="BusStop"?8:0);
-                    if(best.TryGetValue(next.NameOrUniqueName,out int old)&&old<=nextCost)continue;
-                    best[next.NameOrUniqueName]=nextCost;queue.Enqueue((next,node.First??edge),nextCost);
-                }
-            }
-            if(candidate==null)return null;
-            if(from!=Game1.currentLocation)return candidate;
-            var at=new Point(candidate.X,candidate.Y);
-            bool reachable=new[]{at,new Point(at.X,at.Y+1),new Point(at.X-1,at.Y),new Point(at.X+1,at.Y),new Point(at.X,at.Y-1)}
-                .Any(p=>Passable(from,p)&&(p==Game1.player.TilePoint||PreviewPath(from,p)?.Count>0));
-            if(reachable)return candidate;
-            blocked.Add((candidate.X,candidate.Y,candidate.TargetName));
-        }
-        return null;
-    }
+    internal static Warp? NextExit(GameLocation from,string destination)=>ResolveRoute(from,destination).First;
 
 }

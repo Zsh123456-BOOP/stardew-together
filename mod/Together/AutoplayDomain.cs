@@ -62,6 +62,9 @@ public static class AgentJson {
 }
 public sealed record AgentEvent(string Kind,string Text);
 public sealed class AgentCall {
+    public string id {get;set;}="";
+    public string[] depends_on_query {get;set;}=Array.Empty<string>();
+    public string[] uses_results {get;set;}=Array.Empty<string>();
     public string tool {get;set;}="";
     public JsonElement args {get;set;}
 }
@@ -74,7 +77,7 @@ public sealed class AgentTurn {
         if(turn.plan==null || turn.plan.Length>1200 || turn.speech==null || turn.speech.Length>300 || turn.calls==null || turn.calls.Count is <1 or >6)
             throw new InvalidOperationException("invalid_turn");
         foreach(var c in turn.calls)
-            if(c==null || c.tool==null || c.tool.Length>60 || c.args.ValueKind!=JsonValueKind.Object)
+            if(c==null || c.tool==null || c.tool.Length>60 || c.depends_on_query==null || c.uses_results==null || c.depends_on_query.Any(string.IsNullOrWhiteSpace) || c.uses_results.Any(string.IsNullOrWhiteSpace) || c.args.ValueKind!=JsonValueKind.Object)
                 throw new InvalidOperationException("invalid_tool_call");
         return turn;
     }

@@ -34,10 +34,11 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("native_diary_receipt",AgentJson.Encode(raw));
     }
     private object DiaryContext()=>new {
+        today_day=Game1.Date.TotalDays,previous_day=Game1.Date.TotalDays-1,today_maintenance=WateringObservation("Farm"),
         today=Data.Autoplay.Memory.Diary.Rows.Where(r=>r.Day==Game1.Date.TotalDays).Select(DiaryDisplay),
         previous=Data.Autoplay.Memory.Diary.Rows.Where(r=>r.Day==Game1.Date.TotalDays-1&&r.Kind is not ("行动期间入包" or "行动期间取用" or "现金变化")).Select(DiaryDisplay),
         active_tasks=semanticJobs.Values.Where(j=>j.status=="running").Select(j=>new{j.command_id,j.goal,j.location,j.requested,j.completed,j.gained,remaining=Math.Max(0,j.requested-Math.Max(j.completed,j.gained)),j.phase}),
-        note="只记录真实结果，不是当前库存。种下/浇水为地块数；收获点不是产物数量；行动期间入包/取用含补给，不能与购买/收获重复加总。出货尚未到账。当前库存以实时读取为准。"
+        note="今日干地是今日维护需求，不能推翻昨日已浇水记录。只记录真实结果，不是当前库存。种下/浇水为地块数；收获点不是产物数量；行动期间入包/取用含补给，不能与购买/收获重复加总。出货尚未到账。当前库存以实时读取为准。"
     };
     private object DiaryDisplay(DiaryRow r) {
         string item=r.Item.Split('|')[0],name=item;
@@ -46,6 +47,8 @@ public sealed partial class ModEntry {
     }
     private object AgentMemoryContext()=>new {
         daily_activity=DiaryContext(),
+        reflections=Data.Autoplay.Memory.Reflections.TakeLast(2),
+        relevant=memoryArchive?.Recall(Data.Autoplay.Plan,Game1.Date.TotalDays),
         days=Data.Autoplay.Memory.Days.TakeLast(4),seasons=Data.Autoplay.Memory.Seasons.TakeLast(2).Select(s=>new{s.SeasonIndex,s.Successful,s.Failed,s.CoveredUntilDay,evidence_count=s.Evidence.Count,s.SchemaVersion}),archive_error=Data.Autoplay.Memory.LastError,pending_archive=Data.Autoplay.Memory.Pending.Count,
         service_constraints=Data.Autoplay.Operations.Constraints.Where(e=>e.Day==Game1.Date.TotalDays).ToArray(),
         recent_failure_rules=ActiveFailureRules().OrderByDescending(e=>e.UntilChanged).ThenByDescending(e=>e.Attempts).Take(12).Select(e=>new{e.Tool,e.Actor,e.Reason,e.Day,e.RetryAfterMinute,e.Attempts,e.Suppressed,e.TaskEvidence,e.UntilChanged,family=FailureKnowledge.Family(e.Reason),invalidates=e.UntilChanged?"相关条件变化后复查；单纯换日、改数量/措辞不解除。目标看区域对象与工具；容量看真实背包与仓储。":"空间/瞬时故障按实际相关状态复查，有界冷却。"}),

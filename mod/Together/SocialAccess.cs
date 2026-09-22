@@ -12,16 +12,9 @@ public sealed partial class PlayerExecutor {
         if(location==null||npc.IsInvisible||npc.isSleeping.Value||npc.IsMonster)return Result(false,"npc_unavailable_or_sleeping");
         var start=Game1.player.TilePoint;int transitions=0;
         if(location!=Game1.currentLocation) {
-            // Use the actual incoming warp coordinates, not an arbitrary outgoing
-            // warp from the destination (which may be a private back entrance).
-            var queue=new Queue<(GameLocation Location,Point Entry,int Depth)>();var seen=new HashSet<string>();
-            queue.Enqueue((Game1.currentLocation,start,0));bool found=false;
-            while(queue.TryDequeue(out var node)&&seen.Count<200) {
-                if(!seen.Add(node.Location.NameOrUniqueName))continue;
-                if(node.Location==location){start=node.Entry;transitions=node.Depth;found=true;break;}
-                foreach(var edge in Exits(node.Location))if(LoadedLocation(edge.TargetName) is {} next&&!seen.Contains(next.NameOrUniqueName))queue.Enqueue((next,new Point(edge.TargetX,edge.TargetY),node.Depth+1));
-            }
-            if(!found)return Result(false,"no_known_route");
+            var route=ResolveRoute(Game1.currentLocation,location.NameOrUniqueName);
+            if(!route.Reachable)return Result(false,route.Reason,doors:route.Evidence);
+            start=route.Entry;transitions=route.Transitions;
         }
         var at=npc.StandingPixel;var center=new Point(at.X/64,at.Y/64);
         var options=Enumerable.Range(-1,3).SelectMany(x=>Enumerable.Range(-1,3).Select(y=>new Point(center.X+x,center.Y+y))).Where(p=>p!=center&&Passable(location,p)).ToHashSet();

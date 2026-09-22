@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace Together;
 public static class ContextCompression {
-    public static string Pack(object value,int maxCharacters=40000) {
+    public static string Pack(object value,int maxCharacters=40000,bool summarizeObservations=true) {
         var root=JsonSerializer.SerializeToNode(value,AgentJson.Options)!.AsObject();
         var reductions=new List<string>();
         var degraded=new HashSet<string>(StringComparer.Ordinal);
@@ -74,7 +74,7 @@ public static class ContextCompression {
         }
         // A query can point into this exact packed snapshot only if its complete
         // result is still there. The compression pass owns the only omission set.
-        if(root["recent"] is JsonArray observations)foreach(var entry in observations.OfType<JsonObject>()) {
+        if(summarizeObservations&&root["recent"] is JsonArray observations)foreach(var entry in observations.OfType<JsonObject>()) {
             var data=entry["data"] as JsonObject??entry;
             if(data["tool"] is JsonValue tool&&tool.TryGetValue<string>(out var name)&&data["result"] is {} result)
                 data["result"]=ModelToolObservation(name,result,root,degraded);

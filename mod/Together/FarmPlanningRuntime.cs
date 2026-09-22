@@ -6,6 +6,8 @@ using StardewValley.Tools;
 
 namespace Together;
 public sealed class FarmPlantPlan {
+    public Dictionary<FarmCell,string> NativeCrops {get;set;}=new();
+    public string[] PossibleSeeds {get;set;}=Array.Empty<string>();
     public string Id {get;set;}=Guid.NewGuid().ToString("N");
     public string Epoch {get;set;}="";
     public int Day {get;set;}
@@ -81,38 +83,41 @@ public sealed partial class ModEntry {
         var waterDistance=FarmLayout.WaterDistances(grid,water.Select(w=>new FarmCell(w.X,w.Y)));
         grid=grid.Select(c=>c with{DistanceToWater=waterDistance.GetValueOrDefault(c.Tile,10000)}).ToList();
         var paddyTiles=water.SelectMany(w=>Enumerable.Range(-3,7).SelectMany(dx=>Enumerable.Range(-3,7).Select(dy=>new FarmCell(w.X+dx,w.Y+dy)))).ToHashSet();
-        var options=new List<(double Score,object Value)>();var crops=DataLoader.Crops(Game1.content);var p=Game1.player;
+        var excluded=new List<object>();int evaluated=0;var options=new List<(double Score,object Value)>();var crops=DataLoader.Crops(Game1.content);var p=Game1.player;
         string priority=AgentToolRegistry.Text(args,"priority","income");if(priority is not ("income" or "collection" or "low_labor"))throw new InvalidOperationException("unknown_farm_priority");
         foreach(var seed in owned.Where(s=>requested.Length==0||s.Key==requested).OrderBy(s=>s.Key)) {
             string id=seed.Key.StartsWith("(O)")?seed.Key[3..]:seed.Key;
-            if(!crops.TryGetValue(id,out var data))continue;
-            bool seasonFree=l.SeedsIgnoreSeasonsHere();if(!seasonFree&&!data.Seasons.Contains(l.GetSeason()))continue;
-            if(!l.CheckItemPlantRules(id,false,l.GetData()?.CanPlantHere??l.IsFarm,out _))continue;
-            int days=data.DaysInPhase.Sum();int horizon=CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,data.Seasons.Select(s=>(int)s).ToHashSet(),seasonFree);
+            evaluated++;var possibilities=NativeSeedPlan.Options(id,l);
+            if(possibilities.Count==0){excluded.Add(new{seed=seed.Key,reason="seed_type_not_supported"});continue;}
+            var data=possibilities.Values.OrderByDescending(c=>c.DaysInPhase.Sum()).First();
+            bool seasonFree=l.SeedsIgnoreSeasonsHere();
+            if(possibilities.Values.Any(c=>!seasonFree&&!c.Seasons.Contains(l.GetSeason()))){excluded.Add(new{seed=seed.Key,reason="season_not_applicable_for_all_possible_crops"});continue;}
+            if(!l.CheckItemPlantRules(id,false,l.GetData()?.CanPlantHere??l.IsFarm,out var reject)){excluded.Add(new{seed=seed.Key,reason=reject??"native_plant_rule_rejected"});continue;}
+            int days=data.DaysInPhase.Sum();int horizon=CropGrowth.SeasonEnd((int)l.GetSeason(),Game1.dayOfMonth,possibilities.Values.Select(c=>c.Seasons.Select(s=>(int)s).ToHashSet()).Aggregate((a,b)=>{a.IntersectWith(b);return a;}),seasonFree);
             var calc=new StardewCropCalculatorLibrary.Crop(seed.Key,days,data.RegrowDays>0?data.RegrowDays:-1,0,
                 ItemRegistry.Create<StardewValley.Object>("(O)"+data.HarvestItemId).Price);
             var growth=new Dictionary<FarmCell,int>();
             var seedGrid=grid.Select(c=>{
-                bool paddy=data.IsPaddyCrop&&paddyTiles.Contains(c.Tile);
+                bool paddy=possibilities.Values.All(d=>d.IsPaddyCrop)&&paddyTiles.Contains(c.Tile);
                 var dirt=l.terrainFeatures.GetValueOrDefault(new Vector2(c.Tile.X,c.Tile.Y)) as HoeDirt;
                 float speed=dirt?.HasFertilizer()==true?dirt.GetFertilizerSpeedBoost():fertilizer switch{"(O)465"=>.1f,"(O)466"=>.25f,"(O)918"=>.33f,_=>0};
                 growth[c.Tile]=CropGrowth.Stages(data.DaysInPhase,speed,p.professions.Contains(5),paddy).Sum();
                 return c with{Irrigated=c.Irrigated||paddy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
             }).ToList();
-            var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),data.IsRaised,manual,protectedOnly,energyBudget:AvailablePlantingEnergy());
+            var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),possibilities.Values.Any(d=>d.IsRaised),manual,protectedOnly,energyBudget:AvailablePlantingEnergy());
             Data.Autoplay.Record("plot_choice_evidence",AgentJson.Encode(new{seed=seed.Key,requested=max,chosen.Score,chosen.StopReason,selected=chosen.Tiles.Select(t=>seedGrid.First(c=>c.Tile==t)),available_tilled=seedGrid.Where(c=>c.Plantable&&c.Tilled),available_untilled=seedGrid.Count(c=>c.Plantable&&!c.Tilled),score_formula="entry*2+shape_difference*3+sum(planning_penalty+clear_cost*3+unirrigated*25+unprotected*8+untilled*6+water_distance*.2)",selection="maximal_feasible_compact_area_then_score"}));
-            if(chosen.Tiles.Count==0)continue;
+            if(chosen.Tiles.Count==0){excluded.Add(new{seed=seed.Key,reason=chosen.StopReason,possible_crops=possibilities.Keys});continue;}
             int harvests=calc.NumHarvests(Game1.dayOfMonth,horizon);
-            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,Tiles=chosen.Tiles,AccessOrigin=new(p.TilePoint.X,p.TilePoint.Y),RaisedTiles=data.IsRaised?chosen.Tiles:new(),GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};
+            var plan=new FarmPlantPlan{Epoch=agentSaveEpoch,Day=Game1.Date.TotalDays,Location=l.NameOrUniqueName,Seed=seed.Key,PossibleSeeds=possibilities.Keys.ToArray(),Tiles=chosen.Tiles,AccessOrigin=new(p.TilePoint.X,p.TilePoint.Y),RaisedTiles=possibilities.Values.Any(d=>d.IsRaised)?chosen.Tiles:new(),GrowDays=days,Harvests=harvests,ManualWatering=chosen.ManualWatering,Unprotected=chosen.Unprotected,StopReason=chosen.StopReason,GrowthByTile=chosen.Tiles.ToDictionary(t=>t,t=>growth[t]),LastGrowingDay=horizon,SalePrice=(int)calc.sellPrice,RegrowDays=calc.yieldRate};
             plan.Fertilizer=fertilizer;farmPlantPlans[plan.Id]=plan;
             double gross=plan.GrowthByTile.Values.Sum(d=>new StardewCropCalculatorLibrary.Crop(seed.Key,d,calc.yieldRate,0,calc.sellPrice).NumHarvests(Game1.dayOfMonth,horizon)*calc.sellPrice);
             bool missing=!p.basicShipped.ContainsKey(data.HarvestItemId)||Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(n=>n.Item=="(O)"+data.HarvestItemId));
             double score=priority=="collection"?(missing?100000:0)+gross:priority=="low_labor"?gross/Math.Max(1,plan.ManualWatering*Math.Max(1,horizon-Game1.dayOfMonth)):gross;
-            options.Add((score,new{plan_id=plan.Id,next_action=new{tool="work.run",args=new{goal="plant",plan_id=plan.Id}},plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
+            options.Add((score,new{plan_id=plan.Id,next_action=new{tool="work.run",args=new{goal="plant",plan_id=plan.Id}},plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,possible_crops=possibilities.Select(c=>new{seed=c.Key,harvest=c.Value.HarvestItemId,days=c.Value.DaysInPhase.Sum()}),forecast=possibilities.Count==1?FarmForecast(plan):(object)new{kind="random_native_crop_outcomes",growth_days=new[]{possibilities.Values.Min(c=>c.DaysInPhase.Sum()),possibilities.Values.Max(c=>c.DaysInPhase.Sum())},base_sale_range=possibilities.Values.Select(c=>ItemRegistry.Create<StardewValley.Object>("(O)"+c.HarvestItemId).Price).OrderBy(x=>x).ToArray(),note="每格由原生随机决定，不承诺确定收入；规划按最长生长期，读取不消耗随机数"}}));
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
-        return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),evaluated_seeds=options.Count,zoning=zoning.GroupBy(z=>z.Value).Select(g=>new{reason=g.Key,reserved_tiles=g.Count()}),limitations=new[]{"仅背包及授权仓库已有种子；入库种子由任务整备取回，采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","先规划连片田地，清完区域内杂草/树枝/小石头再翻土播种；保留现有作物、树木、设备与通道","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
+        return new{stamp=SnapshotStamp(),priority,options=options.OrderByDescending(o=>o.Score).Take(3).Select(o=>o.Value),status=options.Count>0?"observed":"no_feasible_plan",error=options.Count==0?"farm_plan_no_feasible_option":null,reason=evaluated==0?"no_matching_owned_seeds":options.Count==0?"see_excluded_seeds":null,evaluated_seeds=evaluated,feasible_seeds=options.Count,excluded_seeds=excluded,zoning=zoning.GroupBy(z=>z.Value).Select(g=>new{reason=g.Key,reserved_tiles=g.Count()}),limitations=new[]{"仅背包及授权仓库已有种子；入库种子由任务整备取回，采购现金流/加工收益优化待补","按现有肥料/职业/临水水稻与连续季节计算，假定每天正常照料；未假定未知天气","先规划连片田地，清完区域内杂草/树枝/小石头再翻土播种；保留现有作物、树木、设备与通道","洒水器覆盖是后续日维护估算，播种当天仍检查实际水分"}};
     }
     private Dictionary<FarmCell,string> ApplyFarmZoning(GameLocation l,List<LayoutCell> grid,List<FarmCell> anchors) {
         if(l.IsGreenhouse)return new();
@@ -137,6 +142,16 @@ public sealed partial class ModEntry {
         }
         return new{kind="conditional_base_price_forecast_not_actual_cash",days=calendar.GameStates.Where(s=>s.Key>=Game1.dayOfMonth&&(s.Key==Game1.dayOfMonth||s.Key==plan.LastGrowingDay+1||s.Value.Plants.Any(b=>b.HarvestDays.Contains(s.Key))||s.Value.Wallet!=calendar.GameStates[s.Key-1].Wallet)).Select(s=>new{day=s.Key,projected_gold=s.Value.Wallet,harvest=s.Value.Plants.Where(b=>b.HarvestDays.Contains(s.Key)).Sum(b=>b.Count)}),
             assumptions="已持有种子不重复计购买费用；按每次每株1份基础品质出货、次日到账估算。未扣献祭/加工/自用预留，未预测随机增产/品质/天气；实际支出只允许使用真实余额。"};
+    }
+    private void ObservePlantedTiles(SemanticJob job,JsonElement receipt) {
+        if(job.ChildKind!="plant_seed"||!farmPlantPlans.TryGetValue(job.PlanId,out var plan)||!receipt.TryGetProperty("effects",out var effects))return;
+        foreach(var effect in effects.EnumerateArray()) {
+            if(!effect.TryGetProperty("work_skill",out var skill)||skill.GetString()!="plant"||!effect.TryGetProperty("before",out var before)||!effect.TryGetProperty("after",out var after))continue;
+            if(before.TryGetProperty("crop",out var priorCrop)&&priorCrop.ValueKind!=JsonValueKind.Null||!after.TryGetProperty("crop",out var resultingCrop)||resultingCrop.ValueKind!=JsonValueKind.String)continue;
+            var tile=new FarmCell(after.GetProperty("x").GetInt32(),after.GetProperty("y").GetInt32());
+            if(plan.Tiles.Contains(tile))plan.NativeCrops[tile]=after.GetProperty("crop").GetString()!;
+        }
+        Data.Autoplay.Record("plant_native_outcomes",AgentJson.Encode(new{plan.Id,plan.Seed,job.child_id,tiles=plan.NativeCrops.Select(p=>new{tile=p.Key,crop=p.Value})}));
     }
     private void TickPlantWork(SemanticJob j) {
         if(!farmPlantPlans.TryGetValue(j.PlanId,out var plan)||plan.Epoch!=agentSaveEpoch||plan.Day!=Game1.Date.TotalDays){StopSemanticWork(j,"plant_plan_expired_replan");return;}
@@ -163,7 +178,7 @@ public sealed partial class ModEntry {
         if(untilled.Count>0){PlantBatch(j,"till",WorkSlot(i=>i is Hoe),untilled,"plant_till",4);return;}
         foreach(var tile in plan.Tiles) {
             var dirt=(HoeDirt)l.terrainFeatures[new(tile.X,tile.Y)];
-            if(dirt.crop is {} crop&&"(O)"+crop.netSeedIndex.Value!=plan.Seed){StopSemanticWork(j,"different_crop_on_planned_tile");return;}
+            if(dirt.crop is {} crop&&(!plan.NativeCrops.TryGetValue(tile,out var expectedCrop)||expectedCrop!=crop.indexOfHarvest.Value)){StopSemanticWork(j,"different_crop_on_planned_tile");return;}
         }
         var empty=plan.Tiles.Where(t=>((HoeDirt)l.terrainFeatures[new(t.X,t.Y)]).crop==null).ToList();
         if(plan.Fertilizer.Length>0) {
@@ -172,8 +187,8 @@ public sealed partial class ModEntry {
         }
         if(empty.Count>0) {
             string seedId=plan.Seed.StartsWith("(O)")?plan.Seed[3..]:plan.Seed;
-            if(!DataLoader.Crops(Game1.content).TryGetValue(seedId,out var data))throw new InvalidOperationException("planned_crop_definition_changed");
-            foreach(var tile in empty) {
+            var possible=NativeSeedPlan.Options(seedId,l);if(possible.Count==0)throw new InvalidOperationException("planned_crop_definition_changed");
+            foreach(var tile in empty)foreach(var data in possible.Values) {
                 var dirt=(HoeDirt)l.terrainFeatures[new(tile.X,tile.Y)];
                 bool paddy=data.IsPaddyCrop&&Enumerable.Range(-3,7).Any(dx=>Enumerable.Range(-3,7).Any(dy=>l.CanRefillWateringCanOnTile(tile.X+dx,tile.Y+dy)));
                 int days=CropGrowth.Stages(data.DaysInPhase,dirt.GetFertilizerSpeedBoost(),Game1.player.professions.Contains(5),paddy).Sum();

@@ -56,6 +56,7 @@ public sealed partial class PlayerExecutor {
                 var bounds=dialogue.responseCC[index].bounds;dialogue.performHoverAction(bounds.Center.X,bounds.Center.Y);dialogue.receiveLeftClick(bounds.Center.X,bounds.Center.Y);serviceSelected=true;return;
             }
             if(!Game1.player.CanMove)return;
+            Current.effects.Add(new{kind="service_open_failed",service,expected_shop=serviceShop,actual_menu=menu?.GetType().Name,actual_shop=(menu as ShopMenu)?.ShopId,time=Game1.timeOfDay,characters=Game1.currentLocation.characters.Select(n=>new{n.Name,tile=new[]{n.TilePoint.X,n.TilePoint.Y}})});
             throw new InvalidOperationException("native_service_did_not_open_or_wrong_shop");
         }
         if(Game1.activeClickableMenu!=null)throw new InvalidOperationException("service_route_menu_requires_review");
@@ -64,7 +65,7 @@ public sealed partial class PlayerExecutor {
         var l=Game1.currentLocation;
         if(serviceTile==null) {
             var candidates=ServiceCounters(l,service,serviceShop);
-            Current.effects.Add(new{kind="service_counter_candidates",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates});
+            Current.effects.Add(new{kind="service_counter_candidates",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates.Select(p=>new{x=p.X,y=p.Y,action=l.GetTilePropertySplitBySpaces("Action","Buildings",p.X,p.Y)})});
             foreach(var at in candidates.OrderBy(p=>Vector2.DistanceSquared(p.ToVector2(),Game1.player.Tile))) {
                 // Legacy counters require approaching from below. Explicit OpenShop
                 // direction is left to the native action's own condition validation.
@@ -74,7 +75,7 @@ public sealed partial class PlayerExecutor {
                 }
                 if(serviceTile.HasValue)break;
             }
-            if(!serviceTile.HasValue){Current.effects.Add(new{kind="service_counter_failure",category=candidates.Count==0?"parameter_or_map_changed":"physical_stand_unreachable",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates,player=Game1.player.TilePoint});throw new InvalidOperationException("no_reachable_native_service_counter");}
+            if(!serviceTile.HasValue){Current.effects.Add(new{kind="service_counter_failure",category=candidates.Count==0?"parameter_or_map_changed":"physical_stand_unreachable",location=l.NameOrUniqueName,service,shop=serviceShop,counters=candidates.Select(p=>new{x=p.X,y=p.Y,action=l.GetTilePropertySplitBySpaces("Action","Buildings",p.X,p.Y)}),player=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y}});throw new InvalidOperationException("no_reachable_native_service_counter");}
         }
         if(!AtWalkTarget){MonitorWalk();return;}StopWalk();var counter=serviceTile.Value;Adjacent(counter);Face(counter);
         if(service=="claim_tool") {

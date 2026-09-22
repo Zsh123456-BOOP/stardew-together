@@ -11,6 +11,8 @@ public sealed class FailureExperience {
     public string Conditions {get;set;}="";
     public string Arguments {get;set;}="";
     public string Location {get;set;}="";
+    public string RouteState {get;set;}="";
+    public string[] RouteBlocks {get;set;}=Array.Empty<string>();
     public int Suppressed {get;set;}
     public string TaskEvidence {get;set;}="";
     public int Day {get;set;}
@@ -35,7 +37,7 @@ public sealed class FailureKnowledge {
         }catch(JsonException){}
         return Hash(actor+"\n"+tool+"\n"+args+"\n"+locationPrecondition);
     }
-    public static string Family(string reason)=>reason is "social_access_unavailable" or "route_access_denied_check_opening_hours_or_friendship" or "npc_unavailable_or_sleeping" or "exit_unreachable" or "no_known_route" or "npc_stand_unreachable"?"access":CapacityState.IsCapacity(reason)?"capacity":reason.StartsWith("material_target_")||reason.StartsWith("no_approved_material_")?"material_policy":
+    public static string Family(string reason)=>reason=="farm_plan_no_feasible_option"?"targets":reason=="social_return_route_unavailable"?"access":reason=="route_search_budget_exhausted"?"transient":reason.StartsWith("route_")?"access":reason is "social_access_unavailable" or "route_access_denied_check_opening_hours_or_friendship" or "npc_unavailable_or_sleeping" or "exit_unreachable" or "no_known_route" or "npc_stand_unreachable"?"access":CapacityState.IsCapacity(reason)?"capacity":reason.StartsWith("material_target_")||reason.StartsWith("no_approved_material_")?"material_policy":
         reason is "no_matching_targets" or "no_eligible_targets_check_capability_path_or_cargo" or "remaining_targets_unreachable"?"targets":
         reason is "inventory_contains_only_protected_items" or "companion_needs_reachable_shared_capacity_or_expansion_budget"?"capacity":"transient";
     public static string ConditionKey(string actor,string tool,string args,string location="") {

@@ -36,6 +36,7 @@ public sealed partial class ModEntry {
     private bool agentStarting;
     public bool AutoplayRunning=>Data.Autoplay.Status=="running";
     private void SetupAutoplay() {
+        PlayerExecutor.DoorAccess=RouteDoorAccess;
         playerExecutor=new(){ShipmentObserved=e=>WriteBusinessLog("shipment_sequence",AgentJson.Encode(e)),WorkProtected=MaintenanceProtects,OpportunisticItemAllowed=item=>!KitProtected(item),RouteObserved=route=>Data.Autoplay.Record("route_segment",AgentJson.Encode(new{route,task=Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").Select(t=>new{t.spec.id,t.spec.tool,t.spec.purpose}),work=semanticJobs.Values.Where(j=>j.status=="running").Select(j=>new{j.command_id,j.goal,j.phase,j.ChildKind,j.Storing,j.location})})),NativeFinished=a=>{try{RecordNativeDiary(a);RecordNativePurchases(a);ObserveQualityReceipt(a);OnNativeWorkFinished(a.command_id);}catch(Exception e){PauseAutoplay("quality_evidence_failed:"+e.Message);}},ValidateOperation=ValidateNativeOperation,RecruitCompanion=RecruitForAgent,ApplyProfession=menu=>ApplyProfessionPolicy(menu)||SurvivalProfession(menu),ApplyNightPolicy=ApplyFamilyNightPolicy,NativeSleepRequested=CaptureQualitySleep,ValidateDisposal=ValidateDiscard,ValidateConsumption=ValidatePlayerConsumption,PlacementProtected=IsPlacementProtected,FacilityPlaced=GoalFacilityPlaced,FacilityCosts=GoalFacilityCosts,ShopOpened=()=>ObserveShop(JsonSerializer.SerializeToElement(new{}))};agentTools=new(this,playerExecutor);
         FishingInput.Install(ModManifest.UniqueID,playerExecutor);
         AutoplayPauseClock.Install(ModManifest.UniqueID);
@@ -99,6 +100,7 @@ public sealed partial class ModEntry {
         if(wasRunning && !reason.StartsWith("lab_")){agentToast="自主游玩已暂停："+FriendlyAgentReason(reason);agentToastUntil=DateTime.UtcNow.AddSeconds(8);}
     }
     private void ResetAgentRuntime() {
+        queryRequestIds=Array.Empty<string>();
         CancelDecisionContinuation("runtime_reset");ResetPreparation();labEarlyStorage=false;
         maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;
         Data.Maintenance.WasWorking=false;Data.Maintenance.LastMinute=-1;
@@ -161,10 +163,10 @@ public sealed partial class ModEntry {
             string? unappliedReply=null;bool applying=false;
             try {
                 var reply=task.GetAwaiter().GetResult();Data.Autoplay.Record("context_packed",AgentJson.Encode(new{characters=agentLastContextCharacters,background_ms=agentLastPackMs}));unappliedReply=reply.Json;Data.Tokens+=reply.Tokens;RecordUsage();RecordAgentUsage(reply);
-                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || agentRequestQueueRevision!=Data.Autoplay.Schedule.Revision || DecisionBasisChanged()) {
+                if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || (!AgentTurn.Parse(reply.Json).calls.All(c=>QueryResult.IsRead(c.tool))&&(agentRequestQueueRevision!=Data.Autoplay.Schedule.Revision || DecisionBasisChanged()))) {
                     Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
-                    var turn=AgentTurn.Parse(reply.Json);applying=true;Data.Autoplay.Survival.ModelFailures=0;Data.Autoplay.Decisions++;Data.Autoplay.Plan=turn.plan;
+                    var turn=AgentTurn.Parse(reply.Json);AcknowledgeQueries();applying=true;Data.Autoplay.Survival.ModelFailures=0;Data.Autoplay.Decisions++;if(Data.Autoplay.Plan!=turn.plan)Data.Autoplay.Record("plan_explanation_updated",AgentJson.Encode(new{previous=Data.Autoplay.Plan,next=turn.plan,preserved_tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id)}));Data.Autoplay.Plan=turn.plan;
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0&&!SinglePlayerMode)Say(Selected,turn.speech);
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
@@ -184,7 +186,7 @@ public sealed partial class ModEntry {
         }
         if(deferredDecision!=null || !AutoplayRunning || SurvivalOwnsDay || agentLabProbe || agentPending!=null || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
         if(Game1.eventUp&&Game1.activeClickableMenu==null)return; // Native cutscene runs; only input menus need a model decision.
-        if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!agentWakeReasons.Contains("danger"))return;
+        if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!HasPendingQueries&&!agentWakeReasons.Contains("danger"))return;
         if(DateTime.UtcNow<agentModelNotBefore&&!NeedsAgentMenuDecision&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.
@@ -201,6 +203,7 @@ public sealed partial class ModEntry {
         if(!TryDecisionSnapshot(out var frozen))return;
         FrameStage("decision_snapshot",ref stage);
         WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
+        queryRequestIds=Data.Autoplay.Memory.Queries.Where(q=>!q.Delivered).Select(q=>q.Id).ToArray();
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();
@@ -208,7 +211,7 @@ public sealed partial class ModEntry {
         // the game thread before the first HTTP await. Only immutable values cross.
         var token=agentCancellation.Token;string model=Settings.Model;
         string? trace=Settings.RecordModelTrace?Path.Combine(Helper.DirectoryPath,"logs",Game1.uniqueIDForThisGame.ToString(),agentSaveEpoch,"model-"+Data.Autoplay.RunId+".jsonl"):null;
-        agentPending=Task.Run(()=>{var packing=Stopwatch.StartNew();string serialized=ContextCompression.Pack(frozen,18000);agentLastContextCharacters=serialized.Length;agentLastPackMs=packing.Elapsed.TotalMilliseconds;return AutoplayModel.Ask(file,model,serialized,token,trace);},token);
+        agentPending=Task.Run(()=>{var packing=Stopwatch.StartNew();string serialized=frozen.GetRawText();agentLastContextCharacters=serialized.Length;agentLastPackMs=packing.Elapsed.TotalMilliseconds;return AutoplayModel.Ask(file,model,serialized,token,trace,Settings.AutoplayInputTokenBudget);},token);
         FrameStage("decision_dispatch",ref stage);
     }
     internal (GameLocation Location,Point Tile) AgentMapOrigin(string actorId) {

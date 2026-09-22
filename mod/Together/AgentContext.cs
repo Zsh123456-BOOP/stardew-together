@@ -3,6 +3,7 @@ namespace Together;
 public sealed partial class ModEntry {
     private void RecordToolAttempt(AgentCall call,JsonElement observed) {
         RecordOpportunityAdoption(call,observed);
+        string? queryId=CaptureQuery(call,observed);
         string attemptId=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("task_id",out var taskId)?taskId.GetString()!:Guid.NewGuid().ToString("N");
         string actor=AgentToolRegistry.Text(call.args,"actor_id","player");
         string? cause=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String?error.GetString():null;
@@ -10,7 +11,7 @@ public sealed partial class ModEntry {
         if(cause?.StartsWith("known_failure_conditions_unchanged:capacity:")==true||cause?.StartsWith("known_failure_conditions_unchanged:capacity_relief:")==true)
             cause=Data.Autoplay.Capacity.Constraints.Where(c=>c.Actor==actor&&c.CapacityVersion==Data.Autoplay.Capacity.Version&&CapacityState.IsCapacity(c.RootCause)).OrderByDescending(c=>c.RootCause=="capacity_all_candidates_infeasible").Select(c=>c.RootCause).FirstOrDefault()??cause;
         if(cause!=null)LearnActionResult(new ScheduledAgentTask{spec=new(){id=attemptId,actor=actor,tool=call.tool,args=call.args.Clone()}},"failed",cause);
-        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{attempt_id=attemptId,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,tool=call.tool,result=observed}));
+        Data.Autoplay.Record("tool_result",AgentJson.Encode(new{attempt_id=attemptId,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,query_result_id=queryId,tool=call.tool,args=call.args,result=observed}));
         if(observed.ValueKind==JsonValueKind.Object&&!observed.TryGetProperty("task_id",out _)&&!observed.TryGetProperty("command_id",out _))ObserveExecutionFailure(attemptId,actor,cause,"tool_result");
     }
     private static object ReceiptSummary(string? text) {
@@ -29,6 +30,7 @@ public sealed partial class ModEntry {
             var data=JsonSerializer.Deserialize<JsonElement>(e.Text);
             if(e.Kind=="tool_result"&&data.TryGetProperty("tool",out var t)) {
                 string? tool=t.GetString();
+                if(data.TryGetProperty("query_result_id",out var id)&&id.ValueKind==JsonValueKind.String&&Data.Autoplay.Memory.Queries.Any(q=>q.Id==id.GetString()))return new{kind=e.Kind,tool,result_id=id.GetString(),read_via="query.read",note="未送达内容在pending_queries；历史完整回执可按result_id续读"};
 
                 if(tool=="action.status")return new{kind=e.Kind,tool,result=ReceiptSummary(data.GetProperty("result").GetRawText())};
             }

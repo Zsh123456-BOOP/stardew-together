@@ -30,6 +30,16 @@ public sealed partial class ModEntry {
         return new{location,entry_hours_known=known,opens=known&&w.Reason=="available"?(int?)w.Open:null,closes=known?(int?)w.Close:null,now=Game1.timeOfDay,can_enter_now=known?(bool?)(w.Reason=="available"&&Game1.timeOfDay>=w.Open&&Game1.timeOfDay<w.Close):null,reason=w.Reason,closed_today=w.Reason!="available",recheck_at=w.Reason=="available"&&Game1.timeOfDay<w.Open?(int?)w.Open:null,note="原生地图门禁与今日关闭条件；能进门不保证店员在柜台，实际报价与服务仍在现场核验"};
     }
     internal object[] KnownServiceHours()=>new[]{"SeedShop","FishShop","Blacksmith","ScienceHouse","AnimalShop","Saloon","JojaMart","Hospital","AdventureGuild"}.Where(n=>Game1.getLocationFromName(n)!=null).Select(ServiceHours).ToArray();
+    private string? RouteDoorAccess(GameLocation location,Warp edge) {
+        if(edge.X<0||edge.Y<0||edge.X>=location.Map.Layers[0].LayerWidth||edge.Y>=location.Map.Layers[0].LayerHeight)return null;
+        var action=location.GetTilePropertySplitBySpaces("Action","Buildings",edge.X,edge.Y);
+        if(action.Length<6||action[0]!="LockedDoorWarp")return null;
+        var window=ServiceWindow(edge.TargetName);
+        if(window.Reason!="available")return "door_"+window.Reason;
+        if(Game1.timeOfDay<window.Open||Game1.timeOfDay>=window.Close)return "door_closed:"+window.Open+"-"+window.Close;
+        if(action.Length>=8&&int.TryParse(action[7],out int required)&&(Game1.player.friendshipData.GetValueOrDefault(action[6])?.Points??0)<required)return "door_friendship_required:"+action[6];
+        return null; // Native performAction remains authoritative for event-specific conditions.
+    }
     private (int Open,int Close,string Reason,string Conditions) ServiceWindow(string subject) {
         int open=600,close=2600;string reason="available";
         var doors=Game1.locations.SelectMany(l=>l.doors.Pairs.Select(p=>(Location:l,Action:l.GetTilePropertySplitBySpaces("Action","Buildings",p.Key.X,p.Key.Y))))

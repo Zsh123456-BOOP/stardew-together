@@ -14,6 +14,13 @@ internal sealed class PlayerRouteController : PathFindController {
         if(pathToEndPoint?.Count>1&&pathToEndPoint.Peek()==player.TilePoint)pathToEndPoint.Pop();
     }
     internal Action<object>? RecoveryObserved;
+    public override bool update(GameTime time) {
+        // Native update (not only its constructor) teleports to endPoint when
+        // the map has no farmers. A controller retained through a warp must end.
+        if(location!=Game1.currentLocation||Game1.player.currentLocation!=location){RecoveryObserved?.Invoke(new{kind="stale_route_location_released",route_location=location.NameOrUniqueName,current=Game1.currentLocation.NameOrUniqueName});return true;}
+        if(!isPlayerPresent())return false;
+        return base.update(time);
+    }
     private Queue<Point>? localRoute;
     private DateTime nextLocalSearch;
     private static bool Arrived(Rectangle box,Point tile) {
@@ -24,6 +31,19 @@ internal sealed class PlayerRouteController : PathFindController {
         var p=Game1.player;var l=Game1.currentLocation;
         if(l.characters.Any(n=>!n.IsInvisible&&!n.farmerPassesThrough&&box.Intersects(n.GetBoundingBox())))return false;
         return !l.isCollidingPosition(box,Game1.viewport,true,0,false,p,false,false,false,true);
+    }
+    internal static Point? EscapeTile() {
+        var origin=Game1.player.GetBoundingBox();var start=Game1.player.TilePoint;Point? reached=null;
+        Rectangle At(FarmCell v)=>new(origin.X+v.X,origin.Y+v.Y,origin.Width,origin.Height);
+        var route=LocalWalkRouting.Find(v=>{
+            var box=At(v);var tile=new Point(box.Center.X/64,box.Center.Y/64);
+            if(tile==start||!Arrived(box,tile)||!PlayerExecutor.Passable(Game1.currentLocation,tile))return false;
+            reached=tile;return true;
+        },(a,b)=>{
+            for(int d=2;d<=8;d+=2)if(!Clear(At(new(a.X+(b.X-a.X)*d/8,a.Y+(b.Y-a.Y)*d/8))))return false;
+            return true;
+        });
+        return route==null?null:reached;
     }
     private bool LocalStep(GameTime time) {
         if(localRoute==null||localRoute.Count==0){localRoute=null;return false;}
@@ -71,6 +91,10 @@ internal sealed class PlayerRouteController : PathFindController {
         Blocked=false;DynamicBlocker=null;
         int count=pathToEndPoint.Count;var before=Game1.player.Position;var map=Game1.currentLocation;
         base.moveCharacter(time);
+        // Tile-centre occupancy is insufficient beside a building/bin corner.
+        // Walk the same swept pixel corridor used by the read-only escape proof.
+        if(pathToEndPoint.Count>0&&Game1.player.Position==before&&Game1.currentLocation==map&&Game1.player.CanMove&&!Game1.fadeToBlack&&!Game1.player.UsingTool)
+            if(TryLocalStep(time,pathToEndPoint.Peek()))return;
         if(pathToEndPoint.Count>0&&pathToEndPoint.Count<count&&Game1.player.Position==before&&Game1.currentLocation==map&&!Game1.fadeToBlack&&Game1.locationRequest==null&&Game1.player.CanMove&&!Game1.player.UsingTool)
             base.moveCharacter(time);
     }

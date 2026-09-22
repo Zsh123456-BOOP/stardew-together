@@ -16,8 +16,9 @@ public sealed class AutoplayMenu:IClickableMenu {
     private string[] statusLines=Array.Empty<string>();
     private readonly List<(Rectangle Bounds,string Label,Action Action)> buttons=new();
     public AutoplayMenu(ModEntry mod):base(Game1.uiViewport.Width/2-440,Game1.uiViewport.Height/2-Math.Min(680,Game1.uiViewport.Height-40)/2,880,Math.Min(680,Game1.uiViewport.Height-40),true) {
-        this.mod=mod;goal=new TextBox(Game1.content.Load<Texture2D>("LooseSprites/textBox"),null,mod.Font,Color.DarkSlateGray){X=xPositionOnScreen+28,Y=yPositionOnScreen+138,Width=824,Text=mod.Data.Autoplay.Goal.Length>0?mod.Data.Autoplay.Goal:"一起经营农场：先照料作物，再按材料缺口分工采集、探索和制作；合理利用体力与白天，安全回家。",textLimit=800};
-        Add(28,204,180,"开始 / 继续接管",()=>{exitThisMenu();mod.StartAutoplay(goal.Text);});
+        this.mod=mod;goal=new TextBox(Game1.content.Load<Texture2D>("LooseSprites/textBox"),null,mod.Font,Color.DarkSlateGray){X=xPositionOnScreen+28,Y=yPositionOnScreen+138,Width=824,textLimit=2000,limitWidth=false,Text=mod.Data.Autoplay.Goal.Length>0?mod.Data.Autoplay.Goal:"一起经营农场：先照料作物，再按材料缺口分工采集、探索和制作；合理利用体力与白天，安全回家。"};
+        Add(28,204,90,"继续",()=>{exitThisMenu();mod.StartAutoplay(mod.Data.Autoplay.Goal.Length>0?mod.Data.Autoplay.Goal:goal.Text);});
+        Add(128,204,90,"新目标",()=>{exitThisMenu();mod.StartAutoplay(goal.Text);});
         Add(228,204,120,"暂停",()=>mod.PauseAutoplay("玩家暂停"));
         Add(378,204,170,"执行与长期目标",()=>{memoryPage=false;refreshAt=DateTime.MinValue;});
         Add(568,204,160,"记忆与用量",()=>{memoryPage=true;refreshAt=DateTime.MinValue;});

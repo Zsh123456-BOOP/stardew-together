@@ -44,15 +44,6 @@ public sealed class AgentSchedule {
     public long EventVersion {get;set;}
     public List<ScheduledAgentTask> Tasks {get;set;}=new();
     public Dictionary<string,string> Submissions {get;set;}=new();
-    public void InsertBefore(ScheduledAgentTask target,List<AgentTaskSpec> steps) {
-        int index=Tasks.IndexOf(target);
-        if(index<0||target.state!="queued"||steps.Count is <1 or >24||Tasks.Count(t=>!t.Terminal)+steps.Count>48)throw new InvalidOperationException("cannot_insert_closing_steps");
-        var known=Tasks.Select(t=>t.spec.id).ToHashSet();
-        if(steps.Any(s=>s.actor!=target.spec.actor||!IdValid(s.id)||!known.Add(s.id)||!Queueable(s.tool)))throw new InvalidOperationException("invalid_closing_steps");
-        var added=steps.Select(s=>new ScheduledAgentTask{spec=JsonSerializer.Deserialize<AgentTaskSpec>(JsonSerializer.Serialize(s))!}).ToList();
-        for(int i=0;i<added.Count;i++)added[i].spec.after=i==0?target.spec.after.ToList():new(){added[i-1].spec.id};
-        target.spec.after=new(){added.Last().spec.id};Tasks.InsertRange(index,added);Revision++;EventVersion++;
-    }
     public static bool Queueable(string tool)=>tool is "player.discard" or "player.collect_home_gifts" or "player.recruit_companion" or "player.tap_tree" or "player.acquire_animal" or "player.procure" or "player.find_lost_item" or "work.run" or "player.beach" or "player.crab_pots" or "player.treasure" or "player.walnuts" or "player.volcano_step" or "player.forge" or "player.island_upgrade" or "player.arcade" or "player.read_mail" or "player.watch_tv" or "player.transport" or "player.repair_boat" or "player.read_book" or "player.mastery" or "player.orchard" or "player.joja" or "player.place_facility" or "player.ship_items" or "player.order_donate" or "player.equip" or "player.attach" or "player.accept_quest" or "player.animal" or "player.geodes" or "player.buy_animal" or "player.upgrade_house" or "player.mine_access" or "player.bundle" or "player.build" or "player.donate_museum" or "player.collect_reward" or "player.service" or "player.machine" or "player.claim_reward" or "player.care" or "player.social" or "player.combat" or "player.mine_descend" or "player.fish" or "player.buy" or "player.craft" or "player.cook" or "player.eat" or "player.work" or "player.move" or "player.travel" or "player.use_tool" or "player.interact" or "player.place" or "player.ship" or "player.sleep" or "companion.assign";
     private static bool IdValid(string? id)=>!string.IsNullOrWhiteSpace(id)&&id.Length<=80 && id.All(c=>char.IsLetterOrDigit(c)||c is '_' or '-' or ':' or '.');
     private static bool TimeValid(int time)=>time>=600&&time<=2600&&time%100<60;

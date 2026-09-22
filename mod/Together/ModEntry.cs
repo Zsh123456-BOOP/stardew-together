@@ -31,6 +31,8 @@ public sealed class Config {
     // Zero explicitly disables the total-token cap; accounting remains enabled.
     public long ModelTokenBudgetPerDay {get;set;}=1000000;
     public int ModelRequestByteLimit {get;set;}=240000;
+    public int AutoplayInputTokenBudget {get;set;}=30000;
+    public bool EnableMemoryReflections {get;set;}=true;
     public bool AgentOverlay {get;set;}=true;
     public float AgentOverlayOpacity {get;set;}=.60f;
     public bool EnableLab {get;set;}
@@ -344,10 +346,13 @@ public sealed partial class ModEntry:Mod {
         try {UpdateCore(sender,e);}finally {ProfileFrame((System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency);}
     }
     private void UpdateCore(object? sender,UpdateTickedEventArgs e) {
-        if(!Context.IsWorldReady || api==null || !canPersist)return;
+        if(api==null || !canPersist)return;
+        if(TickPriorityMenu())return;
+        if(!Context.IsWorldReady)return;
         if(TickDualBodyProbe())return;
         Data.Knowledge.Visited.Add(Game1.currentLocation.NameOrUniqueName);
         long stage=System.Diagnostics.Stopwatch.GetTimestamp();Knowledge.Tick();FrameStage("knowledge",ref stage);
+        TickMemoryReflection();
         TickAutoplay();
         if(AutoplayRunning||SinglePlayerMode)return;
         CompleteReply();

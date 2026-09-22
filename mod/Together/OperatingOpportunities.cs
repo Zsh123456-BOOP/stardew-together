@@ -9,6 +9,7 @@ public sealed partial class ModEntry {
     private bool AvailableTool<T>() where T:Tool=>AvailableTools<T>().Any();
     private List<OperatingOpportunity> OperatingOpportunities() {
         var rows=new List<OperatingOpportunity>();var player=Game1.player;ReadGoalRecipes();
+        if(PlayerExecutor.HasHomeGift())rows.Add(new("home:gift","住宅仍有未领取的原生礼包；先核验领取内容，再比较是否花钱购买物资","player.collect_home_gifts",new{},"native_home_giftbox_present;unclaimed_items;not_yet_inventory",0,10));
         AddBusinessOpportunities(rows);
         if(CapacityAdapter.Of(player).FreeSlots==0)rows.Add(new("capacity:options","满包：比较真实腾格效果、物品用途与损失，再选择存放、生产消耗或销毁","inventory.capacity",new{},"native_free_slots=0;read_only_recovery_comparison",0,1));
         if(!SharedStorage().Any()&&Game1.player.craftingRecipes.ContainsKey("Chest")&&!Data.SharedGoals.Any(g=>g.Status=="active"&&g.Entity=="craft:Chest"))

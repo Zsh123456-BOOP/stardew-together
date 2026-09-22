@@ -10,6 +10,7 @@ public sealed partial class ModEntry {
     private object OperatingLoopFixture() {
         if(playerExecutor.Busy||WorkActorBusy("player"))throw new InvalidOperationException("fixture_requires_idle_player");
         var checks=new Dictionary<string,bool>();var samples=new Dictionary<string,object>();
+        checks["native_unclaimed_home_gift_opportunity"]=!PlayerExecutor.HasHomeGift()||OperatingOpportunities().Any(o=>o.Tool=="player.collect_home_gifts");
         checks["unknown_resource_is_local"]=RecoverableExecutionFailure("resource_item_has_no_known_native_node_route");
         checks["invalid_fish_parameters_are_local"]=RecoverableExecutionFailure("fish_trip_invalid_count:expected_1_to_100")&&RecoverableExecutionFailure("fish_trip_invalid_item:use_native_QID");
         foreach(string item in new[]{"(O)388","(O)390","(O)771","(O)709"}) {

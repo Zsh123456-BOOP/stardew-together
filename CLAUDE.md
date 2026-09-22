@@ -62,7 +62,7 @@ python3 evals/companion_control.py              # 关闭面板、停掉任务后
 - **模型只做取舍，不做逐格调度。** 具体劳动交给 `SemanticWork.cs`（`work.run`）和 `PlayerExecutor.cs`，它们自己选点、寻路、选工具、补给、续作。
 - **唤醒式请求。** `WakeAgent(reason)` 累积唤醒原因；`AgentDecisionPacing` + `AgentPollingPolicy` 决定能否跳过本轮付费请求。队列有活干时不轮询模型。
 - **陈旧决策作废。** 模型异步回复落地前检查 `agentGeneration`、日期和 `DecisionBasisChanged()`；不匹配就记 `stale_decision` 并重新唤醒，动作不执行。
-- **上下文预算。** `ContextBudget.cs` 统一调用 `DecisionContext` 投影和预算裁剪；`AgentToolDiscovery` 常驻 11 个基础工具，加当前候选/任务相关工具及当天 lookup 定义，按固定顺序输出完整契约。`tools.lookup` 支持能力组，不额外调用分类模型，不截断参数 schema；原始回执仍按 ID 保留。
+- **上下文预算。** `ContextBudget.cs` 统一调用 `DecisionContext` 投影和预算裁剪；`AgentToolDiscovery` 常驻 11 个基础工具，加当前候选/任务相关工具及短期 lookup 定义，按固定顺序输出完整契约。`tools.lookup` 支持能力组，不额外调用分类模型，不截断参数 schema；原始回执仍按 ID 保留。
 
 ### 工具系统
 

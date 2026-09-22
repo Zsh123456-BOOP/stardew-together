@@ -13,7 +13,10 @@ public sealed partial class ModEntry {
     private void IndexQueryEvidence(string id) {string bucket=agentSaveEpoch+"-"+Game1.Date.TotalDays;if(memoryArchive!=null&&Data.Autoplay.Memory.Cursors.TryGetValue(bucket,out int cursor))Data.Autoplay.Memory.QueryEvidence[id]=bucket+":"+cursor;}
     private string? CaptureQuery(AgentCall call,JsonElement observed) {
         if(!QueryResult.IsRead(call.tool,call.args))return null;
-        if(call.tool=="tools.lookup"&&observed.TryGetProperty("definitions",out var definitions))foreach(var p in definitions.EnumerateObject())Data.Autoplay.Memory.EquippedTools[p.Name]=Game1.Date.TotalDays;
+        if(call.tool=="tools.lookup"&&observed.TryGetProperty("definitions",out var definitions))foreach(var p in definitions.EnumerateObject()) {
+            Data.Autoplay.Memory.EquippedTools[p.Name]=Game1.Date.TotalDays;
+            Data.Autoplay.Memory.EquippedToolsUntilDecision[p.Name]=Data.Autoplay.Decisions+3;
+        }
         return CaptureObservation(call.tool,observed,"query",call.id,call.args);
     }
     private void AcknowledgeQueries() {

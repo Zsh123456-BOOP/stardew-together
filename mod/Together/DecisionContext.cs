@@ -18,7 +18,11 @@ public static class DecisionContext {
             if(root["task_card"] is JsonObject tasks){tasks.Remove("active");tasks["active_field"]="schedule.tasks";}
         }
         // Narrative plans and old query snapshots are the common stale-state trap.
-        Readback(root,"plan");
+        root.Remove("plan"); // Optional history stays available, not a mandatory unread task.
+        if(root["farm_cleanup"] is JsonObject cleanup&&cleanup["areas"] is JsonArray areas) {
+            int Number(JsonObject o,string key)=>o[key] is JsonValue v&&v.TryGetValue<int>(out var n)?n:0;
+            root["farm_work"]=new JsonObject{["location"]="Farm",["revision"]=Copy(cleanup["revision"]),["resources"]=JsonSerializer.SerializeToNode(areas.OfType<JsonObject>().GroupBy(r=>Text(r["kind"])).Select(g=>new{kind=g.Key,total=g.Sum(r=>Number(r,"count")),routine_allowed=g.Sum(r=>Number(r,"routine_allowed"))})),["orders"]=Copy(cleanup["orders"]),["note"]="农场统计不是当前位置；跨图劳动明确location。树木/保留区仍按工具契约核验。"};
+        }
         foreach(string key in new[]{"farm_cleanup","companions","service_hours"})Readback(root,key);
         if(root["pending_queries"] is JsonArray pending)foreach(var q in pending.OfType<JsonObject>()) {
             q.Remove("note");q.Remove("delivery");q.Remove("details");

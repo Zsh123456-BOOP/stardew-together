@@ -192,7 +192,9 @@ public sealed partial class ModEntry {
         }
         if(deferredDecision!=null || !AutoplayRunning || SurvivalOwnsDay || agentLabProbe || agentPending!=null || DateTime.UtcNow<modelRecoveryAt || DateTime.UtcNow<agentNext || Thinking || Game1.fadeToBlack || Game1.currentMinigame!=null)return;
         if(Game1.eventUp&&Game1.activeClickableMenu==null)return; // Native cutscene runs; only input menus need a model decision.
-        if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!HasPendingQueries&&!agentWakeReasons.Contains("danger"))return;
+        // Read-result delivery must not turn a known running task into paid polling.
+        // Retain the outbox until idle; failures, quotes and menus still wake now.
+        if(AgentDecisionPacing.CanDefer(AgentWorkCovered(),NeedsAgentMenuDecision)&&!QueryResult.NeedsDecisionWhileBusy(Data.Autoplay.Memory.Queries)&&!agentWakeReasons.Contains("danger"))return;
         if(DateTime.UtcNow<agentModelNotBefore&&!NeedsAgentMenuDecision&&!agentWakeReasons.Contains("new_day")&&!agentWakeReasons.Contains("danger"))return;
         if(!agentNeedsDecision) {
             // Wake from a deliberate wait or a timed gap; do not poll a busy queue with paid requests.

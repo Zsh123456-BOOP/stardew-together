@@ -28,6 +28,7 @@ public sealed class QueryResult {
         }
         return rows.ToArray();
     }
+    public static bool NeedsDecisionWhileBusy(IEnumerable<QueryResult> queries)=>queries.Any(q=>!q.Delivered&&(q.Kind=="quote"||q.Kind=="outcome"&&q.Result.ValueKind==JsonValueKind.Object&&q.Result.TryGetProperty("status",out var status)&&status.GetString() is "failed" or "blocked" or "partial" or "cancelled"));
     public static bool ResolvesDraft(JsonElement draft,string tool,IEnumerable<string> used,IEnumerable<QueryResult> results) {
         var call=draft.GetProperty("call");if(call.GetProperty("tool").GetString()!=tool)return false;
         var ids=used.ToHashSet();foreach(var q in results.Where(q=>q.Delivered&&ids.Contains(q.Id)))if(q.Call.Length>0)ids.Add(q.Call);

@@ -8,6 +8,16 @@ public sealed partial class ModEntry {
     private object QueryRepairFixture(string mode,JsonElement args) {
         // Caller enforces all three AgentLab gates. No fixture is an acceptance run.
         if(mode=="read")return new{actual_spent=NativePurchaseSpent(),pending=PendingQueries(),diary=DiaryContext(),schedule=AgentPlanRead(),snapshot=AgentSnapshot(),inventory=AgentToolRegistry.Inventory(),memory=AgentMemoryContext(),planting=PlantingExecutionFacts(),plans=farmPlantPlans.Values.Select(p=>new{p.Id,p.Seed,p.PossibleSeeds,verified_tiles=p.NativeCrops.Select(t=>new{tile=t.Key,crop=t.Value})}),queries=Data.Autoplay.Memory.Queries.Select(q=>new{q.Id,q.Tool,q.Delivered})};
+        if(mode=="zero_energy_return_setup") {
+            PauseAutoplay("lab_zero_energy_return");Game1.activeClickableMenu=null;
+            var farm=Game1.getFarm();
+            for(int x=56;x<=72;x++)for(int y=23;y<=27;y++){var tile=new Vector2(x,y);farm.objects.Remove(tile);farm.terrainFeatures.Remove(tile);}
+            for(int x=58;x<=70;x++)farm.objects[new Vector2(x,25)]=(StardewValley.Object)ItemRegistry.Create("(O)674");
+            for(int slot=5;slot<Game1.player.Items.Count;slot++)Game1.player.Items[slot]=null;
+            foreach(string item in new[]{"(O)388","(O)390","(O)771","(O)92","(O)330"})Game1.player.addItemToInventory(ItemRegistry.Create(item,10));
+            Game1.warpFarmer("Farm",64,26,false);Game1.player.Stamina=0;
+            return new{fixture_setup=true,scope="synthetic weed barrier and bag pressure; subsequent walking stays native; never use this save for a trial",snapshot=AgentSnapshot(),inventory=AgentToolRegistry.Inventory()};
+        }
         if(mode=="route"){var r=PlayerExecutor.ResolveRoute(Game1.currentLocation,AgentToolRegistry.Text(args,"destination","Farm"));return new{r.Reachable,r.Reason,r.Transitions,r.Evidence,first=r.First==null?null:new{r.First.X,r.First.Y,r.First.TargetName,r.First.TargetX,r.First.TargetY}};}
         if(mode=="route_site") {PauseAutoplay("lab_route_site");Game1.activeClickableMenu=null;Game1.warpFarmer("Town",13,85,false);return new{positioning=true};}
         if(mode=="collision_probe") {

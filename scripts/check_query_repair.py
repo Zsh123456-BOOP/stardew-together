@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--mods-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18806);p.add_argument('--probe-only',action='store_true');p.add_argument('--contracts-only',action='store_true');a=p.parse_args();mods=a.mods_dir.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
+ p=argparse.ArgumentParser();p.add_argument('--mods-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18806);p.add_argument('--probe-only',action='store_true');p.add_argument('--contracts-only',action='store_true');p.add_argument('--zero-energy-return',action='store_true');a=p.parse_args();mods=a.mods_dir.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
  def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
  cfg=mods/'Together/config.json';settings=json.loads(cfg.read_text()) if cfg.exists() else {};settings.update(RecordModelTrace=True,Autonomy=False,SinglePlayerAutoplay=True,ModelTokenBudgetPerDay=0,EnableMemoryReflections=False);cfg.write_text(json.dumps(settings,ensure_ascii=False,indent=2))
  log=(out/'game.log').open('w');proc=subprocess.Popen([sys.executable,'scripts/launch.py','--companion','--lab','--keep-window','--mods-dir',str(mods),'--port',str(a.port)],cwd=ROOT,stdin=subprocess.PIPE,stdout=log,stderr=subprocess.STDOUT,text=True,start_new_session=True);write('process.json',dict(pid=proc.pid))
@@ -59,6 +59,15 @@ def main():
  def operating():
   r=sc('operating_loop_probe');write('operating-loop-probe.json',r);assert all(r['checks'].values()),r['checks']
  run('operating-loop-runtime-contracts',operating)
+ if a.zero_energy_return:
+  def zero_energy_return():
+   write('zero-energy-setup.json',qr('zero_energy_return_setup'));time.sleep(2)
+   r=wait(tool('player.travel',location='FarmHouse'),'zero-energy-native-return',150)
+   assert r['status']=='succeeded',r
+   assert r['after']['location']=='FarmHouse' and r['after']['stamina']==0,r
+   assert any(e.get('kind')=='clearance_shortcut_rejected' and e.get('reason')=='energy_reserve_reached' for e in r['effects']),r
+   assert not any(e.get('kind')=='native_route_clear' for e in r['effects']),r
+  run('zero-energy-native-return-uses-existing-detour',zero_energy_return)
  if a.contracts_only:
   write('result.json',dict(passed=all(c['passed'] for c in checks),checks=checks,scope='targeted runtime contracts, not a continuous trial'))
   proc.stdin.write('agent_quit\n');proc.stdin.flush();proc.stdin.close();log.close()

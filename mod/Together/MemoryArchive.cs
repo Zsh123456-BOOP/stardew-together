@@ -3,6 +3,7 @@ using System.Text.Json;
 namespace Together;
 public sealed class MemoryCheckpoint {
     public Dictionary<string,int> EquippedTools {get;set;}=new();
+    public Dictionary<string,int> EquippedToolsUntilDecision {get;set;}=new();
     public List<JsonElement> QueryDrafts {get;set;}=new();
     public List<QueryResult> Queries {get;set;}=new();
     public Dictionary<string,string> QueryEvidence {get;set;}=new();

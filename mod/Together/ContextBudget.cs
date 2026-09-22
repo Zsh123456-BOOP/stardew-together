@@ -6,7 +6,7 @@ public sealed record ContextBudgetResult(string Json,int EstimatedTokens,int Lim
 public static class ContextBudget {
     // Conservative, explicitly estimated. Usage telemetry calibrates this; it is not a tokenizer.
     public static int Estimate(string text)=> (int)Math.Ceiling(Encoding.UTF8.GetByteCount(text)/2.0);
-    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons","schedule","operating_candidates"},StringComparer.Ordinal);
+    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons","schedule","operating_candidates","farm_work"},StringComparer.Ordinal);
     public static ContextBudgetResult Pack(object input,int limit,int? preferred=null) {
         if(limit<256)throw new ArgumentOutOfRangeException(nameof(limit));
         int target=Math.Clamp(preferred??limit,256,limit);
@@ -46,7 +46,7 @@ public static class ContextBudget {
             if(Size()<=target-256)break;
             // Never silently hide active tasks, failure conditions, or inventory constraints.
             var summary=new JsonObject{["omitted"]=true,["read_via"]="context.read",["read_args"]=new JsonObject{["section"]=key}};
-            if(original is JsonObject obj)foreach(string field in new[]{"active_tasks","unfinished","promises","recent_failure_rules","service_constraints","capacity_constraints","capacity_version","capacity_release_conditions","free_slots","slot_count","tasks","active_quests","daily_activity"})if(obj[field]!=null)summary[field]=JsonNode.Parse(obj[field]!.ToJsonString());
+            if(original is JsonObject obj)foreach(string field in new[]{"active_tasks","unfinished","promises","recent_failure_rules","service_constraints","capacity_constraints","capacity_version","capacity_release_conditions","free_slots","slot_count","shared_storage_chests","tools","tool_upgrade","tasks","active_quests","daily_activity"})if(obj[field]!=null)summary[field]=JsonNode.Parse(obj[field]!.ToJsonString());
             root[key]=summary;removed.Add(key+":on_demand");
         }
         // Final omission ownership: no pointer is produced until every reduction is done.

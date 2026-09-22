@@ -16,7 +16,8 @@ public sealed partial class PlayerExecutor {
     private object? clearBefore;
     private DateTime clearStarted;
     private bool clearInternalWalk;
-    private void ResetClearance(){plannedClearPath=null;plannedClearLocation=null;clearRoute=null;clearSwing=false;clearCount=0;clearInternalWalk=false;}
+    private bool clearanceDetourOnly;
+    private void ResetClearance(){plannedClearPath=null;plannedClearLocation=null;clearRoute=null;clearSwing=false;clearCount=0;clearInternalWalk=false;clearanceDetourOnly=false;}
     private ClearTarget? ClearanceTarget(Point tile) {
         var l=Game1.currentLocation;var v=tile.ToVector2();
         if(l is not Farm||tile.X<0||tile.Y<0||tile.X>=l.Map.Layers[0].LayerWidth||tile.Y>=l.Map.Layers[0].LayerHeight||WorkProtected?.Invoke(l,tile)==true||!l.isTilePassable(v))return null;
@@ -51,7 +52,7 @@ public sealed partial class PlayerExecutor {
     }
     private Stack<Point>? ClearancePath(Point end,Stack<Point>? ordinary) {
         plannedClearPath=null;plannedClearLocation=null;
-        if(clearInternalWalk||Game1.currentLocation is not Farm||ordinary?.Count<=12)return ordinary;
+        if(clearInternalWalk||clearanceDetourOnly||Game1.currentLocation is not Farm||ordinary?.Count<=12)return ordinary;
         var start=Game1.player.TilePoint;var pass=new Dictionary<Point,bool>();var targets=new Dictionary<Point,ClearTarget?>();var fits=new Dictionary<string,bool>();
         bool Bounds(Point p)=>p.X>=Math.Min(start.X,end.X)-4&&p.X<=Math.Max(start.X,end.X)+4&&p.Y>=Math.Min(start.Y,end.Y)-4&&p.Y<=Math.Max(start.Y,end.Y)+4;
         ClearTarget? Get(Point p){if(!targets.TryGetValue(p,out var t))targets[p]=t=Bounds(p)?ClearanceTarget(p):null;return t;}
@@ -101,6 +102,16 @@ public sealed partial class PlayerExecutor {
             yield return ClearanceTarget(v.ToPoint())??throw new InvalidOperationException("clearance_unknown_collateral_drop");
         }
     }
+    private bool TryClearanceDetour(string reason) {
+        // A shortcut's collateral/fallback tool can cost more than its estimate.
+        // Keep an existing native walking route usable even at zero stamina.
+        var ordinary=PreviewPath(Game1.currentLocation,clearDestination);
+        if(ordinary==null)return false;
+        var end=clearDestination;clearRoute=null;plannedClearPath=null;plannedClearLocation=null;clearanceDetourOnly=true;
+        PlayerSelection.Set(Game1.player,Math.Clamp(clearSlotBefore,0,Game1.player.Items.Count-1));
+        Current!.effects.Add(new{kind="clearance_shortcut_rejected",reason,ordinary_steps=ordinary.Count,stamina=Game1.player.Stamina,note="walk existing detour; no clearing or resource change"});
+        PlainWalk(end,ordinary.ToList());return true;
+    }
     private bool TickClearance() {
         if(clearRoute==null)return false;
         // Never swallow map/event/menu changes while a native tool action owns the farmer.
@@ -131,9 +142,9 @@ public sealed partial class PlayerExecutor {
                 Current!.effects.Add(new{kind="clearance_single_target_fallback",tile=new[]{clearTile.X,clearTile.Y},reason=safe?"scythe_collateral_capacity":"protected_scythe_sweep",energy=obstacle.Energy,reserve=workReserve});safe=fits=true;
             }
         }
-        if(!safe)throw new InvalidOperationException("clearance_protected_sweep");
-        if(!fits)throw new InvalidOperationException("capacity_no_stackable_room");
-        if(Game1.player.Stamina<obstacle.Energy+workReserve)throw new InvalidOperationException("energy_reserve_reached");
+        if(!safe){if(TryClearanceDetour("clearance_protected_sweep"))return true;throw new InvalidOperationException("clearance_protected_sweep");}
+        if(!fits){if(TryClearanceDetour("capacity_no_stackable_room"))return true;throw new InvalidOperationException("capacity_no_stackable_room");}
+        if(Game1.player.Stamina<obstacle.Energy+workReserve){if(TryClearanceDetour("energy_reserve_reached"))return true;throw new InvalidOperationException("energy_reserve_reached");}
         if(++clearHits>16||clearCount>=3)throw new InvalidOperationException("clearance_limit_replan");
         Face(clearTile);PlayerSelection.Set(Game1.player,obstacle.Slot);clearBefore=TileState(clearTile);
         Game1.player.lastClick=clearTile.ToVector2()*64+new Vector2(32);Game1.player.BeginUsingTool();

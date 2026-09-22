@@ -15,6 +15,7 @@ public static class AgentToolDiscovery {
         ["menu"]=new[]{"menu.read","menu.choose","menu.close","menu.text"}
     };
     public const string GroupIndex="farm=农务布局/整理/礼包；trade=商店采购/选种/出货；storage_production=容量/制作/设施投资；progress_social=任务/依赖/社交；animals=畜牧；exploration=地图/钓鱼/邮件；menu=原生菜单。tools.lookup可按group、用途或名称扩展；工具可见不代表已解锁或已获预算。";
+    public static string[] LeasedTools(MemoryCheckpoint memory,int day,int decision)=>memory.EquippedTools.Where(p=>p.Value==day&&decision<=memory.EquippedToolsUntilDecision.GetValueOrDefault(p.Key,-1)).Select(p=>p.Key).OrderBy(n=>n,StringComparer.Ordinal).ToArray();
     public static Dictionary<string,string> Select(IReadOnlyDictionary<string,string> catalog,JsonElement context) {
         var names=CoreNames.ToHashSet(StringComparer.Ordinal);
         void Group(string group){foreach(string name in Groups[group])names.Add(name);}

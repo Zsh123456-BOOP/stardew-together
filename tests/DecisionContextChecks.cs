@@ -36,5 +36,14 @@ public static class DecisionContextChecks {
         check(active.ContainsKey("player.arcade"),"active tasks retain tools after same-day lease expires");
         var menu=AgentToolDiscovery.Select(catalog,J(new{now=new{day=1},ui=new{type="NamingMenu",token="real"}}));
         check(menu.ContainsKey("menu.text")&&menu.ContainsKey("menu.choose"),"blocking native menu carries text and choice handlers");
+        var memory=new MemoryCheckpoint{EquippedTools=new(){{"player.arcade",2}},EquippedToolsUntilDecision=new(){{"player.arcade",8}}};
+        memory=J(memory).Deserialize<MemoryCheckpoint>()!;
+        check(AgentToolDiscovery.LeasedTools(memory,2,8).Contains("player.arcade")&&!AgentToolDiscovery.LeasedTools(memory,2,9).Any()&&!AgentToolDiscovery.LeasedTools(memory,3,8).Any(),"tool leases survive checkpoint and expire after three subsequent decisions or a new day");
+        var farm=JsonSerializer.Deserialize<JsonElement>(ContextBudget.Pack(new{now=new{location="FarmHouse"},farm_cleanup=new{revision="native",areas=new[]{new{kind="tree",count=3,routine_allowed=0},new{kind="twig",count=5,routine_allowed=5}},orders=Array.Empty<object>()}},8000).Json);
+        check(farm.GetProperty("farm_work").GetProperty("location").GetString()=="Farm"&&farm.GetProperty("now").GetProperty("location").GetString()=="FarmHouse"&&farm.GetProperty("farm_work").GetProperty("resources")[0].GetProperty("routine_allowed").GetInt32()==0,"native farm resource brief preserves location and protected resource distinction");
+        var pendingRead=new QueryResult{Tool="action.status",Kind="query",Result=J(new{status="running"})};
+        var succeeded=new QueryResult{Kind="outcome",Result=J(new{status="succeeded"})};
+        check(!QueryResult.NeedsDecisionWhileBusy(new[]{pendingRead,succeeded})&&!pendingRead.Delivered&&!succeeded.Delivered,"busy query/status and successful receipts defer without acknowledging or losing them");
+        check(QueryResult.NeedsDecisionWhileBusy(new[]{new QueryResult{Kind="quote"}})&&QueryResult.NeedsDecisionWhileBusy(new[]{new QueryResult{Kind="outcome",Result=J(new{status="partial",completed=0})}}),"native quote and partial failure still wake a busy agent");
     }
 }

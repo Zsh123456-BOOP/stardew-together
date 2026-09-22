@@ -41,9 +41,10 @@ public static class NativeToolProtocol {
     public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>selected.Select(p=> {
         var (start,end)=ParameterSpan(p.Value);
         string description=end>start?p.Value[..start]+p.Value[(end+1)..].TrimStart(':',' '):p.Value;
-        // Shared _plan/reference metadata is described once in system and validated below.
-        // The parameter object remains open; no opaque JSON string or dispatch wrapper is used.
-        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+description,parameters=Shape(p.Value)}};
+        // Explicitly expose the planning argument: a prompt-only _plan was mistaken for a function name.
+        // Optional result references are documented once and remain valid in the open parameter object.
+        var schema=Shape(p.Value);schema["properties"]!.AsObject()["_plan"]=new JsonObject{["type"]="string"};
+        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+description,parameters=schema}};
     }).ToArray();
     private static void Validate(JsonElement value,JsonElement schema,string path="args") {
         if(schema.TryGetProperty("type",out var type)) {

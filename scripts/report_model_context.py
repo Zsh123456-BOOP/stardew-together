@@ -16,6 +16,10 @@ def summarize(path):
         elif kind=='request':
             body=json.loads(p['body']);messages=body['messages']
             c.update(start=event['utc'],input_characters=sum(len(m['content']) for m in messages),system_characters=len(messages[0]['content']),user_characters=len(messages[-1]['content']))
+            try:
+                context=json.loads(messages[-1]['content']);now=context.get('now',{})
+                c.update(observed_day=now.get('day'),observed_time=now.get('time'),location=now.get('location'))
+            except (ValueError,AttributeError):pass
         elif kind=='response':
             body=json.loads(p['body']);c.update(end=event['utc'],http_status=p['status'],usage=body.get('usage'))
             if body.get('choices'):

@@ -25,7 +25,12 @@ public static class NativeToolProtocol {
             var alternatives=hint.Split('|');JsonObject value;
             bool words=alternatives.Length>1&&alternatives.All(a=>a.Length>0&&a.All(c=>char.IsLetterOrDigit(c)&&c<128||c=='_'));
             if(hint.StartsWith("[{"))value=new(){["type"]="array",["items"]=Shape(hint)};
-            else if(hint.StartsWith('['))value=new(){["type"]="array",["items"]=new JsonObject{["type"]="string"}};
+            else if(hint.StartsWith('[')) {
+                string inner=hint.TrimStart('[').TrimEnd(']');
+                var item=Shape("{value:"+inner+"}")["properties"]!["value"]!.DeepCopy();
+                if(item is JsonObject shape&&!shape.ContainsKey("type"))shape["type"]="string";
+                value=new(){["type"]="array",["items"]=item};
+            }
             else if(hint.StartsWith('{'))value=Shape(hint);
             else if(hint=="bool"||Booleans.Contains(key)&&hint=="")value=new(){["type"]="boolean"};
             else if(words&&alternatives.All(a=>int.TryParse(a,out _)))value=new(){["type"]="integer",["enum"]=JsonSerializer.SerializeToNode(alternatives.Select(int.Parse))};
@@ -44,7 +49,20 @@ public static class NativeToolProtocol {
         // Explicitly expose the planning argument: a prompt-only _plan was mistaken for a function name.
         // Optional result references are documented once and remain valid in the open parameter object.
         var schema=Shape(contract);schema["properties"]!.AsObject()["_plan"]=new JsonObject{["type"]="string"};
-        return new(name,description,JsonSerializer.SerializeToElement(schema),Array.Empty<string>());
+        return new(name,description,CompactSchema(schema),Array.Empty<string>());
+    }
+    private static JsonNode DeepCopy(this JsonNode node)=>JsonNode.Parse(node.ToJsonString())!;
+    public static JsonElement CompactSchema(JsonObject schema) {
+        void Compact(JsonNode? node) {
+            if(node is JsonArray array){foreach(var item in array)Compact(item);return;}
+            if(node is not JsonObject obj)return;
+            foreach(var item in obj.ToArray())Compact(item.Value);
+            // JSON Schema defaults: these explicit empty/open declarations add no constraint.
+            if(obj["additionalProperties"]?.ToString()=="true")obj.Remove("additionalProperties");
+            if(obj["required"] is JsonArray r&&r.Count==0)obj.Remove("required");
+            if(obj["properties"] is JsonObject p&&p.Count==0)obj.Remove("properties");
+        }
+        Compact(schema);return JsonSerializer.SerializeToElement(schema);
     }
     public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>Definitions(selected.Select(p=>LegacySpec(p.Key,p.Value)).ToArray());
     public static object[] Definitions(IReadOnlyList<ToolSpec> selected)=>selected.Select(s=>(object)new{type="function",function=new{name=Name(s.Name),description=s.Description,parameters=s.Parameters}}).ToArray();

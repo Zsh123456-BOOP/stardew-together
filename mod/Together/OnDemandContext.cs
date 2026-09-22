@@ -58,6 +58,6 @@ public static class OnDemandContext {
                 }
             }
         }
-        root["view_contract"]=new JsonObject{["schema"]=2,["facts"]="当前now/inventory/schedule优先；候选fact_id见prerequisites.facts。空列表表示本视图无记录，其他目录可查询。",["history"]="daily_activity是当天累计历史，不累加为库存；完整历史context.read section=memory。未列商店用services.read；未选成就/配方用progress.catalog。"};
+        root["view_contract"]=new JsonObject{["schema"]=2,["facts"]="当前now/inventory/schedule优先；候选fact_id见prerequisites.facts。候选Id不是plan_id，按Tool/Args调用，plan_id仅来自farm.plan回执。空列表表示本视图无记录，其他目录可查询。",["history"]="daily_activity是当天累计历史，不累加为库存；完整历史context.read section=memory。未列商店用services.read；未选成就/配方用progress.catalog。"};
     }
 }

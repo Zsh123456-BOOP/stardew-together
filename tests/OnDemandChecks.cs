@@ -41,5 +41,13 @@ public static class OnDemandChecks {
         var protectedProgress=JsonSerializer.Deserialize<JsonElement>(ContextBudget.Pack(new{now=new{day=0},progression=new{selected_achievements=new[]{new{id="achievement:1",current=20000,target=50000}},development_review=true,achievement_candidates=new[]{new{id="achievement:24",current=0,target=10}},unlocks=new{fishing_tool=false},unread_mail=new[]{"native_letter"},irrelevant=new string('x',4000)}},10000,512).Json).GetProperty("progression");
         check(protectedProgress.GetProperty("selected_achievements")[0].GetProperty("current").GetInt32()==20000&&protectedProgress.GetProperty("achievement_candidates").GetArrayLength()==1&&protectedProgress.GetProperty("development_review").GetBoolean(),"selected achievement facts and development triggers survive the final budget fallback");
         check(!protectedProgress.GetProperty("unlocks").GetProperty("fishing_tool").GetBoolean()&&protectedProgress.GetProperty("unread_mail").GetArrayLength()==1,"known unavailable capabilities and unread native mail remain visible under a tight budget");
+        var lookup=NativeToolProtocol.LegacySpec("tools.lookup","{work_profiles?:[farm|resource|storage|fish|mine|animals|production]}: 加载能力");
+        var choices=lookup.Parameters.GetProperty("properties").GetProperty("work_profiles").GetProperty("items").GetProperty("enum");
+        check(choices.GetArrayLength()==7&&choices[0].GetString()=="farm","array enum choices reach the actual API schema instead of disappearing with the shorthand");
+        bool invalidProfile=false;try{NativeToolProtocol.Decode(Choice(Call("tools__lookup",new{work_profiles=new[]{"plant"}})),new[]{lookup});}catch(InvalidOperationException e){invalidProfile=e.Message.Contains("allowed=")&&e.Message.Contains("farm");}
+        check(invalidProfile,"invalid work profile is rejected before dispatch with visible allowed values");
+        var cleanup=NativeToolProtocol.LegacySpec("farm.cleanup","{scopes?:[roads|fields|zone:分区ID]}: 清理");
+        check(cleanup.Parameters.GetProperty("properties").GetProperty("scopes").GetProperty("items").GetProperty("description").GetString()!.Contains("zone:"),"open scope patterns retain their usage description when an enum cannot express them");
+        check(!lookup.Parameters.TryGetProperty("additionalProperties",out _)&&!lookup.Parameters.TryGetProperty("required",out _)&&NativeToolProtocol.Decode(Choice(Call("tools__lookup",new{})),new[]{lookup}).calls.Count==1,"omitted JSON Schema defaults stay open and optional without changing valid calls");
     }
 }

@@ -60,7 +60,7 @@ public static class ToolSpecs {
         Add("order_id","string");Add("objective","integer");Add("quest_id","string");
         descriptions.Add("order_id+objective索引绑定真实订单（排除fail_on_completion）；quest_id绑定玩家采集/钓鱼/讨伐委托，以原生计数达标停止。其他work能力用tools.lookup work_profiles展开。");
         var schema=new JsonObject{["type"]="object",["properties"]=props,["required"]=new JsonArray("goal"),["additionalProperties"]=true};
-        return new("work.run",string.Concat(descriptions),JsonSerializer.SerializeToElement(schema),WorkProfiles.Keys.Where(profiles.Contains).ToArray());
+        return new("work.run",string.Concat(descriptions),NativeToolProtocol.CompactSchema(schema),WorkProfiles.Keys.Where(profiles.Contains).ToArray());
     }
     public static void CheckProfile(ToolSpec spec,JsonElement args) {
         if(spec.Name=="context.read") {

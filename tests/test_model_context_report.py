@@ -25,8 +25,8 @@ class ModelContextReportTests(unittest.TestCase):
 
     def test_native_tools_and_schema_bytes_are_counted(self):
         call={'id':'native-1','type':'function','function':{'name':'work__run','arguments':'{"goal":"water"}'}}
-        request={'messages':[{'role':'system','content':'规则'},{'role':'assistant','content':None,'tool_calls':[call]},{'role':'tool','tool_call_id':'native-1','content':'{"status":"queued"}'},{'role':'user','content':'{"now":{"day":0,"time":1000}}'}],'tools':[{'type':'function','function':{'name':'work__run','parameters':{'type':'object'}}}]}
-        rows=[('context_budget',{'tools':['work.run'],'tool_count':1}),('request',{'body':json.dumps(request)}),('response',{'status':200,'body':json.dumps({'usage':{'prompt_tokens':150,'completion_tokens':30},'choices':[{'finish_reason':'tool_calls','message':{'content':None,'tool_calls':[call]}}]})})]
+        request={'model':'configured-alias','messages':[{'role':'system','content':'规则'},{'role':'assistant','content':None,'tool_calls':[call]},{'role':'tool','tool_call_id':'native-1','content':'{"status":"queued"}'},{'role':'user','content':'{"now":{"day":0,"time":1000}}'}],'tools':[{'type':'function','function':{'name':'work__run','parameters':{'type':'object'}}}]}
+        rows=[('frozen_context',{'schema':2,'field_revisions':{'inventory':'version'}}),('context_budget',{'tools':['work.run'],'tool_count':1}),('request',{'body':json.dumps(request)}),('response',{'status':200,'body':json.dumps({'model':'served-name','system_fingerprint':'fp','usage':{'prompt_tokens':150,'completion_tokens':30},'choices':[{'finish_reason':'tool_calls','message':{'content':None,'tool_calls':[call]}}]})})]
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'trace.jsonl';path.write_text('\n'.join(json.dumps(dict(call_id='native',kind=k,payload=p,utc='2026-09-22T00:00:00Z')) for k,p in rows))
             report=summarize(path)
@@ -36,6 +36,11 @@ class ModelContextReportTests(unittest.TestCase):
         self.assertGreater(report['per_call'][0]['tool_schema_characters'],0)
         self.assertGreater(report['input_characters']['total'],sum(len(m.get('content') or '') for m in request['messages']))
         self.assertEqual(report['undisclosed_calls'],[])
+        self.assertEqual(report['requested_models'],{'configured-alias':1})
+        self.assertEqual(report['served_models'],{'served-name':1})
+        self.assertEqual(report['per_call'][0]['system_fingerprint'],'fp')
+        self.assertEqual(report['frozen_contexts'],1)
+        self.assertEqual(report['input_tokens']['mean'],150)
 
 
 if __name__=='__main__':unittest.main()

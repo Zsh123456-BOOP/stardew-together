@@ -31,6 +31,7 @@ public sealed partial class ModEntry {
                 try{var result=ApplyDecisionCalls(turn.calls,Data.Autoplay.Schedule.Revision);return AgentJson.Encode(new{result.Followup,result.Error,pending=deferredDecision!=null,intent=decisionIntent});}
                 finally{decisionIntent="";}
             }
+            case "navigation_collision_probe":return LabNavigationProbe(Arg("mode","setup"));
             case "inventory_split_probe":return AgentJson.Encode(LabSplitInventory());
             case "inventory_contract_probe":return AgentJson.Encode(new{capacity=ReadCapacityOptions(),opportunities=OperatingOpportunities(),fish_shop_has_site=HasReachableFishingSite(Game1.getLocationFromName("SeedShop"),new FishingRod(),""),goals=Data.SharedGoals.Select(g=>new{g.Id,g.Entity,g.Count,g.Reserved,g.CapacityBlockedTool,condition=GoalCondition(g)}).ToArray()});
             case "decision_facts_probe":return AgentJson.Encode(new{snapshot=AgentSnapshot(),access=SocialAvailability(),farm_water=WateringObservation("Farm"),unchanged=SocialAccessCondition("Penny")});

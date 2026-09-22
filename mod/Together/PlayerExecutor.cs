@@ -278,7 +278,7 @@ public sealed partial class PlayerExecutor {
         approachPath=null;
         if(BeginClearance(path,p))return;
         RouteObserved?.Invoke(new{command_id=Current?.command_id,skill=Current?.skill,phase=Current?.phase,location=Game1.currentLocation.NameOrUniqueName,from=new[]{Game1.player.TilePoint.X,Game1.player.TilePoint.Y},to=new[]{p.X,p.Y},path_tiles=path?.Count,planned_path=path?.Select(t=>new[]{t.X,t.Y}).ToArray(),destination});
-        var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p);
+        var controller=new PlayerRouteController(path,Game1.currentLocation,Game1.player,p){RecoveryObserved=e=>RouteObserved?.Invoke(e)};
         if(controller.pathToEndPoint==null || controller.pathToEndPoint.Count==0)throw new InvalidOperationException("no_path");
         // Native stow only during our walk. Restore before using the selected item,
         // so planting, gifts and feeding retain their real slot and native action.
@@ -544,7 +544,7 @@ public sealed partial class PlayerExecutor {
     private void MonitorWalk() {
         if(Game1.player.TilePoint!=lastTile){lastTile=Game1.player.TilePoint;lastProgress=DateTime.UtcNow;}
         if(ownedController is PlayerRouteController {Blocked:true} blocked){
-            if(blocked.DynamicBlocker!=null&&blocked.BlockedSeconds<.35)return;
+            if(blocked.DynamicBlocker!=null&&blocked.BlockedSeconds<2)return;
             RouteObserved?.Invoke(new{kind="route_blocked_before_step",command_id=Current?.command_id,location=Game1.currentLocation.NameOrUniqueName,tile=new[]{blocked.BlockedTile.X,blocked.BlockedTile.Y},bounds=Game1.player.GetBoundingBox().ToString(),npc=blocked.DynamicBlocker,wait_seconds=blocked.BlockedSeconds});
             if(++retries>2)throw new InvalidOperationException("path_stalled");pathRetries++;Walk(target);return;
         }

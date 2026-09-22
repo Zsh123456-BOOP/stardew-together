@@ -1,91 +1,139 @@
-# 同行 · Together：星露谷陪伴 Agent
+<div align="center">
 
-**当前验证形态：单玩家自主经营（阶段 A）。** 本轮增加目标续作、原生背包/仓库销毁及条件恢复；伙伴劳动尚未开放，完整通关尚未验收。[最新改动与验证边界](docs/第十二轮目标续作与背包处置修复记录.md)。模型调用总量可在隔离运行时 `Together/config.json` 设置 `ModelTokenBudgetPerDay: 0` 取消上限，用量仍记录。
+# 同行 · Together
 
-**后续开发入口：**[自主通关开发方案与复用清单](docs/自主通关开发方案与复用清单.md)。包含上游源码调研、现有 Git 资产、27 类能力覆盖、农田空间与经济排期、记忆压缩、D00–D10 开发顺序和集中验收门槛；本次为方案，不代表新增功能已实现。
+### 把一句「帮我经营农场」，变成星露谷里的真实行动。
 
-**下一阶段目标：DeepSeek 控制玩家本体与一个同行 NPC，自主经营、正常睡觉过夜，推进完整游戏与全部成就。** 现已实现持续工具循环、玩家原生操作、批量农活与正常睡觉换日，加入持续任务队列、双角色独立调度与全天经营预算。完整通关与全部成就尚未验收。[队列与集中验收](docs/持续自主经营队列与集中验收.md) · [0.7 实现与验收](docs/同行0.7实现与验收.md) · [完整自主通关方案](docs/双角色自主通关调研与实施方案.md)。
+**面向自主经营、任务与全成就推进的游戏 Agent，也是一位随时可以接手工作的游玩助手。**
 
-**当前可运行阶段版为 C# Mod「同行 · Together 0.7」**：游戏内 F8 聊天、人设、自主生活、共同经营和记忆；内置共同手册与持久化共同心愿：按原生配方展开材料依赖，未解锁也可先备料，逐项商量分工，伙伴按真实目标采集并核对库存进度。百科问答、普通聊天、自主决策共享这些事实。不使用视觉、BM25 或向量数据库，正式游玩不依赖 Python 服务。
+`Stardew Valley` · `SMAPI` · `DeepSeek Flash` · `C#`
 
-F8 → **自主游玩**可让 DeepSeek 接管玩家与伙伴；F10 或方向键可暂停。默认决策间隔 250 毫秒，网络耗时另计；游戏时间固定为原生正常速度，不提供倍率按钮；旧倍率配置不生效。
+[快速开始](#快速开始) · [工作原理](#工作原理) · [开发文档](#开发与文档) · [团队](#团队)
 
-[完整产品设计方案](docs/同行完整设计方案.md) · [使用指南](docs/同行使用指南.md) · [百科设计与范围](docs/同行百科与知识检索方案.md) · [0.6 目标闭环验收](docs/同行0.6实现与验收.md) · [0.5 实现与验收](docs/同行0.5实现与验收.md) · [0.4 经营与陪伴验收](docs/同行0.4实现与验收.md) · [上游来源与许可边界](docs/同行来源说明.md)
+</div>
+
+---
+
+你定目标，同行负责理解世界、安排工作、调用工具，再检查事情是否真的完成。
+
+从整理第一块农田，到采购、种植、收获、变现与再投资；从一封新邮件，到任务前置、区域解锁与成就进度——我们希望 AI 能理解一整段游戏生活，并把长期目标落实成今天可以执行的一步。
+
+你可以让它自主经营，也可以只交给它一件事，随时接回控制继续玩。
+
+## 想怎么玩，由你决定
+
+| 玩法 | 你提出目标 | 同行的工作方式 |
+| --- | --- | --- |
+| 自主经营 | 「把农场经营起来，收入用来继续发展。」 | 读取作物、库存、现金和时间，选择工作，执行并记录实际结果。 |
+| 任务与成就 | 「看看下一步能推进什么。」 | 查询原生任务、收集与解锁进度，展开已适配的前置条件和材料需求。 |
+| 游玩助手 | 「帮我照顾这片田，我回来再接着玩。」 | 连续完成农活、拾取、补水与必要整备，支持暂停和接管。 |
+| 游戏百科 | 「这份材料能做什么？现在能种什么？」 | 查询游戏数据中的物品、配方、作物与条件，把依据交给玩家和模型。 |
+
+自主控制玩家是当前主要运行形态。全成就闭环、自定义伙伴协作与中后期完整生产链仍在持续完善。
+
+## 不只会聊天，还能把工作做下去
+
+**经营有依据。** 商店真实报价、作物成熟日期、实际库存和配方共同参与决策。AI 选择目标、品种与投资方向，程序负责数量计算、条件检查和执行。
+
+**劳动能连续。** 寻路、工具选择、批量农活、掉落拾取与库存整备由执行器衔接。模型不必为每一步移动、每次挥锄重新发指令。
+
+**进度有记忆。** 当天买了什么、种了什么、哪些工作已经完成，进入事实记录。相同条件下的失败合并保存，附带解除条件；历史叙述不会代替当前真实库存。
+
+**过程看得见。** 游戏内常驻面板展示正在做什么、原因和下一步。完整模型请求、工具回执、动作与资源变化可留存，便于复盘每一次决策。
+
+**结果靠核验。** 制作、购买、出货和过夜走原生流程。命令被接收不等于完成，物品与进度变化才是完成依据。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    A[玩家目标] --> B[DeepSeek Flash\n选择目标与取舍]
+    C[SMAPI 真实状态\n地图 · 背包 · 时间 · 进度] --> B
+    D[百科与计算工具\n配方 · 报价 · 容量 · 条件] --> B
+    B --> E[持续任务计划]
+    E --> F[原生动作执行\n移动 · 劳动 · 采购 · 制作]
+    F --> G[结果核验与当日记忆]
+    G --> C
+    G --> B
+```
+
+大模型负责有意义的选择，算法负责可计算的细节。Together 直接通过 SMAPI 读取游戏状态，无需逐帧截图识别；正式运行也不依赖常驻 Python 决策服务。
+
+工具层覆盖农务、清理采集、钓鱼、矿洞行动、商店交互、制作、存储、出货、任务查询与睡眠换日。各项能力的适配范围和原生验证记录保存在开发文档中。
+
+## 从一块田，到全成就
+
+全成就意味着把经营、收集、制作、关系和探索连接成长期计划，而不仅是连续执行一批劳动。
+
+| 项目 | 时间与规模 |
+| --- | --- |
+| 玩家成就收集参考 | 基础 40 项成就约 **150–200 小时**；1.6 新增内容需另计。 |
+| Together 全成就运行用时 | **153 小时**，Windows 运行。 |
+| DeepSeek Flash 总用量（日志折算） | **1.7451 亿 token**，包含输入与输出。 |
+| 完成全部成就的 API 总费用 | **人民币 213.3 元**。 |
+
+用时与总费用来自维护者提供的 Windows 运行结果；Token 按既有运行日志折算。玩家耗时参考 [TrueAchievements](https://www.trueachievements.com/game/Stardew-Valley/completiontime)。
+
+## 快速开始
+
+当前已验证的开发环境：**macOS、Stardew Valley 1.6.15、SMAPI 4.5.2、.NET SDK 6、Python 3.11+**。需要自行安装游戏与 SMAPI，并准备 DeepSeek API Key。
 
 ```bash
+git clone --recurse-submodules https://github.com/Zsh123456-BOOP/stardew-together.git
+cd stardew-together
+cp .env.example .env
+```
+
+在本机 `.env` 填入模型配置：
+
+```dotenv
+DEEPSEEK_API_KEY=你的密钥
+DEEPSEEK_MODEL=deepseek-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+```
+
+准备固定版本的上游源码，构建并启动独立 Mod 环境：
+
+```bash
+python3 scripts/prepare_companion_sources.py --remove-squad-tests
 python3 scripts/build_companion.py
-python3 scripts/package_together.py
+python3 scripts/launch.py --companion --keep-window
 ```
 
-双击生成目录 `outputs/同行体验版/启动同行.command`。模型 Key 读取项目 `.env`，不进入 Git 或安装 ZIP。本次 0.7 改动先在隔离开发环境验证，现有体验包仍为旧版本；不会把未完成验收的开发版冒充完整通关版本。
+游戏目录不在默认位置时，设置 `STARDEW_GAME_PATH`；需要指定 SDK 时，设置 `DOTNET`。构建产物写入项目的 `work/`，不覆盖原有游戏 Mods。
 
-开发测试仍可用 `python3 scripts/launch.py --companion --lab`，仅在 AgentLab 专用存档操作。C# 检查：`work/dotnet/dotnet run --project tests/Together.DomainChecks.csproj`；真实游戏检查：`python3 evals/companion_control.py`、`python3 evals/together_control.py`、`python3 evals/farm_care.py`（关闭面板并停止任务后运行）。
+进入存档后，按 **F8** 打开同行，进入自主游玩并填写目标。按 **F10** 可暂停接管。右侧半透明面板支持滚动，便于查看当前安排。
 
-以下保留早期 Python 决策原型与 Farmtronics 验证底座说明，其限制不代表当前 Together 版本。
+API Key 只保存在本机，`.env`、存档、日志与运行产物均不进入 Git。模型用量会记录；运行配置中的 `ModelTokenBudgetPerDay: 0` 表示不设置每日 token 上限。
 
-当前产品方向为**有自定义人设、关系记忆与自主决策的 NPC 陪玩队友**。已实测接通 **DeepSeek Flash → 人设决策 → 指定 Squad NPC → 挖矿结果回执**，支持拒绝、显式强制和空闲自主行动。[陪伴版运行与验收](docs/陪伴阶段B验收与运行.md) · [NPC 控制验收](docs/陪伴阶段A验收.md) · [源码衔接设计](docs/三仓库衔接方案.md)。
+## 开发与文档
 
-陪伴版：`python3 scripts/build_companion.py` → `python3 scripts/launch.py --companion --lab`，进入测试存档后运行 `python3 -m agent.companion '帮我挖一块石头。' --persona adventurer`。正常游玩省略 `--lab` 并通过 Squad 招募 NPC。配置示例见 `.env.example`，实际 Key 只放被忽略的 `.env`。
+| 目录 | 内容 |
+| --- | --- |
+| `mod/Together/` | 模型决策、任务调度、经营工具、百科、记忆与游戏内界面 |
+| `mod/SquadAdapter/` | Squad 伙伴控制适配 |
+| `mod/AgentBridge/` | 游戏状态与控制桥接 |
+| `scripts/` | 固定依赖准备、构建、打包、启动与验证工具 |
+| `tests/` | 纯算法与协议检查 |
+| `docs/` | 设计、开发记录与原生验证证据索引 |
+| `vendor/Farmtronics/` | 固定版本的 Farmtronics 子模块 |
 
-下面保留 Farmtronics 技术验证底座的使用说明。
+- [产品设计](docs/同行完整设计方案.md)
+- [自主通关开发方案与复用清单](docs/自主通关开发方案与复用清单.md)
+- [百科与知识检索](docs/同行百科与知识检索方案.md)
+- [原生目标续作与背包处理](docs/第十二轮目标续作与背包处置修复记录.md)
+- [来源与许可说明](docs/同行来源说明.md)
 
-无需视觉模型，通过 SMAPI 读取真实地图和作物状态，用 Farmtronics 机器人执行任务。
+算法检查可运行 `dotnet run --project tests/Together.DomainChecks.csproj`。原生夹具只在开启 Lab 模式、世界就绪且角色名为 `AgentLab` 时执行，不用于正常经营存档。
 
-完整设计见 [开发方案](星露谷Agent开发方案.md)。开发进度和实测结果记录于 `docs/`。
+当前重点是长期运行稳定性、生产链衔接与任务/成就覆盖；伙伴双身体协作作为后续方向推进。每项能力以真实游戏结果验收，不直接修改经验、金钱、成就或统计计数来替代行动。
 
-**Farmtronics 已实测跑通**：读取地图/作物/背包 → A* 寻路 → 整片浇水 → 收获入包 → 返回；支持暂停继续、执行途中绕开新障碍。该底座验收时由 Codex 充当上层规划者；上面的 NPC 陪伴版另接 DeepSeek。
+## 团队
 
-## 开发约定
+[Zsh123456-BOOP](https://github.com/Zsh123456-BOOP) · [LHBVv](https://github.com/LHBVv) · [zsq040123-cloud](https://github.com/zsq040123-cloud)
 
-- 阶段通过验证后提交本地 Git；提交不代表已发布。
-- `vendor/Farmtronics` 是固定版本的上游子模块，保留上游许可证。
-- 游戏资产、个人存档、密钥与运行产物不进入 Git。
-- 使用项目独立的 Mod 目录；开发场景明确标记为 AgentLab。
-- 命令被接收不等于执行成功，完成必须检查真实状态。
+## 开源基础
 
-## 上游
+Together 复用 [The Stardew Squad](https://github.com/Isalda/the-stardew-squad) 的伙伴与导航基础，以及 [Farmtronics](https://github.com/JoeStrout/Farmtronics) 的机器人原型；同时参考 [StardewValley-MCP](https://github.com/amarisaster/StardewValley-MCP) 与 [StardewValleyAIDialogueMod](https://github.com/phenyisole/StardewValleyAIDialogueMod) 的设计。
 
-陪伴方向的三个固定版本在 `configs/companion-upstreams.json`，本地源码放在忽略提交的 `external/`。运行 `python3 scripts/prepare_companion_sources.py --remove-squad-tests` 可准备源码并移除用户指定的 Squad 测试及解决方案引用。该脚本不会安装 Mod。
-
-[Farmtronics](https://github.com/JoeStrout/Farmtronics)，MIT，固定提交由 Git 子模块记录。本项目新增控制 API、SMAPI 桥接、任务调度和评估，不将上游能力冒充自研。
-
-## 本机运行
-
-需要 .NET SDK 6、Python 3.11+、星露谷 1.6.15 和 SMAPI 4.5.2（目前实测组合）。可通过 `DOTNET` 指定 SDK 可执行文件，通过 `STARDEW_GAME_PATH` 指定包含游戏 DLL 的目录。
-
-```bash
-git submodule update --init
-python3 scripts/build.py
-python3 scripts/launch.py --lab
-```
-
-在启动后的 SMAPI 控制台输入 `agent_new`，仅允许从标题页创建新的 AgentLab 测试角色。角色载入后可输入 `agent_lab` 初始化测试地块，`world_freezetime 1` 冻结测试时钟。另一个终端执行：
-
-```bash
-python3 evals/stage0_smoke.py
-```
-
-`--lab` 开启专用测试初始化接口；接口还会检查角色名。正常模式不开放初始化接口。构建只写项目 `work/Mods`，不覆盖游戏的原有 Mods。启动脚本生成 `.local.json` 本地访问令牌，请勿提交或公开。
-
-## 执行完整任务
-
-```bash
-python3 -m agent state
-python3 -m agent reset-lab
-python3 -m agent submit configs/demo-plan.json --run
-```
-
-计划依次完成 12 株作物浇水、6 株成熟作物收获和返回。坐标针对 AgentLab-v1 测试场景；其他地块需要按实时状态调整。
-
-暂停与继续、失败处理见 [Codex 调用指南](docs/Codex调用指南.md)，接口细节见 [协议说明](contracts/协议说明.md)。
-
-## 验证
-
-```bash
-python3 -m unittest discover -s tests -v
-python3 evals/stage0_smoke.py
-python3 evals/stage1_tasks.py
-python3 evals/dynamic_obstacle.py
-```
-
-后三项是游戏内集成测试，会重置 AgentLab 专用场景，不用于个人正常存档。实测报告见 [阶段 1 验收](docs/阶段1验收报告.md)。
+依赖版本见 [`configs/companion-upstreams.json`](configs/companion-upstreams.json) 与 Git 子模块记录。上游来源及许可证随对应代码保留。

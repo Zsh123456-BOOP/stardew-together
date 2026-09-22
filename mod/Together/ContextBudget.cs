@@ -46,7 +46,7 @@ public static class ContextBudget {
             if(Size()<=target-256)break;
             // Never silently hide active tasks, failure conditions, or inventory constraints.
             var summary=new JsonObject{["omitted"]=true,["read_via"]="context.read",["read_args"]=new JsonObject{["section"]=key}};
-            if(original is JsonObject obj)foreach(string field in new[]{"active_tasks","unfinished","promises","recent_failure_rules","service_constraints","capacity_constraints","capacity_version","capacity_release_conditions","free_slots","slot_count","shared_storage_chests","tools","tool_upgrade","tasks","active_quests","daily_activity"})if(obj[field]!=null)summary[field]=JsonNode.Parse(obj[field]!.ToJsonString());
+            if(original is JsonObject obj)foreach(string field in new[]{"active_tasks","unfinished","promises","recent_failure_rules","service_constraints","capacity_constraints","capacity_version","capacity_release_conditions","free_slots","slot_count","shared_storage_chests","tools","tool_upgrade","tasks","active_quests","selected_achievements","development_review","achievement_candidates","unread_mail","unlocks","daily_activity"})if(obj[field]!=null)summary[field]=JsonNode.Parse(obj[field]!.ToJsonString());
             root[key]=summary;removed.Add(key+":on_demand");
         }
         // Final omission ownership: no pointer is produced until every reduction is done.

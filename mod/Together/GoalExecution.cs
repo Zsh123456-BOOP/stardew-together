@@ -14,11 +14,19 @@ public sealed partial class ModEntry {
         if(quality is not (0 or 1 or 2 or 4)||quality>0&&completion!="owned")throw new InvalidOperationException("quality_requires_owned_goal_and_native_quality_tier");
         if(request.Length is <1 or >64||!request.All(c=>char.IsLetterOrDigit(c)||c is '-' or '_')||count is <1 or >999)throw new InvalidOperationException("invalid_goal_request");
         string id="agent-"+request;
-        var old=Data.SharedGoals.FirstOrDefault(g=>g.Id==id);
+        var old=Data.SharedGoals.FirstOrDefault(g=>g.Id==id||g.RequestAliases.Contains(request));
         if(old!=null) {
             if(old.Entity!=entity||old.Count!=count||old.Completion!=completion||old.MinimumQuality!=quality||old.AllowNewFacilities!=allowFacilities)throw new InvalidOperationException("goal_request_id_reused");
             if(run&&old.Status=="active"){old.AutoExecute=true;goalAutomationAt=DateTime.MinValue;}
             return old;
+        }
+        bool additional=args.TryGetProperty("additional",out var extra)&&extra.ValueKind==JsonValueKind.True;
+        var existing=Data.SharedGoals.FirstOrDefault(g=>g.SameRequest(entity,count,completion,quality,allowFacilities));
+        if(!additional&&existing!=null) {
+            existing.RequestAliases.Add(request);
+            if(run&&existing.Status=="active")existing.AutoExecute=true;
+            Data.Autoplay.Record("goal_request_reused",AgentJson.Encode(new{request,goal=existing.Id,reason="same_unfinished_product_not_new_demand"}));
+            return existing;
         }
         if(Data.SharedGoals.Count(g=>g.Status is "active" or "paused")>=16)throw new InvalidOperationException("active_goal_limit");
         string item=goalRecipes.TryGetValue(entity,out var recipe)?recipe.Item:entity;
@@ -90,6 +98,12 @@ public sealed partial class ModEntry {
                 }
                 foreach(var node in goal.Nodes.Where(n=>n.Status is "locked" or "blocked" || n.Status=="player_step"&&n.Kind is not ("craft" or "cook" or "process" or "place")))gaps.Add(new{node=node.Id,node.Status,node.Reason});
             }
+        }
+        // A stock mutation is not proof that a capacity blocker was removed.
+        // Recheck the actual next operation without creating another failed action.
+        if(tasks.FirstOrDefault() is {} next&&CapacityAdmission(next.tool,next.args) is {Feasible:false} capacity) {
+            goal.CapacityBlockedTool=next.tool;goal.CapacityBlockedArgs=next.args.GetRawText();
+            gaps.Add(new{reason=capacity.Reason,next_action=next,capacity,recovery=ReadCapacityOptions()});tasks.Clear();
         }
         if(tasks.Count>24)throw new InvalidOperationException("goal_batch_too_large_split_required");
         if(gaps.Count>0&&tasks.Any(t=>t.tool=="work.run"&&AgentToolRegistry.Text(t.args,"goal")=="withdraw"))tasks.Clear();

@@ -34,7 +34,7 @@ public sealed partial class ModEntry {
         if(tool=="player.procure")error=PlayerExecutor.ServiceParameterError(PlayerExecutor.ProcurementServiceArgs(args));
         if(tool=="player.service")error=PlayerExecutor.ServiceParameterError(args);
         if(tool=="player.place_facility"&&string.IsNullOrWhiteSpace(AgentToolRegistry.Text(args,"item")))error="parameter_required:item:player.place_facility";
-        if(tool=="farm.plan"&&!Game1.currentLocation.IsGreenhouse&&(!Game1.currentLocation.IsFarm||!Game1.currentLocation.IsOutdoors))error="plan_on_farm_or_greenhouse_first_travel_to_Farm";
+        // PlanFarm returns the concrete travel/query prerequisites; do not erase them here.
         if(tool=="player.social"&&AutoplayRunning&&SocialBasis(args)==null)error="social_basis_required:choose_current_task_birthday_gift_or_relationship_target";
         if(error==null)return;
         Data.Autoplay.Record("declaration_rejected",AgentJson.Encode(new{tool,args,error,category="parameter_or_precondition",no_action_started=true}));

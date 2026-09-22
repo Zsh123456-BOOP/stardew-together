@@ -19,6 +19,11 @@ public sealed partial class ModEntry {
         if(Game1.activeClickableMenu==null&&!AgentActorHasWork("player")&&AvailableTool<Hoe>()&&AvailableTool<WateringCan>())foreach(var seed in OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Take(4)) {
             if(!DataLoader.Crops(Game1.content).TryGetValue(seed.First().ItemId,out var crop)||!crop.Seasons.Contains(farm.GetSeason())||crop.DaysInPhase.Sum()>28-Game1.dayOfMonth)continue;
             int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
+            var ready=farmPlantPlans.Values.LastOrDefault(plan=>plan.Epoch==agentSaveEpoch&&plan.Day==Game1.Date.TotalDays&&plan.Seed==seed.Key&&plan.Tiles.Any(t=>!farm.terrainFeatures.TryGetValue(new(t.X,t.Y),out var f)||f is HoeDirt {crop:null}));
+            if(ready!=null) {
+                rows.Add(new("plant:owned-seeds:"+seed.Key,"执行已生成的田块方案，消费现有种子；完成后可释放整叠种子占格","work.run",new{goal="plant",plan_id=ready.Id},$"native_owned_seeds={seed.Sum(i=>i.Stack)};plan={ready.Id};tiles={ready.Tiles.Count};not_yet_planted",0,30));continue;
+            }
+
             rows.Add(new("plan:owned-seeds:"+seed.Key,"已有未种种子：可选择规划播种，也可保留；购买完成不等于种植完成",atFarm?"farm.plan":"player.travel",atFarm?(object)new{seed=seed.Key,count=Math.Min(96,count)}:new{location="Farm"},$"native_unplanted_seed={seed.Key};owned={count};actual_existing_crops={care};tools_owned;next=farm.plan_then_work.run_plant;layout_and_labor_not_yet_evaluated",0,atFarm?1:30));
         }
         var land=ExpansionLand();bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>c.Seasons.Contains(farm.GetSeason())&&c.DaysInPhase.Sum()<=28-Game1.dayOfMonth);

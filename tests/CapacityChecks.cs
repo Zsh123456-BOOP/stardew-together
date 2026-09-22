@@ -49,6 +49,12 @@ public static class CapacityChecks {
         quality.Days[0].Finalized=true;quality.Current(1).Finalized=true;
         check(quality.Days[0].EffectiveLaborMinutes==10&&quality.Days[0].AvailableMinutes==1200&&!quality.G2,"quality separates actual progress and does not shrink denominator for early sleep");
         quality.Days[0].DegradationTime=630;check(!quality.G1,"early degradation explicitly fails G1");
+        var seeds=new StackKey("seeds",0,"");
+        var packed=new CapacitySnapshot(2,new[]{(wood,57,999,false),(seeds,8,999,false)});
+        check(!CapacityPlan.Simulate(packed,new CapacityOp[]{new TakeOp(wood,50),new PutOp(chest,1,1)}).Feasible,"57 wood minus 50 still occupies its slot; chest cannot enter a full bag");
+        check(CapacityPlan.Simulate(packed,new CapacityOp[]{new TakeOp(seeds,8),new TakeOp(wood,50),new PutOp(chest,1,1)}).Feasible,"verified full seed-stack consumption can precede chest production");
+        check(CapacityPlan.Simulate(packed,new CapacityOp[]{new TakeOp(seeds,1)}).FreeSlotsAtEnd==0,"partial disposal does not release a slot");
+        check(CapacityPlan.Simulate(packed,new CapacityOp[]{new PutOp(wood,53,999)}).FreeSlotsAtEnd==0,"extra wood stacking does not release a slot");
         var peak=CapacityPlan.Simulate(new(2,new[]{(wood,50,999,false)}),new CapacityOp[]{new PutOp(chest,1,1),new PutOp(new("stone",0,""),1,999),new TakeOp(wood,50)});
         check(!peak.Feasible&&peak.FailedStep==1&&peak.PeakOccupied==2,"intermediate overflow rejected even if final inventory would fit");
     }

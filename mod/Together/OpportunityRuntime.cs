@@ -16,6 +16,7 @@ public sealed partial class ModEntry {
             var window=ServiceWindow(subject);
             if(window.Reason!="available"||Game1.timeOfDay<window.Open||Game1.timeOfDay>=window.Close||Data.Autoplay.Operations.Blocking(subject,window.Conditions,Game1.Date.TotalDays,Game1.timeOfDay)!=null)return false;
         }
+        try{if(CapacityAdmission(row.Tool,a) is {Feasible:false})return false;}catch(InvalidOperationException){return false;}
         string location=AgentToolRegistry.Text(a,"location");
         if(location.Length>0&&location!=Game1.currentLocation.NameOrUniqueName&&PlayerExecutor.NextExit(Game1.currentLocation,location)==null)return false;
         if(row.Tool=="player.service"&&PlayerExecutor.ServiceParameterError(a)!=null)return false;
@@ -119,6 +120,7 @@ public sealed partial class ModEntry {
         catch(Exception e){obj["alternatives"]=new JsonArray();obj["alternatives_unavailable"]=e.GetType().Name;Data.Autoplay.Record("alternatives_observation_error",e.Message);}
         if(error.StartsWith("parameter_service_location_mismatch")||error is "shop_closed" or "no_reachable_native_service_counter")obj["service_hours"]=JsonSerializer.SerializeToNode(KnownServiceHours());
         if(error.Contains("social")||error.Contains("npc_")||error.Contains("route_access"))obj["social_access"]=JsonSerializer.SerializeToNode(SocialAvailability());
+        if(error.Contains("capacity")||error.Contains("inventory")||error.Contains("known_failure"))obj["capacity_recovery"]=JsonSerializer.SerializeToNode(ReadCapacityOptions(),AgentJson.Options);
         obj["protection_reasons"]=JsonSerializer.SerializeToNode(ProtectionReasons());return JsonSerializer.SerializeToElement(obj);
     }
     private string[] ProtectionReasons() {

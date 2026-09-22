@@ -10,6 +10,7 @@ public sealed partial class ModEntry {
     private List<OperatingOpportunity> OperatingOpportunities() {
         var rows=new List<OperatingOpportunity>();var player=Game1.player;ReadGoalRecipes();
         AddBusinessOpportunities(rows);
+        if(CapacityAdapter.Of(player).FreeSlots==0)rows.Add(new("capacity:options","满包：比较真实腾格效果、物品用途与损失，再选择存放、生产消耗或销毁","inventory.capacity",new{},"native_free_slots=0;read_only_recovery_comparison",0,1));
         if(!SharedStorage().Any()&&Game1.player.craftingRecipes.ContainsKey("Chest")&&!Data.SharedGoals.Any(g=>g.Status=="active"&&g.Entity=="craft:Chest"))
             rows.Add(new("infrastructure:storage","尚无共享仓库：比较先建仓或先劳动；配方依赖由程序执行，不会自动立项","goal.create",new{request_id="storage-"+Game1.Date.TotalDays,entity="craft:Chest",count=1,completion="placed",run=true,purpose="建立共享仓储"},"recipe_known;deployed_storage=0;free_slots="+CapacityAdapter.Of(player).FreeSlots,0,60,goalRecipes.TryGetValue("craft:Chest",out var storageRecipe)?new{entity=storageRecipe.Id,output=storageRecipe.Item,source=storageRecipe.Source,materials=storageRecipe.Inputs.Select(r=>new{item=r.Item,required=r.Count,owned=TeamStock(r.Item),missing=Math.Max(0,r.Count-TeamStock(r.Item))})}:null));
         if(Facts.RipeCrops>0)rows.Add(new("harvest","收获成熟作物并接入销售/加工","work.run",new{goal="harvest",location="Farm",count=0},$"ripe={Facts.RipeCrops}",0,20));

@@ -26,6 +26,8 @@ public sealed class AutoplayState {
     public string Plan {get;set;}="";
     public string Detail {get;set;}="";
     public int Decisions {get;set;}
+    public int TrialTargetDay {get;set;}=-1;
+    public int TrialTargetSleeps {get;set;}=-1;
     public int SleepDays {get;set;}
     public int NativeSleepRequestedDay {get;set;}=-1;
     public int NativeSleepCountedDay {get;set;}=-1;

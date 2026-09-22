@@ -108,7 +108,8 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("goal_progress",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,task.spec.source,task.spec.actor,outcome}));
         if(state!="succeeded"&&task.spec.goal_id.Length>0) {
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==task.spec.goal_id);
-            if(goal!=null){goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;
+            if(goal!=null){if(CapacityState.IsCapacity(error)){goal.CapacityBlockedTool=task.spec.tool;goal.CapacityBlockedArgs=task.spec.args.GetRawText();}
+                goal.AutoBlockedReason="task_failed:"+task.spec.id+":"+error;
                 if(goal.AutoExecute){RefreshFacts(true);goal.AutoBlockedConditions=GoalCondition(goal);goal.AutoReviewDay=Game1.Date.TotalDays;goal.AutoReviewMinute=DailyBudget.Minutes(Game1.timeOfDay);}
             }
         }

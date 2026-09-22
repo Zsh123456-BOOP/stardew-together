@@ -2,6 +2,7 @@ namespace Together;
 
 // Pure, deterministic planning. Neither model text nor an action receipt can satisfy a goal.
 public sealed class SharedGoal {
+    public bool SameRequest(string entity,int count,string completion,int quality,bool facilities)=>Status is "active" or "paused"&&Entity==entity&&Count==count&&Completion==completion&&MinimumQuality==quality&&AllowNewFacilities==facilities;
     public int PlanVersion {get;set;}=1;
     public int Revision {get;set;}
     public string Purpose {get;set;}="";
@@ -16,7 +17,10 @@ public sealed class SharedGoal {
     public int BaselineCrafts {get;set;}
     public string Completion {get;set;}="owned";
     public bool AllowNewFacilities {get;set;}
+    public List<string> RequestAliases {get;set;}=new();
     public bool AutoExecute {get;set;}
+    public string CapacityBlockedTool {get;set;}="";
+    public string CapacityBlockedArgs {get;set;}="{}";
     public string AutoBlockedReason {get;set;}="";
     public string AutoBlockedConditions {get;set;}="";
     public int AutoReviewDay {get;set;}=-1;

@@ -42,7 +42,7 @@ public sealed partial class ModEntry {
     }
     internal object PlanFarm(JsonElement args) {
         var l=Game1.currentLocation;
-        if(!l.IsGreenhouse&&(!l.IsFarm||!l.IsOutdoors))throw new InvalidOperationException("plan_on_farm_or_greenhouse_first_travel_to_Farm");
+        if(!l.IsGreenhouse&&(!l.IsFarm||!l.IsOutdoors))return new{status="blocked",error="plan_on_farm_or_greenhouse_first_travel_to_Farm",executed=false,prerequisites=new object[]{new{tool="player.travel",args=new{location="Farm"}},new{tool="farm.plan",args=args.Clone()}},note="先完成真实移动，再读取方案；生成plan_id后才能播种。"};
         if(playerExecutor.Busy || WorkActorBusy("player"))throw new InvalidOperationException("wait_for_player_before_layout");
         string requested=AgentToolRegistry.Text(args,"seed");int max=Math.Clamp(AgentToolRegistry.Number(args,"count",24),1,96);
         string fertilizer=AgentToolRegistry.Text(args,"fertilizer");
@@ -108,7 +108,7 @@ public sealed partial class ModEntry {
             double gross=plan.GrowthByTile.Values.Sum(d=>new StardewCropCalculatorLibrary.Crop(seed.Key,d,calc.yieldRate,0,calc.sellPrice).NumHarvests(Game1.dayOfMonth,horizon)*calc.sellPrice);
             bool missing=!p.basicShipped.ContainsKey(data.HarvestItemId)||Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(n=>n.Item=="(O)"+data.HarvestItemId));
             double score=priority=="collection"?(missing?100000:0)+gross:priority=="low_labor"?gross/Math.Max(1,plan.ManualWatering*Math.Max(1,horizon-Game1.dayOfMonth)):gross;
-            options.Add((score,new{plan_id=plan.Id,plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
+            options.Add((score,new{plan_id=plan.Id,next_action=new{tool="work.run",args=new{goal="plant",plan_id=plan.Id}},plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,forecast=FarmForecast(plan)}));
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);

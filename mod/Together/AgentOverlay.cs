@@ -87,7 +87,7 @@ public sealed partial class ModEntry {
         "plant"=>"整理田块、播种和浇水","cleanup"=>"清理规划区域","water"=>"给作物浇水","refill"=>"给水壶补水","harvest"=>"收获成熟作物","store"=>"把物资存进仓库","withdraw"=>"从仓库取物资","storage_expand"=>"准备新的储物箱","wood"=>"收集木材","stone"=>"收集石头","hardwood"=>"收集硬木","fiber"=>"清理杂草、收集纤维","forage"=>"寻找可采集的东西","fish"=>"钓鱼","mine_trip"=>"下矿收集资源","volcano_trip"=>"探索火山","pet"=>"照顾动物","feed"=>"给动物喂食","milk"=>"挤奶","shear"=>"剪羊毛","animal_collect"=>"收取动物产品","clear_dead"=>"清除枯萎作物",_=>"处理已安排的工作"
     };
     private static string OverlayTool(string tool)=>tool switch {
-        "player.move" or "player.travel" or "player.service"=>"前往下一个地点","player.sleep"=>"回家睡觉","player.procure" or "player.buy"=>"购买需要的物资","player.craft"=>"制作需要的物品","player.cook"=>"准备料理","player.machine"=>"照料加工设备","player.eat"=>"吃点东西恢复体力","player.place" or "player.place_facility"=>"放置设施","player.build"=>"安排农场建设","player.ship" or "player.ship_items"=>"出售已安排的产品","player.read_mail"=>"查看信件","player.collect_home_gifts"=>"领取初始物资","player.work" or "player.use_tool"=>"处理眼前的劳动","player.social"=>"与村民交流",_=>"执行已安排的操作"
+        "player.move" or "player.travel" or "player.service"=>"前往下一个地点","player.sleep"=>"回家睡觉","player.procure" or "player.buy"=>"购买需要的物资","player.discard"=>"按计划销毁物品腾出空间","player.craft"=>"制作需要的物品","player.cook"=>"准备料理","player.machine"=>"照料加工设备","player.eat"=>"吃点东西恢复体力","player.place" or "player.place_facility"=>"放置设施","player.build"=>"安排农场建设","player.ship" or "player.ship_items"=>"出售已安排的产品","player.read_mail"=>"查看信件","player.collect_home_gifts"=>"领取初始物资","player.work" or "player.use_tool"=>"处理眼前的劳动","player.social"=>"与村民交流",_=>"执行已安排的操作"
     };
     private static string OverlayBlock(string? code) {
         code??="";

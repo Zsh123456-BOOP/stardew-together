@@ -15,7 +15,15 @@ public sealed partial class ModEntry {
         goalAutomationAt=DateTime.MinValue;
         return new{goal,executor_active=AutoplayRunning,note="只运行已支持且具备原生条件的依赖；开启目标不等于完成。暂停不会中断已经开始的原生消耗。"};
     }
-    private string GoalCondition(SharedGoal goal)=>FailureKnowledge.Hash(AgentJson.Encode(new{
+    private string GoalCondition(SharedGoal goal) {
+        if(goal.CapacityBlockedTool.Length>0) {
+            try {
+                var args=JsonSerializer.Deserialize<JsonElement>(goal.CapacityBlockedArgs);
+                if(CapacityAdmission(goal.CapacityBlockedTool,args) is {Feasible:false} blocked)return "capacity:"+goal.CapacityBlockedTool+":"+blocked.Reason;
+            }catch(InvalidOperationException){}
+            goal.CapacityBlockedTool="";goal.CapacityBlockedArgs="{}";
+        }
+        return FailureKnowledge.Hash(AgentJson.Encode(new{
         goal.Fingerprint,money=Game1.player.Money,capacity=Data.Autoplay.Capacity.Version,
         recipes=Game1.player.craftingRecipes.Keys.OrderBy(k=>k).ToArray(),
         location=Game1.currentLocation.NameOrUniqueName,energy=(int)Game1.player.Stamina,health=Game1.player.health,
@@ -25,6 +33,7 @@ public sealed partial class ModEntry {
         crops=Game1.getFarm().terrainFeatures.Pairs.Where(t=>t.Value is StardewValley.TerrainFeatures.HoeDirt {crop:not null}).Select(t=>{var d=(StardewValley.TerrainFeatures.HoeDirt)t.Value;return new{tile=t.Key,item=d.crop.indexOfHarvest.Value,ready=d.readyForHarvest(),dead=d.crop.dead.Value,water=d.state.Value};}),
         tools=Game1.player.Items.OfType<Tool>().Select(t=>new{t.QualifiedItemId,t.UpgradeLevel})
     }));
+    }
     private void TickGoalAutomation() {
         if(!AutoplayRunning||DateTime.UtcNow<goalAutomationAt)return;goalAutomationAt=DateTime.UtcNow.AddSeconds(2);
         if(agentLabProbe&&labEarlyStorage)EnsureStorageGoal();

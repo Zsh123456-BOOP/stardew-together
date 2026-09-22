@@ -153,6 +153,7 @@ public sealed partial class ModEntry {
     }
     private bool PrepareTaskKit(ScheduledAgentTask task) {
         if(task.spec.actor!="player"||preparedTasks.Contains(task.spec.id))return true;
+        if(task.spec.tool=="player.discard")return true;
         if(task.spec.tool=="work.run"&&AgentToolRegistry.Text(task.spec.args,"goal") is "store" or "withdraw" or "storage_expand")return true;
         if(task.spec.tool is "player.sleep" or "player.collect_home_gifts")return true;
         var plan=DescribeKit(task);AllocateKit(plan,Game1.player.Items.Where(i=>i!=null),out var missing);

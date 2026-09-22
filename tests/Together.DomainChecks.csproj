@@ -10,4 +10,5 @@
   <ItemGroup><Compile Include="../mod/Shared/ResourceFlow.cs" Link="Shared/ResourceFlow.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../mod/Shared/ForageCropRules.cs" Link="Shared/ForageCropRules.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../mod/Shared/CompanionLabor.cs" Link="Shared/CompanionLabor.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../mod/Together/ModelRequestBudget.cs"/><Compile Include="ModelBudgetChecks.cs"/></ItemGroup>
 </Project>

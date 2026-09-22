@@ -100,6 +100,7 @@ public sealed partial class PlayerExecutor {
         actionTargetBefore=null;startDay=Game1.Date.TotalDays;lastTile=Game1.player.TilePoint;retries=0;saved=false;sleepConfirmed=false;startedUsing=false;routeAccessDenied=false;edge=null;
         try {
             switch(skill) {
+                case "player.discard":StartDiscard(args);break;
                 case "player.collect_drops":StartPickup(args);break;
                 case "player.volcano_step":StartVolcanoStep(args);break;
                 case "player.treasure":StartTreasure();break;
@@ -364,6 +365,7 @@ public sealed partial class PlayerExecutor {
             if(Current.skill=="player.forge"){TickForge();return;}
             if(Current.skill=="player.beach"){TickBeach();return;}
             if(Current.skill=="player.crab_pots"){TickCrabPots();return;}
+            if(Current.skill=="player.discard"){TickDiscard();return;}
             if(Current.skill=="player.fish"){TickFishing();return;}
             if(Current.skill is "player.read_mail" or "player.watch_tv"){TickInformation();return;}
             if(Current.skill=="player.read_book"){TickReadBook();return;}

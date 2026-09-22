@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Together;
 
+ModelBudgetChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 ClearanceChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 AutonomyPolicyChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

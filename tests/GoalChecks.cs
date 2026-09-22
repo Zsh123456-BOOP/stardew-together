@@ -3,6 +3,12 @@ using Together;
 
 public static class GoalChecks {
     public static void Run(Action<bool,string> check) {
+        var dedup=new SharedGoal{Entity="craft:Chest",Completion="placed",Count=1};
+        check(dedup.SameRequest("craft:Chest",1,"placed",0,false)&&!dedup.SameRequest("craft:Chest",2,"placed",0,false),"same unfinished product resumes but changed quantity is not silently merged");
+        dedup.Status="completed";check(!dedup.SameRequest("craft:Chest",1,"placed",0,false),"completed goal is not reused for a new product");
+        check(OperationsPolicy.Outcome("work.run",JsonSerializer.SerializeToElement(new{status="running",completed=0})).Disposition=="in_progress","running work is not a failure");
+        check(OperationsPolicy.Outcome("work.run",JsonSerializer.SerializeToElement(new{status="waiting"})).Disposition=="waiting_condition","waiting work has explicit non-failure disposition");
+
         check(!GoalPlanner.WorkSpeech("地下层，下午带5块回来","accept","Farm").Contains("5"),"material work cannot promise an invented delivery quantity or location");
         check(GoalPlanner.WorkSpeech("挖矿我喜欢，不过我先试一趟。","accept","Farm").Contains("喜欢"),"grounded personality survives work speech validation");
         var recipes=new Dictionary<string,GoalRecipe>{

@@ -28,6 +28,7 @@ public sealed class Config {
     public double AutoplayClockRate {get=>1;set { }}
     public int AutoplayDecisionDelayMs {get;set;}=250;
     public int AutoplayMaxCallsPerDay {get;set;}=180;
+    // Zero explicitly disables the total-token cap; accounting remains enabled.
     public long ModelTokenBudgetPerDay {get;set;}=1000000;
     public int ModelRequestByteLimit {get;set;}=240000;
     public bool AgentOverlay {get;set;}=true;

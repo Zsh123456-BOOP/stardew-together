@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Xna.Framework;
 using StardewValley;
 using StardewValley.Tools;
 
@@ -12,8 +13,30 @@ public sealed partial class ModEntry {
             if(requested.Length>0&&l.NameOrUniqueName!=requested||!l.canFishHere())continue;
             if(l!=Game1.currentLocation&&Knowledge.Index.Get("location:"+l.Name) is {} entry&&!Knowledge.Visible(entry))continue;
             if(l!=Game1.currentLocation&&PlayerExecutor.NextExit(Game1.currentLocation,l.NameOrUniqueName)==null)continue;
-            if(FishingRules.Eligible(l,rod,item))yield return l;
+            if(FishingRules.Eligible(l,rod,item)&&HasReachableFishingSite(l,rod,item))yield return l;
         }
+    }
+    private static bool HasReachableFishingSite(GameLocation location,FishingRod rod,string item) {
+        var start=Game1.player.TilePoint;
+        if(location!=Game1.currentLocation) {
+            var maps=new Queue<(GameLocation Map,Point Entry)>();var seen=new HashSet<string>();bool found=false;
+            maps.Enqueue((Game1.currentLocation,start));
+            while(maps.TryDequeue(out var node)&&seen.Count<200) {
+                if(!seen.Add(node.Map.NameOrUniqueName))continue;
+                if(node.Map==location){start=node.Entry;found=true;break;}
+                foreach(var edge in PlayerExecutor.Exits(node.Map))if(PlayerExecutor.LoadedLocation(edge.TargetName) is {} next&&!seen.Contains(next.NameOrUniqueName))maps.Enqueue((next,new(edge.TargetX,edge.TargetY)));
+            }
+            if(!found)return false;
+        }
+        var sites=FishingRules.Sites(location,rod,item).Select(s=>s.Stand).ToHashSet();if(sites.Count==0)return false;
+        var queue=new Queue<Point>();var visited=new HashSet<Point>{start};queue.Enqueue(start);
+        while(queue.TryDequeue(out var p)&&visited.Count<=10000) {
+            if(sites.Contains(p))return true;
+            foreach(var d in new[]{new Point(0,1),new Point(1,0),new Point(0,-1),new Point(-1,0)}) {
+                var n=new Point(p.X+d.X,p.Y+d.Y);if(!visited.Contains(n)&&PlayerExecutor.Passable(location,n)){visited.Add(n);queue.Enqueue(n);}
+            }
+        }
+        return false;
     }
     internal object ReadFishingOptions(JsonElement args) {
         string item=AgentToolRegistry.Text(args,"item"),location=AgentToolRegistry.Text(args,"location");

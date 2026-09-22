@@ -29,6 +29,7 @@ public sealed class ActivityDiary {
         foreach(var e in Array(Child(action,"effects"))) {
             string key=id+":"+n++,kind=Text(e,"kind"),item=Text(e,"item");
             if(kind=="native_purchase")Add(key,day,time,Num(e,"currency")==0?"购买":"购买（货币"+Num(e,"currency")+"）",item,location,Num(e,"units"),Num(e,"cost"));
+            else if(kind=="native_discard"&&Child(e,"verified").ValueKind==JsonValueKind.True)Add(key,day,time,"原生垃圾桶销毁",item,location,Num(e,"destroyed"));
             else if(kind=="native_recipe")Add(key,day,time,"制作完成（入包另核对）",item,location,Num(e,"count"));
             else if(kind=="native_placement")Add(key,day,time,"放置",item,location,Num(e,"consumed"));
             else if(kind=="native_shipment"||Text(e,"shipped").Length>0)Add(key,day,time,"出货待结算",item.Length>0?item:Text(e,"shipped"),location,Num(e,"count"));

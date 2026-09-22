@@ -31,6 +31,8 @@ public sealed partial class ModEntry {
                 try{var result=ApplyDecisionCalls(turn.calls,Data.Autoplay.Schedule.Revision);return AgentJson.Encode(new{result.Followup,result.Error,pending=deferredDecision!=null,intent=decisionIntent});}
                 finally{decisionIntent="";}
             }
+            case "inventory_split_probe":return AgentJson.Encode(LabSplitInventory());
+            case "inventory_contract_probe":return AgentJson.Encode(new{capacity=ReadCapacityOptions(),opportunities=OperatingOpportunities(),fish_shop_has_site=HasReachableFishingSite(Game1.getLocationFromName("SeedShop"),new FishingRod(),""),goals=Data.SharedGoals.Select(g=>new{g.Id,g.Entity,g.Count,g.Reserved,g.CapacityBlockedTool,condition=GoalCondition(g)}).ToArray()});
             case "decision_facts_probe":return AgentJson.Encode(new{snapshot=AgentSnapshot(),access=SocialAvailability(),farm_water=WateringObservation("Farm"),unchanged=SocialAccessCondition("Penny")});
             case "social_probe":return AgentJson.Encode(new{social=SocialObservation.Read(Game1.player),npcs=Game1.locations.SelectMany(l=>l.characters.Select(n=>new{name=n.Name,location=l.NameOrUniqueName,tile=new[]{n.TilePoint.X,n.TilePoint.Y},moving=n.isMoving(),sleeping=n.isSleeping.Value,invisible=n.IsInvisible,monster=n.IsMonster})).ToArray()});
             case "clearance_probe":return AgentJson.Encode(playerExecutor.ClearanceProbe(Num("offset")));
@@ -102,6 +104,7 @@ public sealed partial class ModEntry {
             case "agent_start":StartAutoplay(Arg("goal"));break;
             case "survival_start":
                 StartAutoplay(Arg("goal"));SetResumeConsent(true);Data.Autoplay.Survival.NativePlayerOnly=true;
+                if(root.TryGetProperty("trial_days",out var trial)&&trial.GetInt32() is >=1 and <=28){Data.Autoplay.TrialTargetDay=Game1.Date.TotalDays+trial.GetInt32();Data.Autoplay.TrialTargetSleeps=Data.Autoplay.SleepDays+trial.GetInt32();}
                 Settings.Autonomy=false;SurvivalRecord("survival_acceptance_started",new{day=Game1.Date.TotalDays,scope="native_farmer_only_until_stage_b",clock_rate=1});break;
             case "survival_failure_probe":
                 if(Arg("kind")=="model")ModelUnavailable(new InvalidOperationException("lab_invalid_reply"),null,false);

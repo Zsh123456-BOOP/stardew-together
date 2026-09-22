@@ -48,6 +48,7 @@ public sealed partial class ModEntry {
         if(stage=="local_context_pack"){decisionBlockedReason=stage+":"+e.Message;WakeAgent("decision_blocked_drain_native_work_then_hold_clock");return;}
         var s=Data.Autoplay.Survival;
         if(stage!="transport") {
+            if(e is NativeToolReplyException native)Data.Autoplay.ToolExchange.Reject(native.NativeMessage,native.Message);
             if(++schemaFailures>=3){decisionBlockedReason="decision_contract_failed_three_attempts:"+e.Message;return;}
             WakeAgent("decision_contract_error:"+e.Message);modelRecoveryAt=DateTime.UtcNow.AddSeconds(2);return;
         }

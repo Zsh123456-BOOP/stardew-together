@@ -16,7 +16,7 @@ def summarize(root, run_id=None):
     rows.sort(key=lambda entry:entry[0].get('utc',''))
     days={};observations={};deliveries={};chain=[]
     def state(day):
-        return days.setdefault(day,dict(day=day,cash_first=None,cash_last=None,actual_spend_gold=0,pending_shipping_estimate=None,ledger_first=None,ledger_last=None,native_saves=[],sleep=[],failures=[],failure_releases=[],delivery_delays=[],slow_frames=[],performance=None,quality=None,finalized_quality=None,candidate_decisions=[]))
+        return days.setdefault(day,dict(day=day,cash_first=None,cash_last=None,actual_spend_gold=0,pending_shipping_estimate=None,ledger_first=None,ledger_last=None,native_saves=[],sleep=[],failures=[],tool_rejections=[],failure_releases=[],delivery_delays=[],slow_frames=[],performance=None,quality=None,finalized_quality=None,candidate_decisions=[]))
     for row,source in rows:
         day=row.get('day',-1);d=state(day);kind=row['kind'];p=row.get('payload',{})
         if not isinstance(p,dict):continue
@@ -43,6 +43,7 @@ def summarize(root, run_id=None):
         if kind in ('survival_sleep_started','sleep_reassessment','survival_transition'):d['sleep'].append(dict(**event,kind=kind,evidence=p))
         if kind=='task_started' and p.get('tool')=='player.sleep':d['sleep'].append(dict(**event,kind='scheduled_sleep',initiator=p.get('source'),purpose=p.get('purpose')))
         if kind in ('decision_failure','model_unavailable','task_finished','service_window_blocked','execution_failure_stop') and (p.get('error') or kind!='task_finished'):d['failures'].append(dict(**event,kind=kind,evidence=p))
+        if kind=='tool_result' and isinstance(p.get('result'),dict) and (p['result'].get('error') or p['result'].get('status') in ('failed','blocked','no_feasible_plan')):d['tool_rejections'].append(dict(**event,evidence=p))
         if kind in ('failure_condition_released','constraint_released'):d['failure_releases'].append(dict(**event,evidence=p))
         if kind=='slow_frame':d['slow_frames'].append(dict(**event,**p))
         if kind=='candidate_adoption':d['candidate_decisions'].append(dict(**event,evidence=p))

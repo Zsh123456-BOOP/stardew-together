@@ -34,7 +34,7 @@ public sealed partial class ModEntry {
         return found?.Page(offset,AgentToolRegistry.Number(args,"count",12))??new{status="not_found",note="旧版未建索引的回执可用memory.search以result_id检索query_completed，再memory.evidence续读"};
     }
     internal object ReadContextSection(JsonElement args)=>AgentToolRegistry.Text(args,"section") switch {
-        "assets"=>FacilityAssets(),"labor_budget"=>FarmLaborBudget(),"farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
+        "planting_execution"=>PlantingExecutionFacts(),"assets"=>FacilityAssets(),"labor_budget"=>FarmLaborBudget(),"farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
         "progression"=>DailyProgressDigest(),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
         "earlier_observation_summaries" or "recent"=>RecentAgentContext(),"memory"=>AgentMemoryContext(),"goals"=>GoalContext(),"operating_candidates"=>OperatingOpportunities(),
         "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),"prerequisites"=>TaskPrerequisites(),_=>throw new InvalidOperationException("unknown_context_section")

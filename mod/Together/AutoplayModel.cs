@@ -51,8 +51,10 @@ public static class AutoplayModel {
         if(!response.IsSuccessStatusCode)throw new InvalidOperationException("model_http_"+(int)response.StatusCode);
         using var body=JsonDocument.Parse(raw);
         var choice=body.RootElement.GetProperty("choices")[0];
-        var turn=NativeToolProtocol.Decode(choice,selected);
         string nativeMessage=AgentJson.Encode(new{role="assistant",content=choice.GetProperty("message").GetProperty("content"),tool_calls=choice.GetProperty("message").GetProperty("tool_calls")});
+        AgentTurn turn;
+        try{turn=NativeToolProtocol.Decode(choice,selected);}
+        catch(Exception e) when(e is InvalidOperationException or JsonException or KeyNotFoundException){throw new NativeToolReplyException(nativeMessage,e);}
         var usage=body.RootElement.GetProperty("usage");
         int Count(string key)=>usage.TryGetProperty(key,out var v)?v.GetInt32():0;
         return new(AgentJson.Encode(turn),Count("total_tokens"),Count("prompt_tokens"),Count("completion_tokens"),Count("prompt_cache_hit_tokens"),body.RootElement.TryGetProperty("model",out var served)?served.GetString()??model:model,nativeMessage);

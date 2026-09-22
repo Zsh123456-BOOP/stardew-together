@@ -5,6 +5,16 @@ import unittest
 from scripts.report_operating_loop import summarize
 
 class OperatingLoopReport(unittest.TestCase):
+    def test_direct_tool_rejections_are_visible_separately_from_task_failures(self):
+        with tempfile.TemporaryDirectory() as folder:
+            rows=[dict(run='r',day=0,time=600,utc='2026-01-01T00:00:00Z',kind='tool_result',payload=dict(tool='farm.plan',result=dict(status=status))) for status in ('no_feasible_plan','blocked','queued')]
+            (Path(folder)/'day-0.jsonl').write_text('\n'.join(json.dumps(r) for r in rows))
+            report=summarize(folder,'r');day=report['days'][0]
+            self.assertEqual(len(day['tool_rejections']),2)
+            self.assertEqual(day['tool_rejections'][0]['source']['line'],1)
+            self.assertEqual(day['failures'],[])
+            self.assertEqual(report['completed_days'],[])
+
     def test_evidence_and_delivery_do_not_imply_acceptance(self):
         with tempfile.TemporaryDirectory() as folder:
             rows=[dict(run='r',day=0,time=600,utc='2026-01-01T00:00:00Z',kind='query_completed',payload=dict(Id='q',Kind='outcome',Tool='work.run')),dict(run='r',day=0,time=610,utc='2026-01-01T00:00:12Z',kind='query_results_delivered',payload=dict(result_ids=['q'])),dict(run='r',day=0,time=620,utc='2026-01-01T00:00:15Z',kind='query_results_delivered',payload=dict(result_ids=['q'])),dict(run='r',day=0,time=600,utc='2026-01-01T00:00:00Z',kind='business_snapshot',payload=dict(cash=500,pending_shipping=[dict(estimated_sale=525)]))]

@@ -26,6 +26,13 @@ public static class NativeToolChecks {
         var messages=J(exchange.Messages());check(messages.GetArrayLength()==3&&messages[2].GetProperty("tool_call_id").GetString()=="b"&&messages[2].GetProperty("content").GetString()!.Contains("not_executed"),"checkpoint preserves native feedback IDs and cancelled calls remain explicitly unexecuted");
         exchange.Begin(AgentJson.Encode(new{role="assistant",content=(string?)null,tool_calls=new[]{Call("q","work__run","{}")}}));exchange.Record("q",new{status="queued",task_id="actual-task"});
         check(J(exchange.Messages())[1].GetProperty("content").GetString()!.Contains("queued")&&!AgentJson.Encode(exchange.Messages()).Contains("succeeded"),"queued acknowledgement never turns into completed native work");
+        exchange.Reject(choice.GetProperty("message").GetRawText(),"native_tool_not_loaded:farm__select_seeds");
+        var rejected=J(exchange.Messages());
+        check(rejected.GetArrayLength()==3&&rejected[1].GetProperty("tool_call_id").GetString()=="a"&&rejected[2].GetProperty("content").GetString()!.Contains("batch_rejected")&&!AgentJson.Encode(rejected).Contains("actual-task"),"rejected native batch replaces stale successful feedback and marks every call unexecuted");
+        exchange.Reject(Choice(Call("same","work__run","{}"),Call("same","work__run","{}")).GetProperty("message").GetRawText(),"duplicate");
+        check(exchange.Messages().Length==0,"duplicate-ID rejected envelope is not replayed to the model API");
+        string rejection="";try{NativeToolProtocol.Decode(Choice(Call("x","work__run","{\"goal\":\"social\"}")),catalog);}catch(Exception e){rejection=e.Message;}
+        check(rejection.Contains("work.run.goal:allowed=")&&rejection.Contains("water"),"enum rejection identifies the invalid field and actionable permitted values");
         var limits=J(new{count=10,budget=200,max_unit_price=20,keep_gold=100});
         check(OperatingDecisionPolicy.CanCompletePurchaseVisit(limits,new[]{"SeedShop"})&&!OperatingDecisionPolicy.CanCompletePurchaseVisit(limits,new[]{"SeedShop","Other"})&&!OperatingDecisionPolicy.CanCompletePurchaseVisit(J(new{count=10,budget=200}),new[]{"SeedShop"}),"purchase preflight requires unique native seller and explicit quantity, price and reserves");
         check(!OperatingDecisionPolicy.CanCompletePurchaseVisit(J(new{count=10,budget=200,max_unit_price=20,keep_gold=100,currency=4}),new[]{"SeedShop"}),"purchase preflight does not reinterpret non-gold currencies");

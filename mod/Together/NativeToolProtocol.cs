@@ -51,7 +51,7 @@ public static class NativeToolProtocol {
             bool valid=type.GetString() switch {"object"=>value.ValueKind==JsonValueKind.Object,"array"=>value.ValueKind==JsonValueKind.Array,"integer"=>value.TryInt(),"boolean"=>value.ValueKind is JsonValueKind.True or JsonValueKind.False,"string"=>value.ValueKind==JsonValueKind.String,_=>true};
             if(!valid)throw new InvalidOperationException("native_tool_argument_type_mismatch:"+path);
         }
-        if(schema.TryGetProperty("enum",out var choices)&&!choices.EnumerateArray().Any(c=>c.GetRawText()==value.GetRawText()))throw new InvalidOperationException("native_tool_argument_enum_mismatch:"+path);
+        if(schema.TryGetProperty("enum",out var choices)&&!choices.EnumerateArray().Any(c=>c.GetRawText()==value.GetRawText()))throw new InvalidOperationException("native_tool_argument_enum_mismatch:"+path+":allowed="+choices.GetRawText());
         if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("required",out var required)&&required.EnumerateArray().Any(k=>!value.TryGetProperty(k.GetString()!,out _)))throw new InvalidOperationException("native_tool_required_argument_missing:"+path+":"+string.Join(",",required.EnumerateArray().Where(k=>!value.TryGetProperty(k.GetString()!,out _)).Select(k=>k.GetString())));
         if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("properties",out var properties))foreach(var p in value.EnumerateObject())if(properties.TryGetProperty(p.Name,out var child))Validate(p.Value,child,path+"."+p.Name);
         if(value.ValueKind==JsonValueKind.Array&&schema.TryGetProperty("items",out var item))foreach(var v in value.EnumerateArray())Validate(v,item,path+"[]");
@@ -65,7 +65,9 @@ public static class NativeToolProtocol {
         if(message.TryGetProperty("content",out var content)&&content.ValueKind==JsonValueKind.String)turn.plan=content.GetString()??"";
         foreach(var call in native.EnumerateArray()) {
             string id=call.GetProperty("id").GetString()??"";var fn=call.GetProperty("function");
-            if(id.Length==0||!ids.Add(id)||call.GetProperty("type").GetString()!="function"||!map.TryGetValue(fn.GetProperty("name").GetString()??"",out string? tool))throw new InvalidOperationException("native_tool_not_loaded_or_duplicate_id");
+            if(id.Length==0||!ids.Add(id)||call.GetProperty("type").GetString()!="function")throw new InvalidOperationException("native_tool_invalid_or_duplicate_id");
+            string name=fn.GetProperty("name").GetString()??"";
+            if(!map.TryGetValue(name,out string? tool))throw new InvalidOperationException("native_tool_not_loaded:"+name+":use_tools__lookup_or_current_tools");
             using var doc=JsonDocument.Parse(fn.GetProperty("arguments").GetString()!);var args=doc.RootElement;
             Validate(args,JsonSerializer.SerializeToElement(Shape(selected[tool])),tool);
             if(tool=="plan.submit"&&args.TryGetProperty("tasks",out var tasks))foreach(var task in tasks.EnumerateArray()) {
@@ -82,11 +84,23 @@ public static class NativeToolProtocol {
     }
 }
 
+public sealed class NativeToolReplyException : InvalidOperationException {
+    public string NativeMessage {get;}
+    public NativeToolReplyException(string message,Exception error):base(error.Message,error){NativeMessage=message;}
+}
+
 // One bounded exchange is checkpointed. Queued acknowledgements never claim native completion.
 public sealed class NativeToolExchange {
     public string Assistant {get;set;}="";
     public Dictionary<string,string> Results {get;set;}=new();
     public void Begin(string message){Assistant=message;Results.Clear();}
+    public void Reject(string message,string error) {
+        Begin(message);
+        var calls=Calls();
+        // Never feed an invalid call-ID envelope back into the API.
+        if(calls.Length==0||calls.Any(c=>!c.TryGetProperty("id",out var id)||id.ValueKind!=JsonValueKind.String||string.IsNullOrEmpty(id.GetString()))||calls.Select(c=>c.GetProperty("id").GetString()).Distinct().Count()!=calls.Length){Begin("");return;}
+        foreach(var call in calls)Record(call.GetProperty("id").GetString()!,new{status="not_executed",error,batch_rejected=true,note="整批校验未通过，所有调用均未执行；依据当前状态和本轮tools修正，未加载能力先tools.lookup。旧报价和旧成功回执不能替代当前事实。"});
+    }
     public void Record(string id,object result){if(Assistant.Length>0&&Calls().Any(c=>c.GetProperty("id").GetString()==id))Results[id]=AgentJson.Encode(result);}
     private JsonElement[] Calls()=>Assistant.Length==0?Array.Empty<JsonElement>():JsonSerializer.Deserialize<JsonElement>(Assistant).GetProperty("tool_calls").EnumerateArray().Select(c=>c.Clone()).ToArray();
     public void CancelPending(string reason){foreach(var c in Calls())if(!Results.ContainsKey(c.GetProperty("id").GetString()!))Record(c.GetProperty("id").GetString()!,new{status="not_executed",reason});}

@@ -23,7 +23,7 @@ public static class AutoplayChecks {
         check(pace.Observe(1,false,false)==1&&pace.QueriesWithoutProgress==0,"verified progress restores responsive planning");
         check(pace.Observe(1,true,false)==1,"a submitted action ends a query-only episode");
         check(AgentDecisionPacing.RoutineWake("actor_ready:custom")&&!AgentDecisionPacing.RoutineWake("task_failed:water")&&!AgentDecisionPacing.RoutineWake("danger"),"routine completion can defer but real failures and danger cannot");
-        var catalog=new Dictionary<string,string>{{"world.read","{}: current state"},{"player.build","{blueprint,budget,keep_gold}: 原生建筑"},{"player.arcade","{game}: 街机"}};
+        var catalog=new Dictionary<string,string>{{"context.read","{section}: current state"},{"player.build","{blueprint,budget,keep_gold}: 原生建筑"},{"player.arcade","{game}: 街机"}};
         check(AgentToolDiscovery.Core(catalog).Count==1&&!AgentToolDiscovery.Core(catalog).ContainsKey("player.arcade"),"unrelated special gameplay is omitted from the stable common catalog");
         var lookup=JsonSerializer.Serialize(AgentToolDiscovery.Lookup(catalog,JsonSerializer.SerializeToElement(new{names=new[]{"player.build"}})));
         check(lookup.Contains("blueprint,budget,keep_gold"),"on-demand tool discovery preserves full parameter contract");

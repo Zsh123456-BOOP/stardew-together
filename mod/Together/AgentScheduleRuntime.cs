@@ -26,7 +26,7 @@ public sealed partial class ModEntry {
     private object TaskReadiness(ScheduledAgentTask task) {var r=Data.Autoplay.Schedule.Readiness(task,Game1.Date.TotalDays,Game1.timeOfDay);return new{state=r.State,reason=r.Reason,next_time=r.Next,day=task.spec.day};}
     internal object AgentPlanRead(bool compact=false)=>new {
         revision=Data.Autoplay.Schedule.Revision,event_version=Data.Autoplay.Schedule.EventVersion,
-        tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{spec=compact?(object)new{t.spec.id,t.spec.actor,t.spec.tool,t.spec.after,t.spec.sequence_after,t.spec.not_before,t.spec.deadline,t.spec.day}:t.spec,t.state,t.command_id,t.error,t.wait_reason,readiness=TaskReadiness(t)}),
+        tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{spec=compact?(object)new{t.spec.id,t.spec.actor,t.spec.tool,t.spec.args,t.spec.after,t.spec.sequence_after,t.spec.not_before,t.spec.deadline,t.spec.day}:t.spec,t.state,t.command_id,t.error,t.wait_reason,readiness=TaskReadiness(t)}),
         waiting_query_drafts=compact?null:Data.Autoplay.Memory.QueryDrafts,
         recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=ReceiptSummary(t.receipt),details=new{tool="action.status",args=new{id=t.spec.id}}}),
         note="同一角色只能执行一个任务；after声明真正的前置条件；sequence_after仅保持执行顺序，前一步失败不影响独立工作。未来时间的任务不会挡住其他就绪工作。actor统一选择角色，args.actor_id省略时自动继承，显式冲突才拒绝。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
@@ -104,7 +104,7 @@ public sealed partial class ModEntry {
         if(receipt["stop_reason"]==null)receipt["stop_reason"]=task.error;
         if(receipt["resume_policy"]==null)receipt["resume_policy"]="reobserve_then_submit_remaining_work_no_blind_replay";
         FinalizeCashReservation(task,JsonSerializer.SerializeToElement(receipt));
-        CaptureObservation(task.spec.tool,JsonSerializer.SerializeToElement(receipt),"outcome");
+        CaptureObservation(task.spec.tool,JsonSerializer.SerializeToElement(receipt),"outcome",args:task.spec.args);
         WakeAgent("task_terminal:"+task.spec.id);
     }
     private void CompleteScheduled(ScheduledAgentTask task,JsonElement result) {

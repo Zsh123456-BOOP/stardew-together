@@ -3,6 +3,15 @@ using System.Text;
 using Together;
 public static class OperatingLoopChecks {
     private static JsonElement J(object value)=>JsonSerializer.SerializeToElement(value,AgentJson.Options);
+    public static void ReplayReplies(string path) {
+        using var evidence=JsonDocument.Parse(File.ReadAllText(path));int recovered=0;
+        foreach(var row in evidence.RootElement.GetProperty("failures").EnumerateArray()) {
+            var p=row.GetProperty("payload");if(p.GetProperty("stage").GetString()!="response_schema")continue;
+            var turn=AgentTurn.Parse(p.GetProperty("reply").GetString()!,out var format);
+            if(format==null||turn.calls.Count==0)throw new Exception("expected observed format recovery");recovered++;
+        }
+        Console.WriteLine(AgentJson.Encode(new{recovered,source=path,scope="original failed replies parsed without changing actions; not executed"}));
+    }
     public static void Replay(string directory) {
         int receipts=0,pages=0,max=0;var pending=new List<QueryResult>();
         foreach(string file in Directory.GetFiles(directory,"day-*.jsonl"))foreach(string line in File.ReadLines(file)) {
@@ -14,6 +23,10 @@ public static class OperatingLoopChecks {
         Console.WriteLine(AgentJson.Encode(new{receipts,pages,max_page_estimated_tokens=max,delivery_batches=batches,all_delivered=pending.All(q=>q.Delivered)}));
     }
     public static void Run(Action<bool,string> check) {
+        string clean=AgentJson.Encode(new{plan="核对🌱原生状态",speech="",calls=new[]{new{tool="world.read",args=new{text="字符中的 } 和 </result> 不应截断"}}}});
+        foreach(string suffix in new[]{"</result>","\"}"}) {var parsed=AgentTurn.Parse(clean+suffix,out var recovery);check(parsed.plan=="核对🌱原生状态"&&parsed.calls.Single().args.GetProperty("text").GetString()=="字符中的 } 和 </result> 不应截断"&&recovery!=null,"observed trailing delimiter recovery preserves complete unicode JSON semantics");}
+        AgentTurn.Parse(clean+" \n",out var unchanged);check(unchanged==null,"valid model JSON does not report a repair");
+        foreach(string invalid in new[]{clean+clean,clean+" explanation",clean+",\"calls\":[]",clean[..^1]+"</result>","{\"calls\":[]}</result>"}) {bool blocked=false;try{AgentTurn.Parse(invalid);}catch(Exception e)when(e is JsonException or InvalidOperationException){blocked=true;}check(blocked,"ambiguous, incomplete and schema-invalid model replies cannot be repaired into executable decisions");}
         string huge=string.Concat(Enumerable.Repeat("原生回执🌱\"\\\n",2000));var q=new QueryResult{Tool="plan.read",Args=J(new{}),Result=J(new{receipt=huge,empty=new{},list=Array.Empty<string>()})};
         int offset=0;var rebuilt=new StringBuilder();bool empty=false,list=false;int largest=0;
         do {var page=J(q.Page(offset,40));largest=Math.Max(largest,ContextBudget.Estimate(page.GetRawText()));foreach(var row in page.GetProperty("fields").EnumerateArray()) {string path=row.GetProperty("path").GetString()!;if(path=="/receipt"){check(row.GetProperty("character_offset").GetInt32()==rebuilt.Length,"receipt fragments have contiguous UTF16 offsets");rebuilt.Append(row.GetProperty("value_fragment").GetString());}if(path=="/empty")empty=row.GetProperty("value").ValueKind==JsonValueKind.Object;if(path=="/list")list=row.GetProperty("value").GetArrayLength()==0;}if(!page.TryGetProperty("next",out var next)||next.ValueKind==JsonValueKind.Null)break;offset=page.GetProperty("next").GetProperty("args").GetProperty("offset").GetInt32();}while(true);

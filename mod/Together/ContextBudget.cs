@@ -6,12 +6,13 @@ public sealed record ContextBudgetResult(string Json,int EstimatedTokens,int Lim
 public static class ContextBudget {
     // Conservative, explicitly estimated. Usage telemetry calibrates this; it is not a tokenizer.
     public static int Estimate(string text)=> (int)Math.Ceiling(Encoding.UTF8.GetByteCount(text)/2.0);
-    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons"},StringComparer.Ordinal);
+    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons","schedule","operating_candidates"},StringComparer.Ordinal);
     public static ContextBudgetResult Pack(object input,int limit,int? preferred=null) {
         if(limit<256)throw new ArgumentOutOfRangeException(nameof(limit));
         int target=Math.Clamp(preferred??limit,256,limit);
         var root=System.Text.Json.JsonSerializer.SerializeToNode(input,AgentJson.Options)!.AsObject();
         root.Remove("context_budget");
+        DecisionContext.Project(root);
         // Preserve the latest explicit observations and their status/error. Bulky
         // mutation receipts are already archived and current state is supplied separately.
         if(root["recent"] is JsonArray recent)foreach(var item in recent.OfType<JsonObject>()) {

@@ -4,6 +4,10 @@ using Together;
 if(args.Length==2&&args[0]=="--memory-replay"){MemoryRebuildChecks.Replay(args[1]);return;}
 
 if(args.Length==2&&args[0]=="--observation-replay"){OperatingLoopChecks.Replay(args[1]);return;}
+if(args.Length==2&&args[0]=="--reply-replay"){OperatingLoopChecks.ReplayReplies(args[1]);return;}
+if(args.Length==2&&args[0]=="--decision-context-replay"){DecisionContextChecks.Replay(args[1]);return;}
+DecisionContextChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 OperatingLoopChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 MemoryRebuildChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

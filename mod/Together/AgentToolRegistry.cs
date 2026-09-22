@@ -13,8 +13,8 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
-        ["context.read"]="{section:farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card}: 按上下文省略指针补读完整字段；只读，结果可经query.read续读。",
-        ["tools.lookup"]="{names?:[工具名最多12个],query?:用途或名称}: 查询完整工具定义；无参数返回名称索引。常用工具未覆盖的畜牧、加工、建造、社交、任务等先查定义再调用。",
+        ["context.read"]="{section:farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card|prerequisites}: 按上下文省略指针补读完整字段；只读，结果可经query.read续读。",
+        ["tools.lookup"]="{names?:[工具名最多12个],query?:用途或名称,group?:farm|trade|storage_production|progress_social|animals|exploration|menu}: 按需加载完整工具定义，当天保留；无参数返回名称索引。常用工具未覆盖的畜牧、加工、建造、社交、任务等先查定义再调用。",
         ["beach.read"]="{}: 海滩桥梁和老水手实际状态。",
         ["player.beach"]="{mode:bridge|pendant,budget?:int,keep_gold?:int}: 自动走到海滩修桥或购买美人鱼吊坠，原生消耗300木材或5000金；等待原生动画，核验结果。",
         ["family.read"]="{}: 读取原生婚姻、孩子、预产期及持久家庭策略；未配置生育策略时不替模型决定。",

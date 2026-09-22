@@ -13,6 +13,7 @@ public sealed partial class ModEntry {
     private void IndexQueryEvidence(string id) {string bucket=agentSaveEpoch+"-"+Game1.Date.TotalDays;if(memoryArchive!=null&&Data.Autoplay.Memory.Cursors.TryGetValue(bucket,out int cursor))Data.Autoplay.Memory.QueryEvidence[id]=bucket+":"+cursor;}
     private string? CaptureQuery(AgentCall call,JsonElement observed) {
         if(!QueryResult.IsRead(call.tool,call.args))return null;
+        if(call.tool=="tools.lookup"&&observed.TryGetProperty("definitions",out var definitions))foreach(var p in definitions.EnumerateObject())Data.Autoplay.Memory.EquippedTools[p.Name]=Game1.Date.TotalDays;
         return CaptureObservation(call.tool,observed,"query",call.id,call.args);
     }
     private void AcknowledgeQueries() {
@@ -33,7 +34,7 @@ public sealed partial class ModEntry {
         "farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
         "progression"=>DailyProgressDigest(),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
         "earlier_observation_summaries" or "recent"=>RecentAgentContext(),"memory"=>AgentMemoryContext(),"goals"=>GoalContext(),"operating_candidates"=>OperatingOpportunities(),
-        "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),_=>throw new InvalidOperationException("unknown_context_section")
+        "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),"prerequisites"=>TaskPrerequisites(),_=>throw new InvalidOperationException("unknown_context_section")
     };
     internal object SearchPlanningKnowledge(JsonElement args) {
         string exact=AgentToolRegistry.Text(args,"id"),kind=AgentToolRegistry.Text(args,"kind","all");

@@ -12,7 +12,13 @@ public sealed class QueryResult {
     public JsonElement Args {get;set;}
     public JsonElement Result {get;set;}
     public bool Delivered {get;set;}
-    public object Observation()=>new{result_id=Id,call_id=Call,tool=Tool,kind=Kind,observed_day=Day,observed_time=Time,result=ObservationContract.Observation(Result,Kind),details=new{tool="query.read",args=new{id=Id}},delivery="pending_summary",note="摘要送达不等于已理解；原始完整结果可分页补读，交易核验实时状态"};
+    public object Observation()=>new{result_id=Id,call_id=Call,tool=Tool,kind=Kind,observed_day=Day,observed_time=Time,args=Args.ValueKind==JsonValueKind.Undefined?JsonSerializer.SerializeToElement(new{}):Args,result=Tool=="tools.lookup"?LookupObservation():ObservationContract.Observation(Result,Kind)};
+    private JsonElement LookupObservation() {
+        if(!Result.TryGetProperty("definitions",out var definitions))return ObservationContract.Observation(Result,Kind);
+        var view=new Dictionary<string,object?>{{"equipped_names",definitions.EnumerateObject().Select(p=>p.Name).ToArray()},{"definitions_in","system_tools"}};
+        foreach(string field in new[]{"unknown","fallback","index"})if(Result.TryGetProperty(field,out var value))view[field]=value.Clone();
+        return JsonSerializer.SerializeToElement(view);
+    }
     public static object[] Pending(IEnumerable<QueryResult> queries,int budget=4200) {
         var rows=new List<object>();int size=2;
         foreach(var q in queries.Where(q=>!q.Delivered).OrderBy(q=>q.Kind=="outcome"?0:q.Kind=="quote"?1:2).ThenBy(q=>q.Day).ThenBy(q=>q.Time)) {

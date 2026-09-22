@@ -172,7 +172,7 @@ public sealed partial class ModEntry {
                 if(agentRequestEpoch!=agentGeneration || agentRequestDay!=Game1.Date.TotalDays || (!AgentTurn.Parse(reply.Json).calls.All(c=>QueryResult.IsRead(c.tool,c.args))&&(agentRequestQueueRevision!=Data.Autoplay.Schedule.Revision || DecisionBasisChanged()))) {
                     Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
-                    var turn=AgentTurn.Parse(reply.Json);AcknowledgeQueries();applying=true;ModelRecovered();Data.Autoplay.Decisions++;if(Data.Autoplay.Plan!=turn.plan)Data.Autoplay.Record("plan_explanation_updated",AgentJson.Encode(new{previous=Data.Autoplay.Plan,next=turn.plan,preserved_tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id)}));Data.Autoplay.Plan=turn.plan;
+                    var turn=AgentTurn.Parse(reply.Json,out var formatRecovery);if(formatRecovery!=null)Data.Autoplay.Record("decision_format_recovered",AgentJson.Encode(new{format=formatRecovery,contents_changed=false}));AcknowledgeQueries();applying=true;ModelRecovered();Data.Autoplay.Decisions++;if(Data.Autoplay.Plan!=turn.plan)Data.Autoplay.Record("plan_explanation_updated",AgentJson.Encode(new{previous=Data.Autoplay.Plan,next=turn.plan,preserved_tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id)}));Data.Autoplay.Plan=turn.plan;
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0&&!SinglePlayerMode)Say(Selected,turn.speech);
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;
@@ -208,7 +208,7 @@ public sealed partial class ModEntry {
         string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile);
         if(!TryDecisionSnapshot(out var frozen))return;
         FrameStage("decision_snapshot",ref stage);
-        WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Core(AgentToolRegistry.Catalog)).Length,core_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
+        WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Select(AgentToolRegistry.Catalog,frozen)).Length,selected_tool_count=AgentToolDiscovery.Select(AgentToolRegistry.Catalog,frozen).Count,base_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         queryRequestIds=frozen.GetProperty("pending_queries").EnumerateArray().Select(q=>q.GetProperty("result_id").GetString()!).ToArray();
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();

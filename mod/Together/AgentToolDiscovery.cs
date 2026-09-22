@@ -4,7 +4,48 @@ namespace Together;
 // Keep the common farming contracts stable for prompt caching. Other complete
 // contracts are loaded on demand; discovery never truncates parameter schemas.
 public static class AgentToolDiscovery {
-    public static readonly string[] CoreNames={"query.read","context.read","progress.read","progress.catalog","progress.dependencies","quest_board.read","day.routine","farm.business","player.service","player.buy","player.procure","player.ship_items","player.accept_quest","player.claim_reward","player.social","inventory.read","inventory.capacity","player.discard","shop.read","farm.select_seeds","goal.create","goal.run","goal.prepare","tools.lookup","world.read","menu.read","menu.choose","menu.close","plan.read","plan.submit","plan.cancel","work.run","day.plan","farm.business_status","farm.operating","farm.production","farm.cleanup","farm.plan","player.collect_home_gifts","player.travel","player.sleep","knowledge.search","knowledge.get","memory.search","agent.wait","agent.pause"};
+    public static readonly string[] CoreNames={"query.read","context.read","tools.lookup","knowledge.search","work.run","plan.submit","plan.cancel","player.travel","player.sleep","agent.wait","agent.pause"};
+    public static readonly Dictionary<string,string[]> Groups=new(){
+        ["farm"]=new[]{"farm.plan","farm.cleanup","day.routine","player.collect_home_gifts"},
+        ["trade"]=new[]{"player.service","shop.read","farm.select_seeds","player.buy","player.procure","player.ship_items"},
+        ["storage_production"]=new[]{"inventory.capacity","goal.create","goal.run","farm.production","farm.business_status"},
+        ["progress_social"]=new[]{"progress.read","progress.dependencies","quest_board.read","player.social","player.accept_quest","player.claim_reward"},
+        ["animals"]=new[]{"animals.read","farm.business","player.acquire_animal"},
+        ["exploration"]=new[]{"world.read","map.scan","fishing.options","player.read_mail"},
+        ["menu"]=new[]{"menu.read","menu.choose","menu.close","menu.text"}
+    };
+    public const string GroupIndex="farm=农务布局/整理/礼包；trade=商店采购/选种/出货；storage_production=容量/制作/设施投资；progress_social=任务/依赖/社交；animals=畜牧；exploration=地图/钓鱼/邮件；menu=原生菜单。tools.lookup可按group、用途或名称扩展；工具可见不代表已解锁或已获预算。";
+    public static Dictionary<string,string> Select(IReadOnlyDictionary<string,string> catalog,JsonElement context) {
+        var names=CoreNames.ToHashSet(StringComparer.Ordinal);
+        void Group(string group){foreach(string name in Groups[group])names.Add(name);}
+        void Scan(JsonElement node) {
+            if(node.ValueKind==JsonValueKind.Array){foreach(var row in node.EnumerateArray())Scan(row);return;}
+            if(node.ValueKind!=JsonValueKind.Object)return;
+            foreach(var p in node.EnumerateObject()) {
+                if(p.Name=="equipped_names"&&p.Value.ValueKind==JsonValueKind.Array)foreach(var n in p.Value.EnumerateArray())if(n.ValueKind==JsonValueKind.String)names.Add(n.GetString()!);
+                if(p.Name=="definitions"&&p.Value.ValueKind==JsonValueKind.Object)foreach(var d in p.Value.EnumerateObject())if(catalog.ContainsKey(d.Name))names.Add(d.Name);
+                if(p.Name is "tool" or "Tool"&&p.Value.ValueKind==JsonValueKind.String&&catalog.ContainsKey(p.Value.GetString()!))names.Add(p.Value.GetString()!);
+                if(p.Name is "goal"&&p.Value.ValueKind==JsonValueKind.String) {
+                    string goal=p.Value.GetString()!;
+                    if(goal is "plant" or "water" or "harvest" or "cleanup")Group("farm");
+                    if(goal is "fish" or "mine_trip" or "volcano_trip")Group("exploration");
+                    if(goal is "store" or "withdraw" or "storage_expand")Group("storage_production");
+                    if(goal is "milk" or "shear" or "feed" or "pet" or "animal_collect")Group("animals");
+                }
+                Scan(p.Value);
+            }
+        }
+        foreach(string field in new[]{"operating_candidates","schedule","task_card","goals","pending_queries"})if(context.TryGetProperty(field,out var node))Scan(node);
+        if(context.TryGetProperty("equipped_tools",out var equipped)&&equipped.ValueKind==JsonValueKind.Array)foreach(var name in equipped.EnumerateArray())if(name.ValueKind==JsonValueKind.String)names.Add(name.GetString()!);
+        if(context.TryGetProperty("now",out var now)) {
+            if(now.TryGetProperty("day",out var day)&&day.GetInt32()==0)names.Add("player.collect_home_gifts");
+            if(now.TryGetProperty("location",out var location)&&location.GetString() is {} place&&place.Contains("Shop",StringComparison.OrdinalIgnoreCase))Group("trade");
+        }
+        if(context.TryGetProperty("ui",out var ui)&&ui.TryGetProperty("type",out var type)&&type.GetString() is not ("none" or "executor_owned_fishing"))Group("menu");
+        if(context.TryGetProperty("planting_execution",out var planting)&&planting.TryGetProperty("unplanted_owned_seeds",out var seeds)&&seeds.ValueKind==JsonValueKind.Array&&seeds.GetArrayLength()>0)Group("farm");
+        // Ordering is deterministic: changing state only changes the relevant suffix.
+        return CoreNames.Concat(names.Except(CoreNames).OrderBy(n=>n,StringComparer.Ordinal)).Where(catalog.ContainsKey).ToDictionary(n=>n,n=>catalog[n]);
+    }
     public static Dictionary<string,string> Core(IReadOnlyDictionary<string,string> catalog) {
         var result=CoreNames.Where(catalog.ContainsKey).ToDictionary(k=>k,k=>catalog[k]);
         return result;
@@ -13,6 +54,8 @@ public static class AgentToolDiscovery {
         var names=args.TryGetProperty("names",out var raw)?raw.Deserialize<string[]>()??Array.Empty<string>():Array.Empty<string>();
         if(names.Length>12||names.Any(n=>n==null))throw new InvalidOperationException("lookup_requires_at_most_12_names");
         string query=args.TryGetProperty("query",out var q)?q.GetString()??"":"";
+        string group=args.TryGetProperty("group",out var g)?g.GetString()??"":"";
+        if(group.Length>0){if(!Groups.TryGetValue(group,out var members))throw new InvalidOperationException("unknown_tool_group");names=names.Concat(members).Distinct().ToArray();}
         if(query.Length>100)throw new InvalidOperationException("lookup_query_too_long");
         var keys=names.Length>0?names.Distinct().ToArray():catalog.Keys.Where(k=>query.Length>0&&(k.Contains(query,StringComparison.OrdinalIgnoreCase)||catalog[k].Contains(query,StringComparison.OrdinalIgnoreCase))).OrderBy(k=>k).Take(12).ToArray();
         var unknown=keys.Where(k=>!catalog.ContainsKey(k)).ToArray();

@@ -72,8 +72,16 @@ public sealed class AgentTurn {
     public string plan {get;set;}="";
     public string speech {get;set;}="";
     public List<AgentCall> calls {get;set;}=new();
-    public static AgentTurn Parse(string json) {
-        var turn=JsonSerializer.Deserialize<AgentTurn>(json)??throw new InvalidOperationException("empty_turn");
+    public static AgentTurn Parse(string json)=>Parse(json,out _);
+    public static AgentTurn Parse(string json,out string? formatRecovery) {
+        var bytes=System.Text.Encoding.UTF8.GetBytes(json);var reader=new Utf8JsonReader(bytes);
+        using var document=JsonDocument.ParseValue(ref reader);
+        if(document.RootElement.ValueKind!=JsonValueKind.Object)throw new InvalidOperationException("invalid_turn");
+        // Recover only observed closing delimiters after one complete JSON object.
+        // Never repair its contents, accept a second object, or discard prose.
+        string suffix=System.Text.Encoding.UTF8.GetString(bytes.AsSpan((int)reader.BytesConsumed)).Trim();
+        formatRecovery=suffix switch {""=>null,"</result>"=>"trailing_result_close","\"}"=>"trailing_quote_brace",_=>throw new JsonException("unexpected_content_after_model_turn")};
+        var turn=document.RootElement.Deserialize<AgentTurn>()??throw new InvalidOperationException("empty_turn");
         if(turn.plan==null || turn.plan.Length>1200 || turn.speech==null || turn.speech.Length>300 || turn.calls==null || turn.calls.Count is <1 or >6)
             throw new InvalidOperationException("invalid_turn");
         foreach(var c in turn.calls)

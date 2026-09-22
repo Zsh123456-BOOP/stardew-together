@@ -24,7 +24,7 @@ public sealed partial class ModEntry {
     private SharedGoal? EnsureStorageGoal(bool force=false) {
         var policy=Data.Storage;
         if(!SinglePlayerMode||!policy.AutoExpand||policy.MaxSharedChests<1)return null;
-        var existing=Data.SharedGoals.FirstOrDefault(g=>g.Purpose=="policy:shared_storage"&&g.Status=="active");if(existing!=null)return existing;
+        var existing=Data.SharedGoals.FirstOrDefault(g=>g.Completion=="placed"&&g.Status=="active"&&NativeStorageItem(ItemRegistry.Create(g.Item)));if(existing!=null)return existing;
         var stores=SharedStorage().ToArray();
         if(stores.Length>=policy.MaxSharedChests||!force&&stores.Length>0)return null;
         ReadGoalRecipes();

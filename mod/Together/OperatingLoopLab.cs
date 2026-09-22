@@ -20,6 +20,8 @@ public sealed partial class ModEntry {
         string policy=AgentJson.Encode(Data.Business);ConfigureBusiness(JsonSerializer.SerializeToElement(new{}));checks["empty_business_query_is_read_only"]=policy==AgentJson.Encode(Data.Business);
         foreach(string section in new[]{"farm_cleanup","service_hours","inventory_plan","companions","progression","business","day","schedule","recent","memory","goals","operating_candidates","sleep_review","plan","task_card"}) {ReadContextSection(JsonSerializer.SerializeToElement(new{section}));checks["readback:"+section]=true;}
         var invalid=JsonSerializer.SerializeToElement(AgentProgressCatalog(JsonSerializer.SerializeToElement(new{kind="recipe"})),AgentJson.Options);checks["invalid_catalog_kind_explained"]=invalid.GetProperty("status").GetString()=="invalid_kind";
+        checks["native_schema_catalog_complete"]=NativeToolProtocol.Definitions(AgentToolRegistry.Catalog).Length==AgentToolRegistry.Catalog.Count;
+        samples["labor_budget"]=FarmLaborBudget();
         samples["production"]=ProductionSummary();samples["coverage"]=GoalRuleCoverage(JsonSerializer.SerializeToElement(new{}));
         var coverage=JsonSerializer.SerializeToElement(samples["coverage"],AgentJson.Options).GetProperty("coverage");checks["unparsed_machine_rules_visible"]=coverage.GetProperty("unparsed").GetInt32()>0;
         var original=Data.Autoplay.Schedule;int day=Game1.dayOfMonth,time=Game1.timeOfDay;
@@ -41,6 +43,13 @@ public sealed partial class ModEntry {
         try {
             farm.objects.Remove(tile);farm.terrainFeatures[tile]=new HoeDirt(1,farm);Game1.player.toolBeingUpgraded.Value=new Axe();farmPlantPlans[field.Id]=field;
             var chest=new Chest(true);chest.modData[WorkChestRole]="output";chest.Items.Add(new MilkPail());farm.objects[chestTile]=chest;
+            int goalCount=Data.SharedGoals.Count;
+            var reuse=JsonSerializer.SerializeToElement(StartManagedWork(JsonSerializer.SerializeToElement(new{goal="storage_expand"})),AgentJson.Options);
+            checks["existing_storage_does_not_create_second_goal"]=reuse.GetProperty("stop_reason").GetString()=="existing_storage_available"&&Data.SharedGoals.Count==goalCount;
+            samples["storage_reuse"]=reuse;
+            var buy=new ScheduledAgentTask{spec=new(){id="buy-probe",tool="player.buy",args=JsonSerializer.SerializeToElement(new{shop="SeedShop",item="(O)472",count=2,max_unit_price=20,budget=40,keep_gold=100}),after=new(){"real-dependency"}}};
+            PreparePurchaseVisit(buy);
+            checks["purchase_visit_preserves_limits_and_dependencies"]=buy.spec.tool=="player.procure"&&AgentToolRegistry.Number(buy.spec.args,"budget")==40&&buy.spec.after.SequenceEqual(new[]{"real-dependency"});
             checks["milk_pail_retrievable_from_shared_chest"]=AvailableTools<MilkPail>().Any(t=>chest.Items.Contains(t));
             var spec=new ScheduledAgentTask{spec=new(){id="fixture-plant",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="plant",plan_id=field.Id})}};
             var kit=DescribeKit(spec);checks["wet_cleared_plot_does_not_require_axe_hoe_or_can"]=!kit.Needs.Any(n=>n.Label is "斧头" or "锄头" or "水壶");

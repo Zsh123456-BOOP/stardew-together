@@ -1,0 +1,83 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+namespace Together;
+
+// API names cannot contain dots. Business names and the executor stay unchanged.
+public static class NativeToolProtocol {
+    public static string Name(string tool)=>tool.Replace(".","__",StringComparison.Ordinal);
+    private static readonly HashSet<string> Numbers=new("count quality budget keep_gold max_unit_price reserve_stamina until daily_limit offset limit depth expected_revision day deadline not_before seconds x y width height radius slot required_free_slots max_food objective level profession".Split(' '));
+    private static readonly HashSet<string> Booleans=new("enabled run additional allow_new_facilities remove_trees include_trees exact_quality recipe right submit allow".Split(' '));
+    private static IEnumerable<string> Fields(string s) {
+        int depth=0,start=0;
+        for(int i=0;i<s.Length;i++){if(s[i] is '{' or '[')depth++;if(s[i] is '}' or ']')depth--;if(s[i]==','&&depth==0){yield return s[start..i];start=i+1;}}
+        if(start<s.Length)yield return s[start..];
+    }
+    private static JsonObject Shape(string contract) {
+        var props=new JsonObject();int start=contract.IndexOf('{'),end=-1,depth=0;
+        // Balance only the parameter object; prose after it is a description, not a schema.
+        depth=0;
+        if(start>=0)for(int i=start;i<contract.Length;i++){if(contract[i]=='{')depth++;else if(contract[i]=='}'&&--depth==0){end=i;break;}}
+        if(end>start)foreach(string raw in Fields(contract[(start+1)..end])) {
+            var part=raw.Trim();int colon=part.IndexOf(':');string key=(colon>=0?part[..colon]:part).Trim().TrimEnd('?');string hint=colon>=0?part[(colon+1)..].Trim():"";
+            if(key.Length==0||!key.All(c=>(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9')||c=='_'))continue;
+            JsonObject value;
+            if(hint.StartsWith("[{"))value=new(){["type"]="array",["items"]=Shape(hint)};
+            else if(hint.StartsWith('['))value=new(){["type"]="array",["items"]=new JsonObject{["type"]="string"}};
+            else if(hint.StartsWith('{'))value=Shape(hint);
+            else if(hint=="string")value=new(){["type"]="string"};
+            else if(hint=="bool")value=new(){["type"]="boolean"};
+            else if(hint=="int"||Numbers.Contains(key)&&!hint.Contains('|'))value=new(){["type"]="integer"};
+            else if(Booleans.Contains(key)&&hint=="")value=new(){["type"]="boolean"};
+            else value=new(); // Ambiguous shorthand is validated by the existing business contract.
+            props[key]=value;
+        }
+        return new(){["type"]="object",["properties"]=props,["additionalProperties"]=true};
+    }
+    public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>selected.Select(p=> {
+        var schema=Shape(p.Value);var props=schema["properties"]!.AsObject();
+        props["_plan"]=new JsonObject{["type"]="string",["maxLength"]=1200};
+        foreach(string field in new[]{"_depends_on_query","_uses_results"})props[field]=new JsonObject{["type"]="array",["items"]=new JsonObject{["type"]="string"}};
+        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+p.Value,parameters=schema}};
+    }).ToArray();
+    private static void Validate(JsonElement value,JsonElement schema) {
+        if(schema.TryGetProperty("type",out var type)) {
+            bool valid=type.GetString() switch {"object"=>value.ValueKind==JsonValueKind.Object,"array"=>value.ValueKind==JsonValueKind.Array,"integer"=>value.TryInt(),"boolean"=>value.ValueKind is JsonValueKind.True or JsonValueKind.False,"string"=>value.ValueKind==JsonValueKind.String,_=>true};
+            if(!valid)throw new InvalidOperationException("native_tool_argument_type_mismatch");
+        }
+        if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("properties",out var properties))foreach(var p in value.EnumerateObject())if(properties.TryGetProperty(p.Name,out var child))Validate(p.Value,child);
+        if(value.ValueKind==JsonValueKind.Array&&schema.TryGetProperty("items",out var item))foreach(var v in value.EnumerateArray())Validate(v,item);
+    }
+    private static bool TryInt(this JsonElement v)=>v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out _);
+    public static AgentTurn Decode(JsonElement choice,IReadOnlyDictionary<string,string> selected) {
+        if(choice.GetProperty("finish_reason").GetString()!="tool_calls")throw new InvalidOperationException("model_native_tool_reply_incomplete");
+        var message=choice.GetProperty("message");var native=message.GetProperty("tool_calls");
+        if(native.ValueKind!=JsonValueKind.Array||native.GetArrayLength() is <1 or >6)throw new InvalidOperationException("native_tool_call_count_1_to_6");
+        var map=selected.Keys.ToDictionary(Name);var ids=new HashSet<string>();var turn=new AgentTurn();
+        if(message.TryGetProperty("content",out var content)&&content.ValueKind==JsonValueKind.String)turn.plan=content.GetString()??"";
+        foreach(var call in native.EnumerateArray()) {
+            string id=call.GetProperty("id").GetString()??"";var fn=call.GetProperty("function");
+            if(id.Length==0||!ids.Add(id)||call.GetProperty("type").GetString()!="function"||!map.TryGetValue(fn.GetProperty("name").GetString()??"",out string? tool))throw new InvalidOperationException("native_tool_not_loaded_or_duplicate_id");
+            using var doc=JsonDocument.Parse(fn.GetProperty("arguments").GetString()!);var args=doc.RootElement;
+            Validate(args,JsonSerializer.SerializeToElement(Shape(selected[tool])));
+            string[] Strings(string field)=>args.TryGetProperty(field,out var value)?value.Deserialize<string[]>()??throw new InvalidOperationException("invalid_tool_references"):Array.Empty<string>();
+            if(args.TryGetProperty("_plan",out var plan)&&turn.plan.Length==0)turn.plan=plan.GetString()??"";
+            var clean=args.EnumerateObject().Where(p=>p.Name is not ("_plan" or "_depends_on_query" or "_uses_results")).ToDictionary(p=>p.Name,p=>p.Value.Clone());
+            turn.calls.Add(new(){id=id,tool=tool,args=JsonSerializer.SerializeToElement(clean),depends_on_query=Strings("_depends_on_query"),uses_results=Strings("_uses_results")});
+        }
+        return AgentTurn.Parse(AgentJson.Encode(turn)); // Validate the whole batch before any side effect.
+    }
+}
+
+// One bounded exchange is checkpointed. Queued acknowledgements never claim native completion.
+public sealed class NativeToolExchange {
+    public string Assistant {get;set;}="";
+    public Dictionary<string,string> Results {get;set;}=new();
+    public void Begin(string message){Assistant=message;Results.Clear();}
+    public void Record(string id,object result){if(Assistant.Length>0&&Calls().Any(c=>c.GetProperty("id").GetString()==id))Results[id]=AgentJson.Encode(result);}
+    private JsonElement[] Calls()=>Assistant.Length==0?Array.Empty<JsonElement>():JsonSerializer.Deserialize<JsonElement>(Assistant).GetProperty("tool_calls").EnumerateArray().Select(c=>c.Clone()).ToArray();
+    public void CancelPending(string reason){foreach(var c in Calls())if(!Results.ContainsKey(c.GetProperty("id").GetString()!))Record(c.GetProperty("id").GetString()!,new{status="not_executed",reason});}
+    public object[] Messages() {
+        var calls=Calls();if(calls.Length==0||calls.Any(c=>!Results.ContainsKey(c.GetProperty("id").GetString()!)))return Array.Empty<object>();
+        return new object[]{JsonSerializer.Deserialize<JsonElement>(Assistant)}.Concat(calls.Select(c=>(object)new{role="tool",tool_call_id=c.GetProperty("id").GetString(),content=Results[c.GetProperty("id").GetString()!]})).ToArray();
+    }
+}

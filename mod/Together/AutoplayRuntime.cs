@@ -173,6 +173,7 @@ public sealed partial class ModEntry {
                     Data.Autoplay.Record("stale_decision","请求期间日期/会话/现金/工具/种子/预留/任务发生相关变化；旧决策需重新核算，未执行其动作。");WakeAgent("stale_response");
                 } else {
                     var turn=AgentTurn.Parse(reply.Json,out var formatRecovery);if(formatRecovery!=null)Data.Autoplay.Record("decision_format_recovered",AgentJson.Encode(new{format=formatRecovery,contents_changed=false}));AcknowledgeQueries();applying=true;ModelRecovered();Data.Autoplay.Decisions++;if(Data.Autoplay.Plan!=turn.plan)Data.Autoplay.Record("plan_explanation_updated",AgentJson.Encode(new{previous=Data.Autoplay.Plan,next=turn.plan,preserved_tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id)}));Data.Autoplay.Plan=turn.plan;
+                    Data.Autoplay.ToolExchange.Begin(reply.NativeMessage);
                     Data.Autoplay.Record("decision",reply.Json);if(turn.speech.Length>0&&!SinglePlayerMode)Say(Selected,turn.speech);
                     decisionIntent="decision-"+Data.Autoplay.Decisions;
                     bool followup=false,hadToolError=false;

@@ -13,7 +13,7 @@ public sealed partial class ModEntry {
     }
     private void CancelDecisionContinuation(string reason) {
         if(deferredDecision is not {} batch)return;
-        deferredDecision=null;
+        deferredDecision=null;Data.Autoplay.ToolExchange.CancelPending(reason);
         Data.Autoplay.Record("decision_continuation_cancelled",AgentJson.Encode(new{batch.Intent,reason,remaining=batch.Calls.Skip(batch.Index),batch.After}));
     }
     private void TickDecisionContinuation() {
@@ -34,7 +34,7 @@ public sealed partial class ModEntry {
                 var call=batch.Calls[batch.Index];
                 if(call.depends_on_query.Length>0) {
                     if(!Data.Autoplay.Memory.QueryDrafts.Any(d=>d.GetProperty("call").GetRawText()==JsonSerializer.Serialize(call)))Data.Autoplay.Memory.QueryDrafts.Add(JsonSerializer.SerializeToElement(new{batch.Intent,call,day=Game1.Date.TotalDays,executed=false}));
-                    batch.Index++;batch.Followup=true;
+                    batch.Index++;batch.Followup=true;Data.Autoplay.ToolExchange.Record(call.id,new{status="draft_not_executed",reason="read_query_results_then_decide"});
                     Data.Autoplay.Record("query_dependent_draft",AgentJson.Encode(new{batch.Intent,call,reason="read_query_results_then_decide",executed=false}));continue;
                 }
                 if(QueryResult.IsRead(call.tool,call.args)==false&&call.uses_results.Length>0)Data.Autoplay.Memory.QueryDrafts.RemoveAll(d=>QueryResult.ResolvesDraft(d,call.tool,call.uses_results,Data.Autoplay.Memory.Queries));
@@ -48,7 +48,7 @@ public sealed partial class ModEntry {
                 var before=Data.Autoplay.Schedule.Tasks.Select(t=>t.spec.id).ToHashSet();
                 try {
                     if((batch.Error||barrier=="failed")&&!DecisionBarrier.CanFollowFailure(call.tool)) {
-                        batch.Index++;batch.Followup=true;
+                        batch.Index++;batch.Followup=true;Data.Autoplay.ToolExchange.Record(call.id,new{status="not_executed",reason="prior_call_failed_requires_fresh_observation"});
                         Data.Autoplay.Record("decision_dependency_not_applied",AgentJson.Encode(new{batch.Intent,call.tool,reason="prior_call_failed_requires_fresh_observation",batch.After}));continue;
                     }
                     var args=call.tool=="plan.submit"?AgentSchedule.RebaseOwnTurn(call.args,batch.Revision,Data.Autoplay.Schedule.Revision):call.args;

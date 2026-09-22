@@ -8,6 +8,10 @@ public sealed partial class ModEntry {
     internal object StartManagedWork(JsonElement args) {
         string goal=AgentToolRegistry.Text(args,"goal");
         string actor=AgentToolRegistry.Text(args,"actor_id","player");
+        if(goal=="cleanup"&&!Data.Maintenance.Orders.Any(o=>o.Id==AgentToolRegistry.Text(args,"cleanup_id")&&o.Status=="active"))
+            return new{status="blocked",stop_reason="cleanup_order_not_active",executed=false,next="先用farm.cleanup创建或恢复明确范围的清理单；播种清地用farm.plan后work.run plant",orders=Data.Maintenance.Orders.Select(o=>new{o.Id,o.Status})};
+        if(goal=="storage_expand"&&actor=="player"&&OperatingDecisionPolicy.ReuseStorage(SharedStorage().Count(),ExistingStorageAcceptsCargo(),args.TryGetProperty("additional",out var extra)&&extra.ValueKind==JsonValueKind.True))
+            return new{status="succeeded",completed=0,requested=0,stop_reason="existing_storage_available",native_progress_evidence=false,assets=FacilityAssets(),next="work.run goal=store；未新增设施，未移动物品"};
         string dependency=AgentToolRegistry.Text(args,"goal_id");
         if(dependency.Length>0) {
             RefreshFacts(true);

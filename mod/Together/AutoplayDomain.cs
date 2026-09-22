@@ -13,6 +13,7 @@ public sealed class AutoplayState {
     public FamilyPolicy Family {get;set;}=new();
     public FailureKnowledge Failures {get;set;}=new();
     public MemoryCheckpoint Memory {get;set;}=new();
+    public NativeToolExchange ToolExchange {get;set;}=new();
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
     public Action<string,string>? Archive {get;set;}
     public OperationsState Operations {get;set;}=new();

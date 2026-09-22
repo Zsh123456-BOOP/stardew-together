@@ -68,7 +68,7 @@ python3 evals/companion_control.py              # 关闭面板、停掉任务后
 
 `AgentToolRegistry.Catalog` 是单一真相源：`工具名 → 中文参数与语义契约`，约 120 项。`ExecuteCore()` 的 switch 把工具路由到各 `ModEntry` partial 方法。
 
-新增工具需要三处同步：`Catalog` 条目、`ExecuteCore` 分支、必要时 `AgentToolDiscovery.CoreNames`。描述文字本身就是模型看到的 schema，写不清就等于没接。
+新增工具需要三处同步：`Catalog` 条目、`ExecuteCore` 分支、必要时 `AgentToolDiscovery.CoreNames`。原生 API tools 由 NativeToolProtocol 从 Catalog 契约生成：明确类型映射到 JSON Schema，含歧义的参数继续由业务声明检查验证。当前使用普通 Tool Calls（未启用 Beta strict）；模型返回 tool_calls，按 API 调用 ID 回传接收回执，异步完成仍由原生事件核验。描述与参数 schema 都是运行时契约。
 
 `ExecutionContract.Receipt()` 给所有回执加统一信封：`stop_reason`、`retryable`、`resume_policy`、`resource_delta`、`native_progress_evidence`、`evidence_ids`。它**保留**各执行器的原生证据，绝不从 UI 点击或物品消失推断业务成功。
 

@@ -11,6 +11,11 @@ public sealed partial class ModEntry {
             if(!job.ExpansionTile.HasValue){job.completed=1;StopSemanticWork(job,"shared_storage_expanded",true);}
             return;
         }
+        if(SinglePlayerMode&&AutoplayRunning&&!agentLabProbe) {
+            var goal=EnsureStorageGoal(true);
+            job.evidence.Add(new{kind="storage_dependency",goal_id=goal?.Id,target_total=goal?.Count,completed=false});
+            StopSemanticWork(job,goal!=null?"storage_preparation_goal_created_not_completed":"storage_expansion_policy_or_recipe_unavailable");return;
+        }
         if(!TryStartStorageExpansion(job))StopSemanticWork(job,"storage_expansion_requires_materials_capacity_and_budget");
     }
     private bool RequestCompanionStorageSupport(SemanticJob job) {

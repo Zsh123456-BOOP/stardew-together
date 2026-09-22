@@ -23,5 +23,19 @@ class ModelContextReportTests(unittest.TestCase):
         self.assertEqual(r['formats'],{'known_suffix':1,'no_reply':1})
         self.assertEqual(r['undisclosed_calls'],[{'call_id':'one','tools':['world.read']}])
 
+    def test_native_tools_and_schema_bytes_are_counted(self):
+        call={'id':'native-1','type':'function','function':{'name':'work__run','arguments':'{"goal":"water"}'}}
+        request={'messages':[{'role':'system','content':'规则'},{'role':'assistant','content':None,'tool_calls':[call]},{'role':'tool','tool_call_id':'native-1','content':'{"status":"queued"}'},{'role':'user','content':'{"now":{"day":0,"time":1000}}'}],'tools':[{'type':'function','function':{'name':'work__run','parameters':{'type':'object'}}}]}
+        rows=[('context_budget',{'tools':['work.run'],'tool_count':1}),('request',{'body':json.dumps(request)}),('response',{'status':200,'body':json.dumps({'usage':{'prompt_tokens':150,'completion_tokens':30},'choices':[{'finish_reason':'tool_calls','message':{'content':None,'tool_calls':[call]}}]})})]
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'trace.jsonl';path.write_text('\n'.join(json.dumps(dict(call_id='native',kind=k,payload=p,utc='2026-09-22T00:00:00Z')) for k,p in rows))
+            report=summarize(path)
+        self.assertEqual(report['formats'],{'native_tool_calls':1})
+        self.assertEqual(report['tool_calls'],{'work.run':1})
+        self.assertEqual(report['per_call'][0]['native_feedback_count'],1)
+        self.assertGreater(report['per_call'][0]['tool_schema_characters'],0)
+        self.assertGreater(report['input_characters']['total'],sum(len(m.get('content') or '') for m in request['messages']))
+        self.assertEqual(report['undisclosed_calls'],[])
+
 
 if __name__=='__main__':unittest.main()

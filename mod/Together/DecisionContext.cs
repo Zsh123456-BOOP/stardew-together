@@ -9,7 +9,19 @@ public static class DecisionContext {
     private static string Text(JsonNode? n)=>n is JsonValue v&&v.TryGetValue<string>(out var s)?s:"";
     private static void Readback(JsonObject root,string key) {if(root[key]!=null)root[key]=new JsonObject{["read_via"]="context.read",["read_args"]=new JsonObject{["section"]=key}};}
     public static void Project(JsonObject root) {
+        root.Remove("native_tool_exchange");
         if(root["now"]==null)return; // Non-game prompts and legacy unit contracts are unchanged.
+        var unchanged=new Dictionary<string,string>();
+        if(root["pending_queries"] is JsonArray queries)foreach(var q in queries.OfType<JsonObject>()) {
+            string section=Text(q["args"]?["section"]);
+            if(Text(q["tool"])=="context.read"&&section is "assets" or "labor_budget" or "operating_candidates" or "prerequisites"&&root[section] is {} current&&q["result"] is {} result&&current.ToJsonString()==result.ToJsonString())
+                q["result"]=new JsonObject{["status"]="same_as_current",["current_field"]=section};
+            if(Text(q["kind"])=="query"&&q["result"] is {} snapshot) {
+                string key=Text(q["tool"])+":"+q["args"]?.ToJsonString()+":"+snapshot.ToJsonString();
+                if(unchanged.TryGetValue(key,out var prior))q["result"]=new JsonObject{["status"]="unchanged_read",["same_as_result_id"]=prior};
+                else unchanged[key]=Text(q["result_id"]);
+            }
+        }
         root["view_contract"]=new JsonObject{["schema"]=1,["facts"]="now/inventory/schedule为当前状态；pending_queries为带时间的事件摘要，不能覆盖当前状态。原文按result_id用query.read；历史计划不是当前队列。",["history"]="daily_activity为已发生事件，不累加成当前库存；memory细节通过context.read section=memory补读。"};
         root.Remove("equipped_tools");
         if(root["task_card"] is JsonObject card&&root["goal"]!=null)card.Remove("Goal");
@@ -53,11 +65,22 @@ public static class DecisionContext {
                 foreach(string field in new[]{"today","previous"})if(diary[field] is JsonArray rows)foreach(var row in rows.OfType<JsonObject>()){row.Remove("evidence");row.Remove("batches");}
             }
         }
-        if(root["progression"] is JsonObject progress&&progress["active_quests"] is JsonArray quests)foreach(var quest in quests.OfType<JsonObject>())quest.Remove("description");
+        if(root["progression"] is JsonObject progress) {
+            progress.Remove("changes");
+            if(progress["active_quests"] is JsonArray quests)foreach(var quest in quests.OfType<JsonObject>())quest.Remove("description");
+        }
         // Historical snapshots may contain whole not-found knowledge responses.
         if(root["prerequisites"] is JsonObject prerequisites&&prerequisites["development"] is JsonArray development)foreach(var row in development.OfType<JsonObject>()) {
             if(row["knowledge"] is JsonObject knowledge&&Text(knowledge["Status"])=="not_found") {row.Remove("knowledge");row["knowledge_status"]="not_found_in_current_scope";}
             row.Remove("note");
+            if(row["known"]?.ToString()=="true")row.Remove("Unlock");
+            if(Text(row["UnsupportedReason"])=="")row.Remove("UnsupportedReason");
+            row.Remove("dependencies"); // The common read instruction below supplies the same endpoint.
+        }
+        if(root["prerequisites"] is JsonObject prereq)prereq["dependency_read"]="progress.dependencies id=<development.id>；资料不代表已解锁";
+        if(root["goals"] is JsonObject goals&&goals["goals"] is JsonArray active)foreach(var goal in active.OfType<JsonObject>()) {
+            goal.Remove("history");
+            if(goal["steps"] is JsonArray steps)foreach(var step in steps.OfType<JsonObject>())foreach(string field in new[]{"Source","Owner","DependsOn"})step.Remove(field);
         }
     }
     private static HashSet<string> pendingIds(JsonObject root)=>(root["pending_queries"] as JsonArray)?.OfType<JsonObject>().Select(q=>Text(q["result_id"])).Where(id=>id.Length>0).ToHashSet()??new();

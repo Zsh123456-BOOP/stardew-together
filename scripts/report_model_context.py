@@ -15,7 +15,9 @@ def summarize(path):
         if kind=='context_budget':c['packing']=p
         elif kind=='request':
             body=json.loads(p['body']);messages=body['messages']
-            c.update(start=event['utc'],input_characters=sum(len(m['content']) for m in messages),system_characters=len(messages[0]['content']),user_characters=len(messages[-1]['content']))
+            schema_chars=len(json.dumps(body['tools'],ensure_ascii=False,separators=(',',':'))) if body.get('tools') else 0
+            message_chars=sum(len(m.get('content') or '')+ (len(json.dumps(m['tool_calls'],ensure_ascii=False,separators=(',',':'))) if m.get('tool_calls') else 0) for m in messages)
+            c.update(start=event['utc'],input_characters=message_chars+schema_chars,tool_schema_characters=schema_chars,system_characters=len(messages[0]['content']),user_characters=len(messages[-1]['content']),native_feedback_count=sum(m.get('role')=='tool' for m in messages))
             try:
                 context=json.loads(messages[-1]['content']);now=context.get('now',{})
                 c.update(observed_day=now.get('day'),observed_time=now.get('time'),location=now.get('location'))
@@ -25,12 +27,18 @@ def summarize(path):
             if body.get('choices'):
                 choice=body['choices'][0];c['finish_reason']=choice.get('finish_reason');raw=choice['message'].get('content') or ''
                 try:
-                    turn,end=json.JSONDecoder().raw_decode(raw.lstrip());suffix=raw.lstrip()[end:].strip()
-                    c['format']='strict_json' if not suffix else 'known_suffix' if suffix in ('</result>','"}') else 'unexpected_suffix'
-                    c['tools']=[x.get('tool') for x in turn.get('calls',[])]
+                    native=choice['message'].get('tool_calls')
+                    if native:
+                        c['format']='native_tool_calls' if choice.get('finish_reason')=='tool_calls' else 'incomplete_native_tool_calls'
+                        c['tools']=[x['function']['name'].replace('__','.') for x in native]
+                        if any(not isinstance(json.loads(x['function']['arguments']),dict) for x in native):c['format']='invalid_native_arguments'
+                    else:
+                        turn,end=json.JSONDecoder().raw_decode(raw.lstrip());suffix=raw.lstrip()[end:].strip()
+                        c['format']='strict_json' if not suffix else 'known_suffix' if suffix in ('</result>','"}') else 'unexpected_suffix'
+                        c['tools']=[x.get('tool') for x in turn.get('calls',[])]
                     selected=c.get('packing',{}).get('tools')
                     if selected is not None:c['not_in_current_definitions']=[t for t in c['tools'] if t not in selected]
-                except (ValueError,TypeError,AttributeError):c['format']='invalid_json'
+                except (ValueError,TypeError,AttributeError,KeyError):c['format']='invalid_json'
         elif kind=='transport_failure':c['transport_failure']=p
     rows=list(calls.values())
     for c in rows:

@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Together;
 
-public sealed record ModelReply(string Json,int Tokens,int InputTokens=0,int OutputTokens=0,int CacheHitTokens=0,string Model="");
+public sealed record ModelReply(string Json,int Tokens,int InputTokens=0,int OutputTokens=0,int CacheHitTokens=0,string Model="",string NativeMessage="");
 public sealed class ModelClient {
     private static readonly HttpClient Client=new(){Timeout=TimeSpan.FromSeconds(30)};
     public static Task<ModelReply> AskGoalWork(string keyPath,string model,object context)=>RequestKnowledge(keyPath,model,context,false,true);

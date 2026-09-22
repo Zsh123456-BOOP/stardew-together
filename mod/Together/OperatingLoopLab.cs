@@ -10,7 +10,12 @@ public sealed partial class ModEntry {
     private object OperatingLoopFixture() {
         if(playerExecutor.Busy||WorkActorBusy("player"))throw new InvalidOperationException("fixture_requires_idle_player");
         var checks=new Dictionary<string,bool>();var samples=new Dictionary<string,object>();
+        checks["unknown_resource_is_local"]=RecoverableExecutionFailure("resource_item_has_no_known_native_node_route");
         checks["invalid_fish_parameters_are_local"]=RecoverableExecutionFailure("fish_trip_invalid_count:expected_1_to_100")&&RecoverableExecutionFailure("fish_trip_invalid_item:use_native_QID");
+        foreach(string item in new[]{"(O)388","(O)390","(O)771","(O)709"}) {
+            var spec=new AgentTaskSpec{id="resource-probe",tool="work.run",args=JsonSerializer.SerializeToElement(new{goal="resource",item,count=1})};PrepareOperation(spec);
+            checks["resource_alias:"+item]=AgentToolRegistry.Text(spec.args,"goal")==ResourceRules.WorkKind(item);
+        }
         string policy=AgentJson.Encode(Data.Business);ConfigureBusiness(JsonSerializer.SerializeToElement(new{}));checks["empty_business_query_is_read_only"]=policy==AgentJson.Encode(Data.Business);
         foreach(string section in new[]{"farm_cleanup","service_hours","inventory_plan","companions","progression","business","day","schedule","recent","memory","goals","operating_candidates","sleep_review","plan","task_card"}) {ReadContextSection(JsonSerializer.SerializeToElement(new{section}));checks["readback:"+section]=true;}
         var invalid=JsonSerializer.SerializeToElement(AgentProgressCatalog(JsonSerializer.SerializeToElement(new{kind="recipe"})),AgentJson.Options);checks["invalid_catalog_kind_explained"]=invalid.GetProperty("status").GetString()=="invalid_kind";

@@ -56,6 +56,10 @@ public sealed partial class ModEntry {
         return (open,close,reason,conditions);
     }
     private void PrepareOperation(AgentTaskSpec spec) {
+        if(spec.tool=="work.run") {
+            string goal=AgentToolRegistry.Text(spec.args,"goal"),normalized=ResourceRules.NormalizeGoal(goal,AgentToolRegistry.Text(spec.args,"item"));
+            if(normalized!=goal){var copy=spec.args.Deserialize<Dictionary<string,JsonElement>>()!;copy["goal"]=JsonSerializer.SerializeToElement(normalized);spec.args=JsonSerializer.SerializeToElement(copy);}
+        }
         ValidateToolDeclaration(spec.tool,spec.args);
         CheckKnownFailure(new ScheduledAgentTask{spec=spec});
         if(SinglePlayerMode&&spec.actor!="player")throw new InvalidOperationException("stage_a_native_player_only_pending_stage_b");

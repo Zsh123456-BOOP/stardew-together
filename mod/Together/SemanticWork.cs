@@ -74,7 +74,7 @@ public sealed partial class ModEntry {
     }
     internal bool WorkActorBusy(string actor)=>semanticJobs.Values.Any(j=>(j.actor==actor||j.CargoActor==actor)&&j.status=="running");
     internal object StartSemanticWork(JsonElement args) {
-        string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=AgentToolRegistry.Text(args,"goal");
+        string actor=AgentToolRegistry.Text(args,"actor_id","player"),goal=ResourceRules.NormalizeGoal(AgentToolRegistry.Text(args,"goal"),AgentToolRegistry.Text(args,"item"));
         if(goal is not ("cleanup" or "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "pet" or "feed" or "tend" or "collect" or "process" or "withdraw" or "plant" or "resource" or "hardwood" or "stone" or "wood" or "fiber" or "water" or "refill" or "harvest" or "forage" or "clear_dead" or "store"))throw new InvalidOperationException("unsupported_work_goal");
         if(actor=="player"&&goal is "tend" or "collect" or "process")throw new InvalidOperationException("this_batch_skill_currently_requires_companion");
         if(actor!="player" && goal is "storage_expand" or "fish" or "volcano_trip" or "mine_trip" or "milk" or "shear" or "animal_collect" or "hardwood" or "withdraw" or "plant" or "refill" or "clear_dead")throw new InvalidOperationException("goal_requires_player");

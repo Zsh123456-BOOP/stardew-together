@@ -3,6 +3,7 @@ namespace Together;
 // Native 1.6.15 breakStone drop routes, used only to SELECT physical targets.
 // Random extra drops, yields, XP and progress remain entirely native.
 public static class ResourceRules {
+    public static string NormalizeGoal(string goal,string item)=>goal=="resource"&&WorkKind(item) is {Length:>0} kind?kind:goal;
     public static string WorkKind(string item)=>item switch{"(O)388"=>"wood","(O)390"=>"stone","(O)771"=>"fiber","(O)709"=>"hardwood",_=>Nodes.Values.Contains(item)?"resource":""};
     public static readonly IReadOnlyDictionary<string,string> Nodes=new Dictionary<string,string> {
         ["751"]="(O)378",["849"]="(O)378",["290"]="(O)380",["850"]="(O)380",

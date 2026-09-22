@@ -45,7 +45,7 @@ public sealed partial class ModEntry {
             var chest=new Chest(true);chest.modData[WorkChestRole]="output";chest.Items.Add(new MilkPail());farm.objects[chestTile]=chest;
             int goalCount=Data.SharedGoals.Count;
             var reuse=JsonSerializer.SerializeToElement(StartManagedWork(JsonSerializer.SerializeToElement(new{goal="storage_expand"})),AgentJson.Options);
-            checks["existing_storage_does_not_create_second_goal"]=reuse.GetProperty("stop_reason").GetString()=="existing_storage_available"&&Data.SharedGoals.Count==goalCount;
+            checks["existing_storage_does_not_create_second_goal"]=reuse.TryGetProperty("stop_reason",out var reuseReason)&&reuseReason.GetString()=="existing_storage_available"&&Data.SharedGoals.Count==goalCount;
             samples["storage_reuse"]=reuse;
             var buy=new ScheduledAgentTask{spec=new(){id="buy-probe",tool="player.buy",args=JsonSerializer.SerializeToElement(new{shop="SeedShop",item="(O)472",count=2,max_unit_price=20,budget=40,keep_gold=100}),after=new(){"real-dependency"}}};
             PreparePurchaseVisit(buy);

@@ -3,7 +3,7 @@ using Together;
 public static class NativeToolChecks {
     private static JsonElement J(object value)=>JsonSerializer.SerializeToElement(value,AgentJson.Options);
     public static void Run(Action<bool,string> check) {
-        var catalog=new Dictionary<string,string>{{"work.run","{goal:string,count?:int,additional?:bool}: 原生劳动"},{"context.read","{section:string}: 只读"},{"plan.submit","{tasks:[{id:string,args:{},after:[string]}]}: 排队"}};
+        var catalog=new Dictionary<string,string>{{"work.run","{goal:water|wood,count?:int,additional?:bool}: 原生劳动"},{"context.read","{section:string}: 只读"},{"plan.submit","{tasks:[{id:string,args:{},after:[string]}]}: 排队"}};
         object Call(string id,string name,string args)=>new{id,type="function",function=new{name,arguments=args}};
         JsonElement Choice(params object[] calls)=>J(new{finish_reason="tool_calls",message=new{role="assistant",content=(string?)null,tool_calls=calls}});
         var choice=Choice(Call("a","context__read","{\"section\":\"assets\"}"),Call("b","work__run","{\"goal\":\"wood\",\"count\":3,\"_depends_on_query\":[\"a\"],\"_plan\":\"先核验仓储\"}"));
@@ -16,6 +16,10 @@ public static class NativeToolChecks {
         check(Reject(Choice(Call("a","work__run","{} trailing")))&&Reject(J(new{finish_reason="length",message=choice.GetProperty("message")})),"malformed and truncated native responses never execute partial calls");
         var definitions=J(NativeToolProtocol.Definitions(catalog));
         check(definitions[2].GetProperty("function").GetProperty("parameters").GetProperty("properties").GetProperty("tasks").GetProperty("items").GetProperty("properties").GetProperty("args").GetProperty("type").GetString()=="object","nested task objects retained in native parameter schema");
+        check(Reject(Choice(Call("a","work__run","{\"goal\":\"social\"}")))&&Reject(Choice(Call("a","context__read","{}"))),"native enums and required fields reject unsupported goal and missing query before dispatch");
+        check(Reject(Choice(Call("a","plan__submit","{\"tasks\":[{\"id\":\"x\",\"args\":{\"goal\":\"social\"},\"after\":[],\"tool\":\"work.run\"}]}"))),"nested plan actions receive the same loaded-tool and argument validation");
+        var questTools=AgentToolDiscovery.Select(new Dictionary<string,string>{{"player.social","native social contract"},{"progress.read","read contract"}},J(new{progression=new{active_quests=new[]{new{social=new{tool="player.social",quest_id="9"}}}}}));
+        check(questTools.ContainsKey("player.social")&&!questTools.ContainsKey("progress.read"),"native quest action is discoverable without adding redundant progress reads");
         var exchange=new NativeToolExchange();exchange.Begin(choice.GetProperty("message").GetRawText());exchange.Record("a",new{status="observed",result_id="q1"});
         check(exchange.Messages().Length==0,"partial exchange never sends unmatched API tool calls");
         exchange.CancelPending("query_draft_not_executed");exchange=J(exchange).Deserialize<NativeToolExchange>()!;
@@ -28,6 +32,9 @@ public static class NativeToolChecks {
         check(OperatingDecisionPolicy.ReuseStorage(1,true,false)&&!OperatingDecisionPolicy.ReuseStorage(1,true,true)&&!OperatingDecisionPolicy.ReuseStorage(1,false,false),"storage reuses available capacity while preserving explicit expansion and real shortfall");
         var labor=J(OperatingDecisionPolicy.Labor(10,270,0,0,35,20,0));
         check(labor.GetProperty("next_dry_day_water_estimate").GetDouble()==70&&labor.GetProperty("today_uncommitted_estimate").GetDouble()==10&&labor.GetProperty("new_plot_base_till_and_water").GetDouble()==4,"next dry day care and new plot cost remain visible without hidden reserve or planting cap");
+        var observedExchange=new NativeToolExchange();observedExchange.Begin(choice.GetProperty("message").GetRawText());observedExchange.Record("a",new{result_id="query-one",result=new{storage_count=1}});observedExchange.CancelPending("draft");
+        var feedbackView=JsonSerializer.Deserialize<JsonElement>(ContextBudget.Pack(new{now=new{day=0},native_tool_exchange=observedExchange.Messages(),pending_queries=new[]{new{result_id="query-one",call_id="a",tool="context.read",kind="query",args=new{section="assets"},result=new{storage_count=1}}}},8000).Json);
+        check(feedbackView.GetProperty("pending_queries")[0].GetProperty("result").GetProperty("tool_call_id").GetString()=="a"&&AgentJson.Encode(observedExchange.Messages()).Contains("storage_count"),"actual query observation is delivered once in native feedback with a traceable outbox reference");
         var packed=ContextBudget.Pack(new{now=new{day=0},assets=new{storage=new[]{new{count=1}}},labor_budget=labor,native_tool_exchange=messages,operating_candidates=Array.Empty<object>(),pending_queries=new[]{new{result_id="first",tool="context.read",kind="query",args=new{section="operating_candidates"},result=Array.Empty<object>()}}},8000);
         var view=JsonSerializer.Deserialize<JsonElement>(packed.Json);
         check(!view.TryGetProperty("native_tool_exchange",out _)&&view.GetProperty("assets").GetProperty("storage").GetArrayLength()==1&&view.GetProperty("pending_queries")[0].GetProperty("result").GetProperty("current_field").GetString()=="operating_candidates","native history is not duplicated in user snapshot; current assets and identical query reference survive");

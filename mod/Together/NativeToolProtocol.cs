@@ -12,40 +12,48 @@ public static class NativeToolProtocol {
         for(int i=0;i<s.Length;i++){if(s[i] is '{' or '[')depth++;if(s[i] is '}' or ']')depth--;if(s[i]==','&&depth==0){yield return s[start..i];start=i+1;}}
         if(start<s.Length)yield return s[start..];
     }
+    private static (int Start,int End) ParameterSpan(string contract) {
+        int start=contract.IndexOf('{'),depth=0;
+        if(start>=0)for(int i=start;i<contract.Length;i++){if(contract[i]=='{')depth++;else if(contract[i]=='}'&&--depth==0)return(start,i);}
+        return(-1,-1);
+    }
     private static JsonObject Shape(string contract) {
-        var props=new JsonObject();int start=contract.IndexOf('{'),end=-1,depth=0;
-        // Balance only the parameter object; prose after it is a description, not a schema.
-        depth=0;
-        if(start>=0)for(int i=start;i<contract.Length;i++){if(contract[i]=='{')depth++;else if(contract[i]=='}'&&--depth==0){end=i;break;}}
+        var props=new JsonObject();var required=new JsonArray();var (start,end)=ParameterSpan(contract);
         if(end>start)foreach(string raw in Fields(contract[(start+1)..end])) {
-            var part=raw.Trim();int colon=part.IndexOf(':');string key=(colon>=0?part[..colon]:part).Trim().TrimEnd('?');string hint=colon>=0?part[(colon+1)..].Trim():"";
+            var part=raw.Trim();int colon=part.IndexOf(':');string label=(colon>=0?part[..colon]:part).Trim(),key=label.TrimEnd('?');string hint=colon>=0?part[(colon+1)..].Trim():"";
             if(key.Length==0||!key.All(c=>(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9')||c=='_'))continue;
-            JsonObject value;
+            var alternatives=hint.Split('|');JsonObject value;
+            bool words=alternatives.Length>1&&alternatives.All(a=>a.Length>0&&a.All(c=>char.IsLetterOrDigit(c)&&c<128||c=='_'));
             if(hint.StartsWith("[{"))value=new(){["type"]="array",["items"]=Shape(hint)};
             else if(hint.StartsWith('['))value=new(){["type"]="array",["items"]=new JsonObject{["type"]="string"}};
             else if(hint.StartsWith('{'))value=Shape(hint);
-            else if(hint=="string")value=new(){["type"]="string"};
-            else if(hint=="bool")value=new(){["type"]="boolean"};
-            else if(hint=="int"||Numbers.Contains(key)&&!hint.Contains('|'))value=new(){["type"]="integer"};
-            else if(Booleans.Contains(key)&&hint=="")value=new(){["type"]="boolean"};
-            else value=new(); // Ambiguous shorthand is validated by the existing business contract.
-            props[key]=value;
+            else if(hint=="bool"||Booleans.Contains(key)&&hint=="")value=new(){["type"]="boolean"};
+            else if(words&&alternatives.All(a=>int.TryParse(a,out _)))value=new(){["type"]="integer",["enum"]=JsonSerializer.SerializeToNode(alternatives.Select(int.Parse))};
+            else if(words)value=new(){["type"]="string",["enum"]=JsonSerializer.SerializeToNode(alternatives)};
+            else if(hint=="int"||Numbers.Contains(key)||System.Text.RegularExpressions.Regex.IsMatch(hint,@"^-?\d+\.\.-?\d+$"))value=new(){["type"]="integer"};
+            else if(hint=="string"||hint=="")value=new(){["type"]="string"};
+            else value=new(){["description"]=hint}; // Ambiguous shorthand stays open; business validation remains authoritative.
+            if(!value.ContainsKey("description")&&!words&&hint.Length>0&&hint is not ("int" or "bool" or "string")&&!hint.StartsWith('[')&&!hint.StartsWith('{'))value["description"]=hint;
+            props[key]=value;if(!label.EndsWith('?'))required.Add(key);
         }
-        return new(){["type"]="object",["properties"]=props,["additionalProperties"]=true};
+        return new(){["type"]="object",["properties"]=props,["required"]=required,["additionalProperties"]=true};
     }
     public static object[] Definitions(IReadOnlyDictionary<string,string> selected)=>selected.Select(p=> {
-        var schema=Shape(p.Value);var props=schema["properties"]!.AsObject();
-        props["_plan"]=new JsonObject{["type"]="string",["maxLength"]=1200};
-        foreach(string field in new[]{"_depends_on_query","_uses_results"})props[field]=new JsonObject{["type"]="array",["items"]=new JsonObject{["type"]="string"}};
-        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+p.Value,parameters=schema}};
+        var (start,end)=ParameterSpan(p.Value);
+        string description=end>start?p.Value[..start]+p.Value[(end+1)..].TrimStart(':',' '):p.Value;
+        // Shared _plan/reference metadata is described once in system and validated below.
+        // The parameter object remains open; no opaque JSON string or dispatch wrapper is used.
+        return (object)new{type="function",function=new{name=Name(p.Key),description=p.Key+" "+description,parameters=Shape(p.Value)}};
     }).ToArray();
-    private static void Validate(JsonElement value,JsonElement schema) {
+    private static void Validate(JsonElement value,JsonElement schema,string path="args") {
         if(schema.TryGetProperty("type",out var type)) {
             bool valid=type.GetString() switch {"object"=>value.ValueKind==JsonValueKind.Object,"array"=>value.ValueKind==JsonValueKind.Array,"integer"=>value.TryInt(),"boolean"=>value.ValueKind is JsonValueKind.True or JsonValueKind.False,"string"=>value.ValueKind==JsonValueKind.String,_=>true};
-            if(!valid)throw new InvalidOperationException("native_tool_argument_type_mismatch");
+            if(!valid)throw new InvalidOperationException("native_tool_argument_type_mismatch:"+path);
         }
-        if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("properties",out var properties))foreach(var p in value.EnumerateObject())if(properties.TryGetProperty(p.Name,out var child))Validate(p.Value,child);
-        if(value.ValueKind==JsonValueKind.Array&&schema.TryGetProperty("items",out var item))foreach(var v in value.EnumerateArray())Validate(v,item);
+        if(schema.TryGetProperty("enum",out var choices)&&!choices.EnumerateArray().Any(c=>c.GetRawText()==value.GetRawText()))throw new InvalidOperationException("native_tool_argument_enum_mismatch:"+path);
+        if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("required",out var required)&&required.EnumerateArray().Any(k=>!value.TryGetProperty(k.GetString()!,out _)))throw new InvalidOperationException("native_tool_required_argument_missing:"+path+":"+string.Join(",",required.EnumerateArray().Where(k=>!value.TryGetProperty(k.GetString()!,out _)).Select(k=>k.GetString())));
+        if(value.ValueKind==JsonValueKind.Object&&schema.TryGetProperty("properties",out var properties))foreach(var p in value.EnumerateObject())if(properties.TryGetProperty(p.Name,out var child))Validate(p.Value,child,path+"."+p.Name);
+        if(value.ValueKind==JsonValueKind.Array&&schema.TryGetProperty("items",out var item))foreach(var v in value.EnumerateArray())Validate(v,item,path+"[]");
     }
     private static bool TryInt(this JsonElement v)=>v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out _);
     public static AgentTurn Decode(JsonElement choice,IReadOnlyDictionary<string,string> selected) {
@@ -58,9 +66,14 @@ public static class NativeToolProtocol {
             string id=call.GetProperty("id").GetString()??"";var fn=call.GetProperty("function");
             if(id.Length==0||!ids.Add(id)||call.GetProperty("type").GetString()!="function"||!map.TryGetValue(fn.GetProperty("name").GetString()??"",out string? tool))throw new InvalidOperationException("native_tool_not_loaded_or_duplicate_id");
             using var doc=JsonDocument.Parse(fn.GetProperty("arguments").GetString()!);var args=doc.RootElement;
-            Validate(args,JsonSerializer.SerializeToElement(Shape(selected[tool])));
+            Validate(args,JsonSerializer.SerializeToElement(Shape(selected[tool])),tool);
+            if(tool=="plan.submit"&&args.TryGetProperty("tasks",out var tasks))foreach(var task in tasks.EnumerateArray()) {
+                string nested=task.GetProperty("tool").GetString()??"";
+                if(!selected.TryGetValue(nested,out var contract)||nested=="plan.submit")throw new InvalidOperationException("native_plan_tool_not_loaded");
+                Validate(task.GetProperty("args"),JsonSerializer.SerializeToElement(Shape(contract)),"plan.tasks."+nested);
+            }
             string[] Strings(string field)=>args.TryGetProperty(field,out var value)?value.Deserialize<string[]>()??throw new InvalidOperationException("invalid_tool_references"):Array.Empty<string>();
-            if(args.TryGetProperty("_plan",out var plan)&&turn.plan.Length==0)turn.plan=plan.GetString()??"";
+            if(args.TryGetProperty("_plan",out var plan)){if(plan.ValueKind!=JsonValueKind.String||plan.GetString()!.Length>1200)throw new InvalidOperationException("invalid_tool_plan");if(turn.plan.Length==0)turn.plan=plan.GetString()!;}
             var clean=args.EnumerateObject().Where(p=>p.Name is not ("_plan" or "_depends_on_query" or "_uses_results")).ToDictionary(p=>p.Name,p=>p.Value.Clone());
             turn.calls.Add(new(){id=id,tool=tool,args=JsonSerializer.SerializeToElement(clean),depends_on_query=Strings("_depends_on_query"),uses_results=Strings("_uses_results")});
         }

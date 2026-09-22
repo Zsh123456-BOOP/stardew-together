@@ -213,6 +213,7 @@ public sealed partial class ModEntry {
         FrameStage("decision_snapshot",ref stage);
         WriteBusinessLog("model_request",AgentJson.Encode(new{snapshot_characters=frozen.GetRawText().Length,tools_characters=AgentJson.Encode(AgentToolDiscovery.Select(AgentToolRegistry.Catalog,frozen)).Length,selected_tool_count=AgentToolDiscovery.Select(AgentToolRegistry.Catalog,frozen).Count,base_tool_count=AgentToolDiscovery.CoreNames.Length,reasons=agentWakeReasons.ToArray(),decisionPacing.QueriesWithoutProgress}));
         queryRequestIds=frozen.GetProperty("pending_queries").EnumerateArray().Select(q=>q.GetProperty("result_id").GetString()!).ToArray();
+        if(frozen.TryGetProperty("native_tool_exchange",out var nativeHistory))queryRequestIds=queryRequestIds.Concat(nativeHistory.EnumerateArray().Where(m=>m.GetProperty("role").GetString()=="tool").Select(m=>JsonSerializer.Deserialize<JsonElement>(m.GetProperty("content").GetString()!)).Where(r=>r.TryGetProperty("result_id",out _)).Select(r=>r.GetProperty("result_id").GetString()!)).Distinct().ToArray();
         operatingRequestBasis=FailureKnowledge.Hash(AgentJson.Encode(OperatingDecisionBasis()));
         agentRequestQueueRevision=Data.Autoplay.Schedule.Revision;agentRequestEpoch=agentGeneration;agentRequestDay=Game1.Date.TotalDays;agentNeedsDecision=false;agentWakeReasons.Clear();
         Data.Calls++;RecordUsage();agentCancellation?.Dispose();agentCancellation=new();agentWatch.Restart();

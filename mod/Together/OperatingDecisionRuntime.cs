@@ -18,7 +18,7 @@ public sealed partial class ModEntry {
     private bool ExistingStorageAcceptsCargo() {
         var cargo=Game1.player.Items.Where(i=>i!=null&&StoreCount(i)>0).ToArray();
         return SharedStorage().Any(s=> {
-            if(s.Chest.GetMutex().IsLocked()||WorkStand(s.Location,s.Tile.ToPoint())==null)return false;
+            if(s.Chest.GetMutex().IsLocked()||!PlayerExecutor.CanReachInteraction(s.Location,s.Tile.ToPoint()))return false;
             var adapter=new CapacityAdapter(s.Chest.GetActualCapacity(),s.Chest.GetItemsForPlayer(),cargo);
             return CapacityPlan.Simulate(adapter.Snapshot,cargo.Select(i=>adapter.Put(i,StoreCount(i))).ToArray()).Feasible;
         });

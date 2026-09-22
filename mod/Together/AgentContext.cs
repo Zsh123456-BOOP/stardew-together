@@ -4,7 +4,7 @@ public sealed partial class ModEntry {
     private void RecordToolAttempt(AgentCall call,JsonElement observed) {
         RecordOpportunityAdoption(call,observed);
         string? queryId=CaptureQuery(call,observed);
-        Data.Autoplay.ToolExchange.Record(call.id,queryId!=null?(object)new{status="observed",result_id=queryId,read_from="pending_queries; full result via query.read"}:ObservationContract.Summary(observed,350));
+        Data.Autoplay.ToolExchange.Record(call.id,queryId!=null?(object)new{status="observed",result_id=queryId,observed_day=StardewValley.Game1.Date.TotalDays,observed_time=StardewValley.Game1.timeOfDay,result=call.tool=="tools.lookup"?JsonSerializer.SerializeToElement(new{equipped_names=observed.TryGetProperty("definitions",out var defs)?defs.EnumerateObject().Select(p=>p.Name).ToArray():Array.Empty<string>(),definitions_in="current_api_tools"}):ObservationContract.Observation(observed,"query")}:ObservationContract.Summary(observed,350));
         string attemptId=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("task_id",out var taskId)?taskId.GetString()!:Guid.NewGuid().ToString("N");
         string actor=AgentToolRegistry.Text(call.args,"actor_id","player");
         string? cause=observed.ValueKind==JsonValueKind.Object&&observed.TryGetProperty("error",out var error)&&error.ValueKind==JsonValueKind.String?error.GetString():null;

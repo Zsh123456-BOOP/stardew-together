@@ -36,7 +36,7 @@ public static class AgentToolDiscovery {
                 Scan(p.Value);
             }
         }
-        foreach(string field in new[]{"operating_candidates","schedule","task_card","goals","pending_queries"})if(context.TryGetProperty(field,out var node))Scan(node);
+        foreach(string field in new[]{"operating_candidates","schedule","task_card","goals","progression","pending_queries"})if(context.TryGetProperty(field,out var node))Scan(node);
         if(context.TryGetProperty("equipped_tools",out var equipped)&&equipped.ValueKind==JsonValueKind.Array)foreach(var name in equipped.EnumerateArray())if(name.ValueKind==JsonValueKind.String)names.Add(name.GetString()!);
         if(context.TryGetProperty("now",out var now)) {
             if(now.TryGetProperty("day",out var day)&&day.GetInt32()==0)names.Add("player.collect_home_gifts");

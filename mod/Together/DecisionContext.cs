@@ -9,10 +9,18 @@ public static class DecisionContext {
     private static string Text(JsonNode? n)=>n is JsonValue v&&v.TryGetValue<string>(out var s)?s:"";
     private static void Readback(JsonObject root,string key) {if(root[key]!=null)root[key]=new JsonObject{["read_via"]="context.read",["read_args"]=new JsonObject{["section"]=key}};}
     public static void Project(JsonObject root) {
+        var nativeResults=new Dictionary<string,string>();
+        if(root["native_tool_exchange"] is JsonArray messages)foreach(var message in messages.OfType<JsonObject>().Where(m=>Text(m["role"])=="tool")) {
+            if(JsonNode.Parse(Text(message["content"])) is JsonObject receipt&&receipt["result"]!=null)nativeResults[Text(receipt["result_id"])]=Text(message["tool_call_id"]);
+        }
         root.Remove("native_tool_exchange");
         if(root["now"]==null)return; // Non-game prompts and legacy unit contracts are unchanged.
+        if(root["day"] is JsonObject day)foreach(string key in day.Select(p=>p.Key).ToArray())if(key is not ("day" or "time" or "location" or "budget" or "chores" or "routine" or "priorities" or "resource_targets" or "today_completed_batches"))day.Remove(key);
+        if(root["service_hours"] is JsonArray services)foreach(var service in services.OfType<JsonObject>())foreach(string key in service.Select(p=>p.Key).ToArray())if(key is not ("location" or "reason" or "opens" or "closes" or "can_enter_now" or "closed_today"))service.Remove(key);
+        if(root["goals"] is JsonObject currentGoals)currentGoals.Remove("note");
         var unchanged=new Dictionary<string,string>();
         if(root["pending_queries"] is JsonArray queries)foreach(var q in queries.OfType<JsonObject>()) {
+            if(nativeResults.TryGetValue(Text(q["result_id"]),out string? callId)){q["result"]=new JsonObject{["delivered_in"]="tool_message",["tool_call_id"]=callId};continue;}
             string section=Text(q["args"]?["section"]);
             if(Text(q["tool"])=="context.read"&&section is "assets" or "labor_budget" or "operating_candidates" or "prerequisites"&&root[section] is {} current&&q["result"] is {} result&&current.ToJsonString()==result.ToJsonString())
                 q["result"]=new JsonObject{["status"]="same_as_current",["current_field"]=section};
@@ -35,7 +43,7 @@ public static class DecisionContext {
             int Number(JsonObject o,string key)=>o[key] is JsonValue v&&v.TryGetValue<int>(out var n)?n:0;
             root["farm_work"]=new JsonObject{["location"]="Farm",["revision"]=Copy(cleanup["revision"]),["resources"]=JsonSerializer.SerializeToNode(areas.OfType<JsonObject>().GroupBy(r=>Text(r["kind"])).Select(g=>new{kind=g.Key,total=g.Sum(r=>Number(r,"count")),routine_allowed=g.Sum(r=>Number(r,"routine_allowed"))})),["orders"]=Copy(cleanup["orders"]),["note"]="农场统计不是当前位置；跨图劳动明确location。树木/保留区仍按工具契约核验。"};
         }
-        foreach(string key in new[]{"farm_cleanup","companions","service_hours"})Readback(root,key);
+        foreach(string key in new[]{"farm_cleanup","companions"})Readback(root,key);
         if(root["pending_queries"] is JsonArray pending)foreach(var q in pending.OfType<JsonObject>()) {
             q.Remove("note");q.Remove("delivery");q.Remove("details");
             string tool=Text(q["tool"]),kind=Text(q["kind"]),section=Text(q["args"]?["section"]);

@@ -6,6 +6,12 @@ internal sealed record RouteLeg(GameLocation Location,Point Entry,Warp Exit);
 internal sealed record RouteResolution(Warp? First,Point Entry,int Transitions,string Reason,object[] Evidence) {public bool Reachable=>Reason=="reachable";}
 public sealed partial class PlayerExecutor {
     internal static Func<GameLocation,Warp,string?>? DoorAccess;
+    internal static bool CanReachInteraction(GameLocation location,Point tile) {
+        var route=ResolveRoute(Game1.currentLocation,location.NameOrUniqueName);
+        if(!route.Reachable)return false;
+        var reachable=ReachableTiles(location,route.Entry,out bool exhausted);
+        return !exhausted&&new[]{new Point(tile.X,tile.Y+1),new(tile.X-1,tile.Y),new(tile.X+1,tile.Y),new(tile.X,tile.Y-1)}.Any(p=>Passable(location,p)&&reachable.ContainsKey(p));
+    }
     // Bounded by actual map cells; a search budget is never a physical obstruction.
     private static readonly Dictionary<string,(DateTime At,Dictionary<Point,int> Cells,bool Exhausted)> routeCells=new();
     private static Dictionary<Point,int> ReachableTiles(GameLocation l,Point start,out bool exhausted) {

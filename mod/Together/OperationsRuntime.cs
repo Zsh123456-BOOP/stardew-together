@@ -6,20 +6,16 @@ public sealed partial class ModEntry {
     private string operationWindowStamp="";
     private string launchingIntent="";
     private object[] OperationCommitments()=>Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).GroupBy(t=>t.spec.intent_id).Select(g=>(object)new{intent_id=g.Key,cash=IntentCash(g),tasks=g.Select(t=>t.spec.id).ToArray()}).ToArray();
-    private int IntentCash(IEnumerable<ScheduledAgentTask> tasks) {
-        var rows=tasks.ToArray();long sum=0;
-        foreach(var t in rows.Where(t=>t.state=="queued"&&t.spec.tool is "player.buy" or "player.procure")) {
-            int budget=AgentToolRegistry.Number(t.spec.args,"budget",0),unit=AgentToolRegistry.Number(t.spec.args,"max_unit_price",budget),count=AgentToolRegistry.Number(t.spec.args,"count",1);
-            sum+=Math.Min((long)budget,(long)Math.Max(0,unit)*Math.Max(0,count));
-        }
-        // Building/animal native chains already declare one aggregate reservation.
-        if(rows.Any(t=>Data.Business.Tasks.Contains(t.spec.id)))sum=Math.Max(sum,Data.Business.ActiveReservation);
-        return (int)Math.Clamp(sum,0,int.MaxValue);
+    private int IntentCash(IEnumerable<ScheduledAgentTask> tasks)=>(int)Math.Min(int.MaxValue,tasks.Where(t=>!t.Terminal).Sum(t=>(long)Math.Max(0,NativeCosts.PurchaseCap(t.spec.tool,t.spec.args)-NativeCommandSpent(t.command_id))));
+    private int OtherCommittedCash(string intent) {
+        var mine=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.intent_id==intent).ToArray();
+        bool development=Data.Business.Activity==Data.Business.PendingAsset&&mine.Any(t=>Data.Business.Tasks.Contains(t.spec.id));
+        return (int)Math.Min(int.MaxValue,Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.intent_id!=intent).GroupBy(t=>t.spec.intent_id).Sum(g=>(long)IntentCash(g))+Data.Business.UnverifiedCash.Values.Sum(v=>(long)v)+(development?0:UnscheduledDevelopmentCash()));
     }
-    private int OtherCommittedCash(string intent)=>Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.intent_id!=intent).GroupBy(t=>t.spec.intent_id).Sum(g=>IntentCash(g));
-    private bool OperationActorOccupied(string actor)=>WorkActorBusy(actor)||(actor=="player"&&playerExecutor.Busy)||Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor==actor&&(t.state is "running" or "needs_review"||t.state=="queued"&&t.spec.day==Game1.Date.TotalDays&&t.spec.not_before<=Game1.timeOfDay&&t.wait_reason==null&&t.spec.after.All(id=>Data.Autoplay.Schedule.Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded"))));
+    private bool OperationActorOccupied(string actor)=>WorkActorBusy(actor)||(actor=="player"&&playerExecutor.Busy)||Data.Autoplay.Schedule.Covers(actor,Game1.Date.TotalDays,Game1.timeOfDay);
     private bool FarmerHarvestCreditNeeded()=>Game1.player.questLog.OfType<StardewValley.Quests.ItemHarvestQuest>().Any(q=>!q.completed.Value);
 
+    private bool ServiceAvailableNow(string subject){var w=ServiceWindow(subject);return w.Reason=="available"&&Game1.timeOfDay>=w.Open&&Game1.timeOfDay<w.Close;}
     private string ServiceSubject(string tool,JsonElement args) {
         if(tool=="player.social")return Game1.getCharacterFromName(AgentToolRegistry.Text(args,"npc"))?.currentLocation?.NameOrUniqueName??"";
         if(tool is not ("player.service" or "player.procure" or "player.travel" or "player.acquire_animal" or "player.upgrade_house"))return "";
@@ -69,7 +65,7 @@ public sealed partial class ModEntry {
         else if(spec.id.StartsWith("farm-")||spec.id.StartsWith("invest-")){spec.source="investment";spec.priority=60;}
         else if(spec.id.StartsWith("business-")){spec.source="production";spec.priority=65;}
         if(spec.source=="goal")spec.priority=70;
-        if(spec.tool=="player.sleep"){spec.priority=90;spec.sleep_review_day=Game1.Date.TotalDays;spec.sleep_review_time=Game1.timeOfDay;spec.sleep_review_progress=Data.Autoplay.VerifiedActions;}
+        if(spec.tool=="player.sleep"){spec.priority=90;spec.sleep_review_day=Game1.Date.TotalDays;spec.sleep_review_time=Game1.timeOfDay;spec.sleep_review_progress=Data.Autoplay.VerifiedActions;spec.sleep_review_basis=SleepDecisionBasis();}
         if(spec.actor!="player"&&spec.tool=="work.run"&&AgentToolRegistry.Text(spec.args,"goal")=="harvest"&&FarmerHarvestCreditNeeded()) {
             var args=spec.args.Deserialize<Dictionary<string,JsonElement>>()!;args["actor_id"]=JsonSerializer.SerializeToElement("player");spec.args=JsonSerializer.SerializeToElement(args);spec.actor="player";
             spec.purpose="由Farmer执行原生收获，核验任务归属；"+spec.purpose;
@@ -79,7 +75,7 @@ public sealed partial class ModEntry {
         Data.Autoplay.Record("intent_proposed",AgentJson.Encode(new{spec.id,spec.intent_id,spec.source,spec.actor,spec.tool,spec.purpose,spec.after,spec.not_before,spec.deadline,spec.priority}));
     }
     private void PrepareServiceWindows() {
-        Data.Autoplay.Schedule.Prepare=PrepareOperation;
+        Data.Autoplay.Schedule.Prepare=PrepareOperation;Data.Autoplay.Schedule.Finished=CaptureScheduledOutcome;
         string stamp=$"{agentSaveEpoch}:{Game1.Date.TotalDays}:{Game1.timeOfDay}:{Data.Autoplay.Schedule.Revision}";
         if(operationWindowStamp==stamp)return;operationWindowStamp=stamp;
         foreach(var task in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="queued"&&t.spec.day==Game1.Date.TotalDays).ToArray()) {
@@ -93,6 +89,7 @@ public sealed partial class ModEntry {
                     // No native action ran. End this attempt, retaining its intent
                     // for fresh planning, rather than inventing a 26:00 opening.
                     var receipt=new{status="blocked",stop_reason="service_window_unavailable_today",reason,subject,opens=window.Open,closes=window.Close,task.spec.deadline,executed=false,completed=0,note="本次未执行；今天已无有效服务窗口。请改派独立工作或另日按真实条件重新安排。"};
+                    LearnServiceConstraint(task,"blocked","service_window_unavailable_today");
                     Data.Autoplay.Schedule.Finish(task,"blocked","service_window_unavailable_today",AgentJson.Encode(receipt));
                     Data.Autoplay.Record("service_window_blocked",AgentJson.Encode(new{task.spec.id,task.spec.intent_id,receipt}));WakeAgent("service_window_unavailable_today");continue;
                 }
@@ -118,10 +115,9 @@ public sealed partial class ModEntry {
         ValidateToolDeclaration(tool,args);
         if(!AutoplayRunning)return;
         GuardCapacity("player",tool,args);
-        if(tool is "player.buy" or "player.procure") {
+        if(NativeCosts.PurchaseCap(tool,args)>0) {
             string intent=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running"&&t.spec.actor=="player")?.spec.intent_id??launchingIntent;
-            int budget=AgentToolRegistry.Number(args,"budget",0),unit=AgentToolRegistry.Number(args,"max_unit_price",budget),count=AgentToolRegistry.Number(args,"count",1);
-            long need=Math.Min((long)budget,(long)Math.Max(0,unit)*Math.Max(0,count));
+            int need=NativeCosts.PurchaseCap(tool,args);
             if(need>Math.Max(0,Game1.player.Money-OtherCommittedCash(intent)-AgentToolRegistry.Number(args,"keep_gold",0)))throw new InvalidOperationException("cash_committed_to_other_approved_work");
         }
         string subject=ServiceSubject(tool,args);if(subject.Length==0)return;
@@ -132,9 +128,9 @@ public sealed partial class ModEntry {
     private void LearnServiceConstraint(ScheduledAgentTask task,string state,string? error) {
         string subject=ServiceSubject(task.spec.tool,task.spec.args);if(subject.Length==0)return;
         if(state=="succeeded"){Data.Autoplay.Operations.Constraints.RemoveAll(c=>c.Subject==subject);return;}
-        if(error is not ("native_service_did_not_open_or_wrong_shop" or "native_service_unavailable_check_hours_and_owner" or "service_branch_unavailable_read_menu" or "shop_closed" or "service_conditions_unchanged"))return;
+        if(error is not ("native_service_did_not_open_or_wrong_shop" or "native_service_unavailable_check_hours_and_owner" or "service_branch_unavailable_read_menu" or "shop_closed" or "service_conditions_unchanged" or "service_window_unavailable_today"))return;
         var window=ServiceWindow(subject);
-        var fact=new ServiceConstraint{Subject=subject,Reason=error,Condition=window.Conditions,Day=Game1.Date.TotalDays,RetryTime=Game1.timeOfDay<window.Open?window.Open:2600,Evidence=task.spec.id};
+        var fact=new ServiceConstraint{Subject=subject,Reason=error=="service_window_unavailable_today"?window.Reason:error,Condition=window.Conditions,Day=Game1.Date.TotalDays,RetryTime=Game1.timeOfDay<window.Open?window.Open:2600,Evidence=task.spec.id};
         Data.Autoplay.Operations.Observe(fact);Data.Autoplay.Record("constraint_created",AgentJson.Encode(fact));
     }
 }

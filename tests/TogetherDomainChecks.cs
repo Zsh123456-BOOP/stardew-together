@@ -3,6 +3,9 @@ using Together;
 
 if(args.Length==2&&args[0]=="--memory-replay"){MemoryRebuildChecks.Replay(args[1]);return;}
 
+if(args.Length==2&&args[0]=="--observation-replay"){OperatingLoopChecks.Replay(args[1]);return;}
+OperatingLoopChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
+
 MemoryRebuildChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});
 
 LocalWalkChecks.Run((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS: "+label);});

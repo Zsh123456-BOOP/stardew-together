@@ -13,6 +13,7 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
+        ["context.read"]="{section:farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card}: 按上下文省略指针补读完整字段；只读，结果可经query.read续读。",
         ["tools.lookup"]="{names?:[工具名最多12个],query?:用途或名称}: 查询完整工具定义；无参数返回名称索引。常用工具未覆盖的畜牧、加工、建造、社交、任务等先查定义再调用。",
         ["beach.read"]="{}: 海滩桥梁和老水手实际状态。",
         ["player.beach"]="{mode:bridge|pendant,budget?:int,keep_gold?:int}: 自动走到海滩修桥或购买美人鱼吊坠，原生消耗300木材或5000金；等待原生动画，核验结果。",
@@ -27,7 +28,7 @@ public sealed class AgentToolRegistry {
         ["farm.maintenance"]="{enabled?:bool,scope?:string}: 农场整理摘要（分类计数、体力估算、保留物、剩余订单），省略scope不返回坐标；enabled暂停/恢复已有整理订单，不自动创建新的整理任务。scope返回最多32个详细目标。",
         ["farm.zones"]="{zones?:[{id:string,kind:crop|production|woodland|pasture|reserve,x:int,y:int,width:int,height:int,allow_trees?:bool}]}: 查询或原子替换农场分区列表，不重叠；先map.read观察。林区/牧草/保留区不清理；只有crop/production可授权树木整理。修改时玩家须空闲。",
         ["farm.cleanup"]="{request_id:string,mode?:run|pause,scopes?:[roads|courtyard|fields|general|all|zone:分区ID],reserve_stamina?:0..270,until?:HHMM<=2200,daily_limit?:0..120,remove_trees?:bool}: 保存持久清理目标，自动分批选目标、工具、寻路、存货续做；默认清杂草/树枝/小石头，树木须分区allow_trees且remove_trees。默认不设目标数上限，until默认18点；体力预算由模型指定；程序告知待办农务消耗，不叠加隐藏预留；daily_limit仅用于明确指定的每日目标上限，0不设。为播种清地应直接使用farm.plan→work.run plant，不另建竞争清理单。跨天保留剩余量并暂停，模型用相同参数和request_id恢复后续作。相同request_id必须同参数，不重复创建；pause保留进度。AI暂停时不执行。当前执行角色为玩家，伙伴仍可独立承担已有农务/资源任务。",
-        ["farm.production"]="{action?:read|uses|select|make|surplus,item?:QID,offset?:int,id?:候选id,recipe?:配方id,count?:int,request_id?:string,allow?:bool,reason?:string}: read查统一生产/预留；uses查材料用途与解锁(每页12)；select选择一项投资或maintain不扩建；make按已知配方建立持续依赖目标；surplus明确授权今日材料余量出货，预留不解除。决策需reason。",
+        ["farm.production"]="{action?:read|uses|coverage|select|make|surplus,item?:QID,offset?:int,id?:候选id,recipe?:配方id,count?:int,request_id?:string,allow?:bool,reason?:string}: read按offset查生产/预留和准备方向；coverage查原生规则及未适配原因；uses查材料用途与解锁(每页12)；select选择一项投资或maintain不扩建；make按已知配方建立持续依赖目标；surplus明确授权今日材料余量出货，预留不解除。决策需reason。",
         ["farm.operating"]="{direction?:balanced|cashflow|low_labor,player_water_limit?:-1或0..9999,partner_water_limit?:0..96,reason?:string}: 设置统一经营方向和劳动容量，返回可用现金与实际/在途材料缺口",
         ["companion.configure"]="{enabled?:bool,name?:string,appearance?:Leah|Alex|Sam|Maru|Sebastian|Abigail}: 创建/配置自定义伙伴；外观仅素材引用，不招募村民",
         ["farm.business"]="{enabled?:bool,expand?:bool,budget_per_day?:-1或非负整数,keep_gold?:int,max_animals?:0..96,max_machines?:0..200,feed_days?:2..28}: 可选持续经营例行（并非工具权限开关）；budget_per_day默认-1无每日上限，keep_gold默认0。模型可以直接调用采购/生产工具而不启用此例行。日常照料、种植投资、饲料补给、机器投料收货、余量销售、按供给扩建畜舍与加工产能；预算共享，正常时间，不追逐成就",
@@ -45,7 +46,7 @@ public sealed class AgentToolRegistry {
         ["player.eat"]="{slot:int}: 吃真实背包的一份普通食物，原生动画/恢复/消耗核验；保留物由高层补给政策决定",
         ["player.craft"]="{recipe:原生配方名,count?:1..99}: 连续制作指定批次，自动原生菜单/材料消耗/成品入包/统计核验；只用背包原料，缺料需先取货",
         ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
-        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购。必须先启用投资政策，不直接扣钱或生成物品",
+        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
         ["shop.read"]="{offset?:int,limit?:1..100}: 读取当前已打开原生商店完整分页的实际货品、价格、货币、条件和库存；不远程打开商店",
         ["crab_pots.read"]="{}: 自有蟹笼、水域类型、真实产物和缺饵状态",
         ["player.crab_pots"]="{mode:place|tend,location?:地图ID,item?:目标蟹笼鱼QID,bait?:鱼饵QID,count?:0..40}: 算法选择合适海/淡水岸边放置真实蟹笼；tend收取原生产物并补饵，0处理当前地图全部。核验放置/投饵消耗与玩家捕获统计；须原生过夜生成捕获",
@@ -127,7 +128,7 @@ public sealed class AgentToolRegistry {
         ["inventory.capacity"]="{}: 背包/共享仓库逐格物品、可处置数量、保护量、腾格预测和有效播种方案。只是查询，未销毁。",
         ["player.discard"]="{source:backpack|storage,location?:地图,x?:箱子横坐标,y?:箱子纵坐标,slot:int,item:QID,quality:int,count:int,expected_stack:int,reason:string}: 自主选择原生垃圾桶销毁未预留普通物品，不可恢复。先inventory.capacity取实时槽位与堆数，状态变化拒绝。部分销毁通常不腾格；仓库销毁仅腾仓库格。工具/任务物/已承诺材料受保护。仓库自动走近打开，通过原生菜单取出销毁；记录完整前后快照与销毁数量。",
         ["inventory.read"]="{}: 玩家背包slot、ID、数量、工具；含手持物",
-        ["query.read"]="{id:string,offset?:int,count?:int}: 读取查询回执后续页，沿next使用；原始完整结果保留，不重复执行原查询",
+        ["query.read"]="{id?:string,offset?:int,count?:1..40}: 不传id分页列出未交付观察，传id读取查询回执后续页，沿next使用；原始完整结果保留，不重复执行原查询",
         ["knowledge.search"]="{query?:string,queries?:string[],kind?:string,id?:string,purpose?:string,limit?:int,offset?:int}: 模型自选词查询；精确ID优先，按百科范围筛选，批量最多6词；结果带来源/匹配原因/续读入口。百科售价不是原生采购报价",
         ["knowledge.get"]="{query?:string,id?:string}: 百科详细证据与实时条件",
         ["goal.requirements"]="{id:string}: 已有百科物品/配方条目的需求与现有库存",
@@ -195,6 +196,7 @@ public sealed class AgentToolRegistry {
             "day.routine"=>mod.ConfigureDailyRoutine(args),"day.read"=>mod.AgentDailyRead(),"day.plan"=>mod.AgentDailyPlan(args),
             "crab_pots.read"=>PlayerExecutor.ReadCrabPots(),"fishing.options"=>mod.ReadFishingOptions(args),"world.read"=>mod.AgentWorld(),"map.read"=>ReadMap(args),"inventory.read"=>Inventory(),"inventory.capacity"=>mod.ReadCapacityOptions(),
             "query.read"=>mod.ReadQueryResult(args),
+            "context.read"=>mod.ReadContextSection(args),
             "knowledge.search"=>mod.SearchPlanningKnowledge(args),
             "knowledge.get" or "goal.requirements"=>mod.Knowledge.Query(Text(args,"query"),Text(args,"id") is {Length:>0} id?id:null),
             "goal.rules"=>mod.GoalRuleCoverage(args),"goal.run"=>mod.AgentGoalRun(args),"goal.create"=>mod.AgentGoalCreate(args),"goal.prepare"=>mod.AgentGoalPrepare(args),

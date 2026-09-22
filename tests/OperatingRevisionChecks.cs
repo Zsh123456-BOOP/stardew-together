@@ -44,7 +44,7 @@ static class OperatingRevisionChecks {
         check(ReinvestmentReview.Needed(100,1462,21,21,0,0,400,900),"settled revenue reopens investment within the remaining daily budget");
         check(ReinvestmentReview.Needed(100,100,21,6,0,0,400,1000),"harvested land reopens a previously finished plan");
         check(!ReinvestmentReview.Needed(100,100,21,21,0,0,400,1000)&&!ReinvestmentReview.Needed(100,1462,21,21,0,0,0,1000),"unchanged facts and exhausted budget cannot repeat a shop trip");
-        check(!ReinvestmentReview.Needed(100,1462,21,6,0,0,400,1600),"late returns do not reopen planting past its investment window");
+        check(ReinvestmentReview.Needed(100,1462,21,6,0,0,400,1600)&&!ReinvestmentReview.Needed(100,1462,21,6,0,0,400,2600),"afternoon reinvestment is reviewed by actual service and return feasibility rather than a fixed 15:00 cutoff");
         var grid=(from x in Enumerable.Range(0,5) from y in Enumerable.Range(0,5) select new LayoutCell(new(x,y),x is >0 and <3&&y is >0 and <3,true,true,true,true,true,0)).ToList();
         var growth=grid.Where(c=>c.Plantable).ToDictionary(c=>c.Tile,c=>4);
         var shortCrop=new EconomySeed("short",0,new("short","shop","shop",0,20,99,1),35,-1,28,false,0,0,growth,new());

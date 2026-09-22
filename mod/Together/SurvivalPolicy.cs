@@ -22,3 +22,7 @@ public sealed class SurvivalState {
     public static bool NightGuard(int time,bool effectivePlan,int returnMinutes=60)=>DailyBudget.Minutes(time)>=GuardMinute(returnMinutes)&&!effectivePlan;
     public static bool Fatal(string code)=>code.Contains("conservation")||code.Contains("world_inconsistent")||code.Contains("day_transition_not_verified")||code.Contains("logging_failed")||code.Contains("save_failed")||code.Contains("actor_restore");
 }
+
+public static class ModelFailurePolicy {
+    public static string Classify(Exception e,bool applying=false)=>e.Message.StartsWith("context_essential_state_exceeds_budget")?"local_context_pack":applying?"decision_apply":e is System.Net.Http.HttpRequestException or TaskCanceledException||e.Message.StartsWith("model_http_")?"transport":"response_schema";
+}

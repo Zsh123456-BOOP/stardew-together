@@ -116,11 +116,13 @@ public sealed partial class ModEntry {
         string status=AgentToolRegistry.Text(result,"status"),error=AgentToolRegistry.Text(result,"error");
         if(error.Length==0&&status is not ("failed" or "blocked" or "rejected"))return result;
         var obj=JsonNode.Parse(result.GetRawText())!.AsObject();
-        try {obj["alternatives"]=JsonSerializer.SerializeToNode(OperatingOpportunities().Take(8),AgentJson.Options);}
-        catch(Exception e){obj["alternatives"]=new JsonArray();obj["alternatives_unavailable"]=e.GetType().Name;Data.Autoplay.Record("alternatives_observation_error",e.Message);}
-        if(error.StartsWith("parameter_service_location_mismatch")||error is "shop_closed" or "no_reachable_native_service_counter")obj["service_hours"]=JsonSerializer.SerializeToNode(KnownServiceHours());
-        if(error.Contains("social")||error.Contains("npc_")||error.Contains("route_access"))obj["social_access"]=JsonSerializer.SerializeToNode(SocialAvailability());
-        if(error.Contains("capacity")||error.Contains("inventory")||error.Contains("known_failure"))obj["capacity_recovery"]=JsonSerializer.SerializeToNode(ReadCapacityOptions(),AgentJson.Options);
+        // Recomputing every route/NPC/capacity option here multiplied one failure
+        // into a seconds-long schedule frame and a recursive receipt. The next
+        // decision snapshot observes alternatives once; explicit reads stay available.
+        obj["alternatives"]=JsonSerializer.SerializeToNode(new{read_via="context.read",args=new{section="operating_candidates"},reason="fresh_alternatives_in_next_decision"});
+        if(error.Contains("service")||error.Contains("shop"))obj["service_hours"]=JsonSerializer.SerializeToNode(new{read_via="services.read"});
+        if(error.Contains("social")||error.Contains("npc_")||error.Contains("route_access"))obj["social_access"]=JsonSerializer.SerializeToNode(new{read_via="services.read",args="npc=原任务人物"});
+        if(error.Contains("capacity")||error.Contains("inventory"))obj["capacity_recovery"]=JsonSerializer.SerializeToNode(new{read_via="inventory.capacity"});
         obj["protection_reasons"]=JsonSerializer.SerializeToNode(ProtectionReasons());return JsonSerializer.SerializeToElement(obj);
     }
     private string[] ProtectionReasons() {

@@ -4,6 +4,7 @@ namespace Together;
 public sealed class MemoryCheckpoint {
     public List<JsonElement> QueryDrafts {get;set;}=new();
     public List<QueryResult> Queries {get;set;}=new();
+    public Dictionary<string,string> QueryEvidence {get;set;}=new();
     public int SchemaVersion {get;set;}=2;
     public List<MemoryReflection> Reflections {get;set;}=new();
     public List<MemoryDocument> Index {get;set;}=new();
@@ -148,11 +149,21 @@ public sealed class MemoryArchive {
         try{return File.Exists(file)?JsonSerializer.Deserialize<ArchivedMemory>(File.ReadAllText(file)):null;}
         catch(IOException){return null;}catch(JsonException){return null;}
     }
-    public object Evidence(string id,int offset=0) {
+    private ArchivedMemory SavedEntry(string id) {
         var parts=id.Split(':');
         if(parts.Length!=2||!int.TryParse(parts[1],out int sequence)||sequence<1||!checkpoint.Cursors.TryGetValue(parts[0],out int cursor)||sequence>cursor||parts[0].Any(c=>!char.IsLetterOrDigit(c)&&c!='-'))throw new InvalidOperationException("memory_evidence_outside_saved_timeline");
         var entry=Find(parts[0],sequence)??throw new InvalidOperationException("memory_evidence_missing");
         if(entry.ActorGeneration!=checkpoint.ActorGenerations.GetValueOrDefault(entry.Actor))throw new InvalidOperationException("memory_evidence_forgotten");
+        return entry;
+    }
+    public QueryResult Query(string evidence,string resultId) {
+        var entry=SavedEntry(evidence);
+        if(entry.Kind is not ("query_completed" or "query_archived"))throw new InvalidOperationException("query_evidence_kind_mismatch");
+        var query=JsonSerializer.Deserialize<QueryResult>(entry.Text)??throw new InvalidOperationException("query_evidence_missing");
+        if(query.Id!=resultId)throw new InvalidOperationException("query_evidence_identity_mismatch");return query;
+    }
+    public object Evidence(string id,int offset=0) {
+        var entry=SavedEntry(id);
         if(offset<0||offset>entry.Text.Length)throw new InvalidOperationException("invalid_evidence_offset");
         int length=Math.Min(4000,entry.Text.Length-offset);
         return new{entry.Id,entry.Actor,entry.Kind,entry.Day,text=entry.Text.Substring(offset,length),offset,total_characters=entry.Text.Length,next_offset=offset+length<entry.Text.Length?(int?)(offset+length):null};

@@ -94,6 +94,8 @@ public sealed partial class ModEntry {
             warehouse=SharedStorage().Select(s=>new{location=s.Location.NameOrUniqueName,x=(int)s.Tile.X,y=(int)s.Tile.Y,items=s.Chest.GetItemsForPlayer().Where(i=>i!=null).Select(i=>new{id=i.QualifiedItemId,name=i.DisplayName,count=i.Stack,quality=i.Quality}).ToArray()}).ToArray(),
             transferable_to_warehouse=Game1.player.Items.Where(i=>i!=null).Sum(StoreCount),
             note="carried才是当前随身背包；warehouse不占背包格。日记只记录过去事件，不能当作当前库存；没有可转移物且空格满足要求时无需存货。"},
+        tools=Game1.player.Items.OfType<Tool>().Select(t=>new{id=t.QualifiedItemId,state="carried",location=Game1.currentLocation.NameOrUniqueName}).Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().OfType<Tool>().Select(t=>new{id=t.QualifiedItemId,state=s.Chest.GetMutex().IsLocked()?"storage_busy":"retrievable",location=s.Location.NameOrUniqueName}))).ToArray(),
+        tool_upgrade=Game1.player.toolBeingUpgraded.Value is {} upgraded?new{id=upgraded.QualifiedItemId,state="in_upgrade",days_remaining=Game1.player.daysLeftForToolUpgrade.Value}:null,
         preparation=preparationSummary,
         player_free_slots=CapacityAdapter.Of(Game1.player).FreeSlots,
         storage_trigger="只在后续实际产物放不下、必要材料交接或收工整理时存箱；有可叠加空间就继续。下游工作需要多个空格时可提前整理，使用required_free_slots。",

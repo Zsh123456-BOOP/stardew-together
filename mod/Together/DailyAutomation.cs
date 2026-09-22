@@ -54,7 +54,7 @@ public sealed partial class ModEntry {
                 }
                 bool needed=goal switch{"harvest"=>Facts.RipeCrops>0,"water"=>Facts.DryCrops>0,"pet"=>Facts.AnimalsUnpetted>0,"feed"=>Facts.FeedNeeded>0,_=>Game1.getFarm().getAllFarmAnimals().Any()};
                 if(!needed)continue;
-                if(actor=="player"&&(goal=="milk"&&!Game1.player.Items.Any(i=>i is StardewValley.Tools.MilkPail)||goal=="shear"&&!Game1.player.Items.Any(i=>i is StardewValley.Tools.Shears))){skips.Add(new{goal,reason="animal_care_tool_missing"});continue;}
+                if(actor=="player"&&(goal=="milk"&&!AvailableTool<StardewValley.Tools.MilkPail>()||goal=="shear"&&!AvailableTool<StardewValley.Tools.Shears>())){skips.Add(new{goal,reason="animal_care_tool_missing"});continue;}
                 tasks.Add(new(){id=$"routine-{Game1.Date.TotalDays}-{policy.Version}-{goal}",actor=actor,tool="work.run",args=JsonSerializer.SerializeToElement(new{actor_id=actor,goal,location="Farm",count=0,until=1800}),purpose="按持续分工完成今日"+goal,day=Game1.Date.TotalDays,deadline=1800});
             }
             if(tasks.Count>0) {

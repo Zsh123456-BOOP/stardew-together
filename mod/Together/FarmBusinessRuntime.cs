@@ -10,6 +10,7 @@ public sealed partial class ModEntry {
     private DateTime businessAt;
     private int BusinessMinute=>Game1.Date.TotalDays*1440+DailyBudget.Minutes(Game1.timeOfDay);
     internal object ConfigureBusiness(JsonElement args) {
+        if(!args.EnumerateObject().Any())return ReadBusiness(args);
         var b=Data.Business;bool wasEnabled=b.Enabled,wasRoutine=Data.Autoplay.Routine.Enabled;
         int budget=AgentToolRegistry.Number(args,"budget_per_day",b.DailyBudget),keep=AgentToolRegistry.Number(args,"keep_gold",b.KeepGold),animals=AgentToolRegistry.Number(args,"max_animals",b.MaxAnimals),machines=AgentToolRegistry.Number(args,"max_machines",b.MaxMachines),feed=AgentToolRegistry.Number(args,"feed_days",b.FeedDays);
         if(budget is <-1 or >10000000||keep is <0 or >10000000||animals is <0 or >96||machines is <0 or >200||feed is <2 or >28)throw new InvalidOperationException("invalid_business_policy");
@@ -24,21 +25,21 @@ public sealed partial class ModEntry {
         }
         else {
             Data.FarmInvestment.Enabled=false;
-            Data.Autoplay.Schedule.CancelPending(b.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state!="running")).ToArray());
+            Data.Autoplay.Schedule.CancelPending(b.Tasks.Where(id=>Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.id==id&&t.state!="running")).ToArray(),"business_policy_changed");
             var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==b.ChildGoal);if(goal is {Status:"active"})AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id,mode="pause"}));
         }
         businessAt=DateTime.MinValue;Data.Autoplay.Record("business_policy",AgentJson.Encode(new{policy=b,routine=Data.Autoplay.Routine,previous_enabled=wasEnabled,previous_routine=wasRoutine,source=agentLabProbe?"lab_explicit_configuration":"farm.business_explicit_call",time=Game1.timeOfDay}));return new{policy=b,note="先维护，再生产与销售；投资遵循预算与工作量，模型可查询建议并调整方向。enabled 控制模型选择的持续经营例行，不限制直接工具；budget_per_day=-1取消每日额度，keep_gold默认0。关闭不撤销已发生消费或中断原生保存。"};
     }
     internal object ReadBusiness(JsonElement args) {RefreshFacts(true);return new{ledger=ReadBusinessLedger(),options=BusinessDevelopmentOptions().ToArray(),note="选项估值来自当前原生数据与可见供给；不是保证产量或全局最优。查看真实执行及等待原因后调整政策。"};}
+    private string BusinessCondition()=>FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,Game1.player.Money,Game1.player.Stamina,capacity=Data.Autoplay.Capacity.Version,stock=Facts.Stock,tools=Game1.player.toolBeingUpgraded.Value?.QualifiedItemId,windows=new[]{"SeedShop","ScienceHouse","AnimalShop","Blacksmith"}.Select(name=>new{subject=name,condition=ServiceWindow(name).Conditions,available=ServiceAvailableNow(name)}),goals=Data.SharedGoals.Select(g=>new{g.Id,g.Status})}));
     private bool QueueBusiness(string id,IEnumerable<(string Tool,object Args)> actions,string reason,int cost=0) {
-        var b=Data.Business;if(b.RetryAfter.GetValueOrDefault(id)>BusinessMinute)return false;
-        int used=b.ReservedToday+Data.FarmInvestment.ReservedToday;
-        if(cost>BusinessMath.Spendable(Game1.player.Money,b.KeepGold,b.DailyBudget,used))return false;
+        var b=Data.Business;if(b.BlockedConditions.GetValueOrDefault(id)==BusinessCondition())return false;
+        if(cost>BusinessCashAvailable(id==b.PendingAsset))return false;
         var tasks=actions.Select(a=>new AgentTaskSpec{id="business-"+Guid.NewGuid().ToString("N"),actor=a.Tool=="work.run"?AgentToolRegistry.Text(JsonSerializer.SerializeToElement(a.Args),"actor_id","player"):"player",tool=a.Tool,args=JsonSerializer.SerializeToElement(a.Args),purpose=reason,day=Game1.Date.TotalDays,deadline=2200}).ToList();
         if(tasks.Count==0)return false;
         if(Data.Autoplay.Schedule.Tasks.Count+tasks.Count>180)Data.Autoplay.Schedule.Archive();
         Data.Autoplay.Schedule.Submit("business-"+Guid.NewGuid().ToString("N"),Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);
-        b.ReservedToday+=cost;b.ActiveReservation=cost;b.Activity=id;b.Reason=reason;b.Tasks=tasks.Select(t=>t.id).ToList();
+        b.ReservedToday=NativePurchaseSpent();b.ActiveReservation=0;b.Activity=id;b.Reason=reason;b.Tasks=tasks.Select(t=>t.id).ToList();
         Data.Autoplay.Record("business_dispatch",AgentJson.Encode(new{id,reason,cost,tasks,cash=Game1.player.Money,b.ReservedToday,seed_reserved=Data.FarmInvestment.ReservedToday}));return true;
     }
     private bool BusinessMaterials(Dictionary<string,int> needs,List<(string Tool,object Args)> actions,bool acquire=true) {
@@ -67,9 +68,9 @@ public sealed partial class ModEntry {
                     var partial=(SharedGoal)AgentGoalCreate(JsonSerializer.SerializeToElement(new{request_id="business-"+(++b.Revision),entity=need.Key,count=Math.Min(999,need.Value),completion="owned",allow_new_facilities=true}));
                     b.ChildGoal=partial.Id;AgentGoalRun(JsonSerializer.SerializeToElement(new{id=partial.Id}));b.Reason="先准备可达的生产前置；未知配方仍须原生解锁";return false;
                 }
-                int budget=BusinessMath.Spendable(Game1.player.Money,b.KeepGold,b.DailyBudget,b.ReservedToday+Data.FarmInvestment.ReservedToday);
+                int budget=BusinessCashAvailable();
                 var source=PlayerExecutor.ShopSources(need.Key).FirstOrDefault(s=>PlayerExecutor.NextExit(Game1.currentLocation,s.Location)!=null||Game1.currentLocation.NameOrUniqueName==s.Location);
-                if(source.Shop!=null&&budget>0&&Game1.timeOfDay is >=900 and <1600) {
+                if(source.Shop!=null&&budget>0&&ServiceAvailableNow(source.Location)) {
                     int count=Math.Min(999,need.Value-available),unit=budget/count;
                     if(unit>0)QueueBusiness("procure:"+need.Key,new[]{("player.procure",(object)new{location=source.Location,shop=source.Shop,item=need.Key,count,recipe=false,max_unit_price=unit,budget,keep_gold=b.KeepGold})},"准备缺少的经营物资；按预算现场核价采购",budget);
                 }
@@ -99,27 +100,18 @@ public sealed partial class ModEntry {
             var tasks=b.Tasks.Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)).ToArray();
             if(tasks.Any(t=>t?.state=="needs_review")) {b.Reason="经营任务中断，需核对实际结果后续接";WakeAgent("business_interrupted_review");return;}
             if(tasks.Any(t=>t!=null&&!t.Terminal))return;
-            // Release unused purchase allowance only from complete native receipts.
-            // Missing or interrupted receipts retain the conservative reservation.
-            if(b.ActiveReservation>0&&tasks.All(t=>t!=null&&!string.IsNullOrEmpty(t.receipt))) {
-                int spent=0;bool verified=true;
-                foreach(var task in tasks) {
-                    using var receipt=JsonDocument.Parse(task!.receipt!);var root=receipt.RootElement;
-                    if(root.TryGetProperty("before",out var before)&&root.TryGetProperty("after",out var after)&&before.TryGetProperty("money",out var oldCash)&&after.TryGetProperty("money",out var newCash))spent+=Math.Max(0,oldCash.GetInt32()-newCash.GetInt32());
-                    else verified=false;
-                }
-                if(verified)b.ReservedToday=BusinessMath.Settle(b.ReservedToday,b.ActiveReservation,spent);
-            }
-            b.ActiveReservation=0;
+            // Every native cost was journaled when its action finished. Pending
+            // task caps disappear at terminal; uncertain receipts stay quarantined.
+            b.ReservedToday=NativePurchaseSpent();b.ActiveReservation=0;
             var bad=tasks.FirstOrDefault(t=>t==null||t.state!="succeeded");
             if(tasks.Any(t=>t==null||t.state!="succeeded")) {
-                b.Reason=bad?.error??"business_receipt_missing";b.RetryAfter[b.Activity]=BusinessMinute+120;
+                b.Reason=bad?.error??"business_receipt_missing";b.BlockedConditions[b.Activity]=BusinessCondition();
                 Data.Autoplay.Record("business_batch_failed",AgentJson.Encode(new{b.Activity,b.Reason,tasks}));
             } else {
                 Data.Autoplay.Record("business_batch_complete",AgentJson.Encode(new{b.Activity,tasks}));
                 if(b.Activity==Data.Operating.Production.Selected){Data.Operating.Production.Selected="maintain";Data.Operating.Production.Reason="已完成所选投资，按实际产能重新评估；不自动重复扩建";b.PendingAsset="";WakeAgent("production_investment_completed");}
             }
-            if(b.Activity=="storage")b.RetryAfter[b.Activity]=BusinessMinute+30;
+
             b.Tasks.Clear();
         }
         if(playerExecutor.Busy||Game1.activeClickableMenu!=null||Game1.eventUp||Game1.fadeToBlack||Game1.locationRequest!=null||!Game1.player.CanMove||Game1.timeOfDay>=2130||OperationActorOccupied("player"))return;
@@ -131,10 +123,10 @@ public sealed partial class ModEntry {
             int animals=Game1.getFarm().getAllFarmAnimals().Count();
             if(animals>0) {
                 foreach(var tool in new[]{("(T)MilkPail",typeof(StardewValley.Tools.MilkPail)),("(T)Shears",typeof(StardewValley.Tools.Shears))}) {
-                    if(Game1.player.Items.Any(i=>i!=null&&tool.Item2.IsInstanceOfType(i)))continue;
+                    if(Game1.player.Items.Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer())).Any(i=>i!=null&&tool.Item2.IsInstanceOfType(i)))continue;
                     var prototype=ItemRegistry.Create(tool.Item1) as Tool;if(prototype==null||!Game1.getFarm().getAllFarmAnimals().Any(a=>a.CanGetProduceWithTool(prototype)))continue;
-                    var shop=PlayerExecutor.ShopSources(tool.Item1).FirstOrDefault();int budget=BusinessMath.Spendable(Game1.player.Money,b.KeepGold,b.DailyBudget,b.ReservedToday+Data.FarmInvestment.ReservedToday);
-                    if(shop.Shop!=null&&budget>0&&Game1.timeOfDay is >=900 and <1600&&QueueBusiness("care_tool:"+tool.Item1,new[]{("player.procure",(object)new{location=shop.Location,shop=shop.Shop,item=tool.Item1,count=1,recipe=false,max_unit_price=budget,budget,keep_gold=b.KeepGold})},"为已有动物补齐实际采收工具",budget))return;
+                    var shop=PlayerExecutor.ShopSources(tool.Item1).FirstOrDefault();int budget=BusinessCashAvailable();
+                    if(shop.Shop!=null&&budget>0&&ServiceAvailableNow(shop.Location)&&QueueBusiness("care_tool:"+tool.Item1,new[]{("player.procure",(object)new{location=shop.Location,shop=shop.Shop,item=tool.Item1,count=1,recipe=false,max_unit_price=budget,budget,keep_gold=b.KeepGold})},"为已有动物补齐实际采收工具",budget))return;
                 }
                 int availableHay=Facts.HayInSilo+Facts.Stock.Where(s=>s.Item=="(O)178").Sum(s=>s.Count);
                 if(Facts.FeedNeeded>0&&availableHay>=Facts.FeedNeeded) {

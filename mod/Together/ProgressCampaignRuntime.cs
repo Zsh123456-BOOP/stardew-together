@@ -51,7 +51,7 @@ public sealed partial class ModEntry {
         return new{campaign,note="按预算持续衔接已绑定的原生目标，备料与购买不代表成就完成；任务或材料条件改变后继续。未绑定的特殊条件明确报告。"};
     }
     private void PausePursuitChild(ProgressPursuit pursuit) {
-        Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>pursuit.Tasks.Contains(t.spec.id)&&!t.Terminal&&t.state!="running").Select(t=>t.spec.id).ToArray());
+        Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>pursuit.Tasks.Contains(t.spec.id)&&!t.Terminal&&t.state!="running").Select(t=>t.spec.id).ToArray(),"campaign_changed");
         var goal=Data.SharedGoals.FirstOrDefault(g=>g.Id==pursuit.ChildGoal);
         if(goal is {Status:"active"})AgentGoalRun(JsonSerializer.SerializeToElement(new{id=goal.Id,mode="pause"}));
     }

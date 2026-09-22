@@ -116,7 +116,11 @@ public sealed partial class ModEntry {
         }
         if(goal=="fish") {
             job.Item=AgentToolRegistry.Text(args,"item");job.FishLocation=AgentToolRegistry.Text(args,"location");job.requested=AgentToolRegistry.Number(args,"count",3);
-            if(job.requested is <1 or >100||job.Item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(job.Item.StartsWith("(O)")?job.Item[3..]:job.Item))throw new InvalidOperationException("fish_trip_requires_valid_item_and_count");
+            if(job.requested is <1 or >100)throw new InvalidOperationException("fish_trip_invalid_count:expected_1_to_100");
+            if(job.Item.Length>0&&!DataLoader.Fish(Game1.content).ContainsKey(job.Item.StartsWith("(O)")?job.Item[3..]:job.Item)) {
+                var matches=DataLoader.Fish(Game1.content).Keys.Where(id=>ItemRegistry.GetDataOrErrorItem("(O)"+id) is {} fish&&(fish.DisplayName.Equals(job.Item,StringComparison.OrdinalIgnoreCase)||fish.InternalName.Equals(job.Item,StringComparison.OrdinalIgnoreCase))).Take(3).Select(id=>"(O)"+id);
+                throw new InvalidOperationException("fish_trip_invalid_item:use_native_QID;matches="+string.Join(",",matches)+";read=fishing.options");
+            }
             job.FishBaseline=FishingRules.Caught(job.Item);
             if(job.FishLocation.Length==0)job.FishLocation=FishingLocations(job.Item).FirstOrDefault()?.NameOrUniqueName??location;
         }

@@ -7,7 +7,7 @@ public sealed partial class ModEntry {
     private Task<ModelReply>? queryLabReply;
     private object QueryRepairFixture(string mode,JsonElement args) {
         // Caller enforces all three AgentLab gates. No fixture is an acceptance run.
-        if(mode=="read")return new{pending=PendingQueries(),diary=DiaryContext(),schedule=AgentPlanRead(),snapshot=AgentSnapshot(),inventory=AgentToolRegistry.Inventory(),memory=AgentMemoryContext(),planting=PlantingExecutionFacts(),plans=farmPlantPlans.Values.Select(p=>new{p.Id,p.Seed,p.PossibleSeeds,verified_tiles=p.NativeCrops.Select(t=>new{tile=t.Key,crop=t.Value})}),queries=Data.Autoplay.Memory.Queries.Select(q=>new{q.Id,q.Tool,q.Delivered})};
+        if(mode=="read")return new{actual_spent=NativePurchaseSpent(),pending=PendingQueries(),diary=DiaryContext(),schedule=AgentPlanRead(),snapshot=AgentSnapshot(),inventory=AgentToolRegistry.Inventory(),memory=AgentMemoryContext(),planting=PlantingExecutionFacts(),plans=farmPlantPlans.Values.Select(p=>new{p.Id,p.Seed,p.PossibleSeeds,verified_tiles=p.NativeCrops.Select(t=>new{tile=t.Key,crop=t.Value})}),queries=Data.Autoplay.Memory.Queries.Select(q=>new{q.Id,q.Tool,q.Delivered})};
         if(mode=="route"){var r=PlayerExecutor.ResolveRoute(Game1.currentLocation,AgentToolRegistry.Text(args,"destination","Farm"));return new{r.Reachable,r.Reason,r.Transitions,r.Evidence,first=r.First==null?null:new{r.First.X,r.First.Y,r.First.TargetName,r.First.TargetX,r.First.TargetY}};}
         if(mode=="route_site") {PauseAutoplay("lab_route_site");Game1.activeClickableMenu=null;Game1.warpFarmer("Town",13,85,false);return new{positioning=true};}
         if(mode=="collision_probe") {
@@ -46,8 +46,9 @@ public sealed partial class ModEntry {
         }
         if(mode=="model_query") {
             if(queryLabReply!=null&&!queryLabReply.IsCompleted)throw new InvalidOperationException("query_probe_busy");
-            queryRequestIds=Data.Autoplay.Memory.Queries.Where(q=>!q.Delivered).Select(q=>q.Id).ToArray();
-            string context=AgentJson.Encode(new{goal="这是隔离工具验证，请根据收到的六项查询结果解释下一步，调用一个world.read；不发劳动任务。",pending_queries=PendingQueries(),inventory=AgentToolRegistry.Inventory(),task_card=TaskCard(),active_actors=new[]{"player"}});
+            var delivered=JsonSerializer.SerializeToElement(PendingQueries(),AgentJson.Options);
+            queryRequestIds=delivered.EnumerateArray().Select(q=>q.GetProperty("result_id").GetString()!).ToArray();
+            string context=AgentJson.Encode(new{goal="这是隔离工具验证，请根据本批查询/终态观察解释下一步，调用一个world.read；不发劳动任务。",pending_queries=delivered,inventory=AgentToolRegistry.Inventory(),task_card=TaskCard(),active_actors=new[]{"player"}});
             string trace=Path.Combine(Helper.DirectoryPath,"logs",Game1.uniqueIDForThisGame.ToString(),agentSaveEpoch,"query-combination-model.jsonl");
             string file=Path.IsPathRooted(Settings.ApiKeyFile)?Settings.ApiKeyFile:Path.Combine(Helper.DirectoryPath,Settings.ApiKeyFile),model=Settings.Model;
             queryLabReply=Task.Run(()=>AutoplayModel.Ask(file,model,context,CancellationToken.None,trace,Settings.AutoplayInputTokenBudget));return new{started=true,trace};

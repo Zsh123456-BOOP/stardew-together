@@ -7,9 +7,21 @@ public sealed class QueryResult {
     public string Call {get;set;}="";
     public string Tool {get;set;}="";
     public int Day {get;set;}
+    public int Time {get;set;}
+    public string Kind {get;set;}="query";
     public JsonElement Args {get;set;}
     public JsonElement Result {get;set;}
     public bool Delivered {get;set;}
+    public object Observation()=>new{result_id=Id,call_id=Call,tool=Tool,kind=Kind,observed_day=Day,observed_time=Time,result=ObservationContract.Observation(Result,Kind),details=new{tool="query.read",args=new{id=Id}},delivery="pending_summary",note="摘要送达不等于已理解；原始完整结果可分页补读，交易核验实时状态"};
+    public static object[] Pending(IEnumerable<QueryResult> queries,int budget=4200) {
+        var rows=new List<object>();int size=2;
+        foreach(var q in queries.Where(q=>!q.Delivered).OrderBy(q=>q.Kind=="outcome"?0:q.Kind=="quote"?1:2).ThenBy(q=>q.Day).ThenBy(q=>q.Time)) {
+            var row=q.Observation();int cost=ContextBudget.Estimate(AgentJson.Encode(row));
+            if(size+cost>budget)continue;
+            rows.Add(row);size+=cost+1;
+        }
+        return rows.ToArray();
+    }
     public static bool ResolvesDraft(JsonElement draft,string tool,IEnumerable<string> used,IEnumerable<QueryResult> results) {
         var call=draft.GetProperty("call");if(call.GetProperty("tool").GetString()!=tool)return false;
         var ids=used.ToHashSet();foreach(var q in results.Where(q=>q.Delivered&&ids.Contains(q.Id)))if(q.Call.Length>0)ids.Add(q.Call);
@@ -19,13 +31,18 @@ public sealed class QueryResult {
     public object Page(int offset=0,int count=12) {
         var rows=new List<object>();
         void Visit(JsonElement node,string path) {
-            if(node.ValueKind==JsonValueKind.Object){foreach(var p in node.EnumerateObject())Visit(p.Value,path+"/"+p.Name.Replace("~","~0").Replace("/","~1"));return;}
+            if(node.ValueKind==JsonValueKind.Object){if(!node.EnumerateObject().Any())rows.Add(new{path,value=node.Clone()});foreach(var p in node.EnumerateObject())Visit(p.Value,path+"/"+p.Name.Replace("~","~0").Replace("/","~1"));return;}
             if(node.ValueKind==JsonValueKind.Array){int i=0;foreach(var v in node.EnumerateArray())Visit(v,path+"/"+(i++));if(i==0)rows.Add(new{path,value=node.Clone()});return;}
-            rows.Add(new{path,value=node.Clone()});
+            if(node.ValueKind==JsonValueKind.String&&node.GetString() is {} text&&text.Length>512) {
+                for(int start=0;start<text.Length;) {int length=Math.Min(512,text.Length-start);if(start+length<text.Length&&char.IsHighSurrogate(text[start+length-1]))length--;
+                    rows.Add(new{path,value_fragment=text.Substring(start,length),character_offset=start,total_characters=text.Length,encoding="json_string_content",partial_value=true});start+=length;}
+            }else rows.Add(new{path,value=node.Clone()});
         }
         Visit(Result,"");count=Math.Clamp(count,1,40);offset=Math.Max(0,offset);
-        // Whole JSON values are retained, never truncated into misleading partial facts.
-        return new{result_id=Id,tool=Tool,observed_day=Day,offset,total_fields=rows.Count,fields=rows.Skip(offset).Take(count),next=offset+count<rows.Count?new{tool="query.read",args=new{id=Id,offset=offset+count,count}}:null,note="分页只代表未展开，非不存在；JSON Pointer路径保留原始字段含义"};
+        var page=new List<object>();int size=0;
+        foreach(var row in rows.Skip(offset).Take(count)){int cost=ContextBudget.Estimate(AgentJson.Encode(row));if(page.Count>0&&size+cost>1800)break;page.Add(row);size+=cost;}
+        return new{result_id=Id,tool=Tool,observed_day=Day,observed_time=Time,offset,total_fields=rows.Count,fields=page,next=offset+page.Count<rows.Count?new{tool="query.read",args=new{id=Id,offset=offset+page.Count,count}}:null,note="JSON Pointer叶节点分页；大字符串按character_offset无损拼接value_fragment；片段不是完整事实，原文未丢弃"};
     }
-    public static bool IsRead(string tool)=>tool.StartsWith("knowledge.")||tool.StartsWith("memory.")||tool.StartsWith("tools.")||tool.EndsWith(".read")||tool is "progress.dependencies" or "progress.catalog" or "progress.roadmap" or "goal.requirements";
+    public static bool IsRead(string tool)=>ObservationContract.IsRead(tool);
+    public static bool IsRead(string tool,JsonElement args)=>ObservationContract.IsRead(tool,args);
 }

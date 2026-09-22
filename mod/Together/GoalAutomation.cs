@@ -11,7 +11,7 @@ public sealed partial class ModEntry {
         if(mode=="run"&&goal.PlanVersion!=1)throw new InvalidOperationException("goal_schema_requires_review");
         if(mode=="run"&&goal.Status!="active")throw new InvalidOperationException("goal_not_active");
         goal.AutoExecute=mode=="run";goal.AutoBlockedReason="";goal.AutoBlockedConditions="";goal.AutoReviewDay=-1;
-        if(mode=="pause")Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.goal_id==goal.Id&&!t.Terminal&&t.state!="running").Select(t=>t.spec.id).ToArray());
+        if(mode=="pause")Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>t.spec.goal_id==goal.Id&&!t.Terminal&&t.state!="running").Select(t=>t.spec.id).ToArray(),"goal_paused");
         goalAutomationAt=DateTime.MinValue;
         return new{goal,executor_active=AutoplayRunning,note="只运行已支持且具备原生条件的依赖；开启目标不等于完成。暂停不会中断已经开始的原生消耗。"};
     }

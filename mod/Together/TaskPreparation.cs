@@ -54,7 +54,15 @@ public sealed partial class ModEntry {
                 switch(goal) {
                     case "plant":
                         if(!farmPlantPlans.TryGetValue(AgentToolRegistry.Text(a,"plan_id"),out var field)||field.Day!=Game1.Date.TotalDays||field.Epoch!=agentSaveEpoch)throw new InvalidOperationException("read_farm_plan_first");
-                        Tool<Hoe>("锄头");Tool<WateringCan>("水壶");Tool<Axe>("斧头");Tool<Pickaxe>("镐");Tool<MeleeWeapon>("镰刀/防身工具");
+                        var location=Game1.getLocationFromName(field.Location)??throw new InvalidOperationException("planting_location_missing");
+                        var tiles=field.PreparationTiles.Concat(field.Tiles).Distinct().Select(t=>new Vector2(t.X,t.Y)).ToArray();
+                        if(tiles.Any(v=>location.terrainFeatures.GetValueOrDefault(v) is not StardewValley.TerrainFeatures.HoeDirt))Tool<Hoe>("锄头");
+                        if(tiles.Any(v=>location.terrainFeatures.GetValueOrDefault(v) is StardewValley.TerrainFeatures.HoeDirt soil?soil.state.Value!=1:!(Game1.IsRainingHere(location)&&location.IsOutdoors)))Tool<WateringCan>("水壶");
+                        foreach(var v in tiles) {
+                            if(location.terrainFeatures.GetValueOrDefault(v) is StardewValley.TerrainFeatures.Tree)Tool<Axe>("斧头");
+                            if(!location.objects.TryGetValue(v,out var obstacle))continue;
+                            if(obstacle.IsTwig())Tool<Axe>("斧头");else if(obstacle.BaseName=="Stone")Tool<Pickaxe>("镐");else if(obstacle.IsWeeds())Tool<MeleeWeapon>("镰刀/防身工具");
+                        }
                         int unplanted=field.Tiles.Count(t=>Game1.getLocationFromName(field.Location)?.terrainFeatures.GetValueOrDefault(new(t.X,t.Y)) is not StardewValley.TerrainFeatures.HoeDirt {crop:not null});
                         Id(field.Seed,unplanted);Id(field.Fertilizer,unplanted);break;
                     case "cleanup":Tool<Axe>("斧头");Tool<Pickaxe>("镐");Tool<MeleeWeapon>("镰刀/防身工具");plan.Outputs=true;break;

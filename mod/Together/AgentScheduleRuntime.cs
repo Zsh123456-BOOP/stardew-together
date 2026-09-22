@@ -23,10 +23,12 @@ public sealed partial class ModEntry {
         if(agentWakeReasons.Count>16)agentWakeReasons.RemoveAt(0);
         agentNeedsDecision=true;agentRequestedWait=DateTime.MinValue;agentNext=DateTime.UtcNow;
     }
+    private object TaskReadiness(ScheduledAgentTask task) {var r=Data.Autoplay.Schedule.Readiness(task,Game1.Date.TotalDays,Game1.timeOfDay);return new{state=r.State,reason=r.Reason,next_time=r.Next,day=task.spec.day};}
     internal object AgentPlanRead(bool compact=false)=>new {
         revision=Data.Autoplay.Schedule.Revision,event_version=Data.Autoplay.Schedule.EventVersion,
-        tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{t.spec,t.state,t.command_id,t.error}),
-        recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=compact?ReceiptSummary(t.receipt):(object?)t.receipt}),
+        tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>new{spec=compact?(object)new{t.spec.id,t.spec.actor,t.spec.tool,t.spec.after,t.spec.sequence_after,t.spec.not_before,t.spec.deadline,t.spec.day}:t.spec,t.state,t.command_id,t.error,t.wait_reason,readiness=TaskReadiness(t)}),
+        waiting_query_drafts=compact?null:Data.Autoplay.Memory.QueryDrafts,
+        recent_results=Data.Autoplay.Schedule.Tasks.Where(t=>t.Terminal).TakeLast(8).Select(t=>new{id=t.spec.id,actor=t.spec.actor,tool=t.spec.tool,t.state,t.error,receipt=ReceiptSummary(t.receipt),details=new{tool="action.status",args=new{id=t.spec.id}}}),
         note="同一角色只能执行一个任务；after声明真正的前置条件；sequence_after仅保持执行顺序，前一步失败不影响独立工作。未来时间的任务不会挡住其他就绪工作。actor统一选择角色，args.actor_id省略时自动继承，显式冲突才拒绝。排队不是成功。换日/中断/失败须核验真实状态，不能重放旧坐标或菜单。"
     };
     internal object AgentPlanSubmit(JsonElement args) {
@@ -62,13 +64,15 @@ public sealed partial class ModEntry {
         if(ids==null||ids.Count is <1 or >48)throw new InvalidOperationException("task_ids_required");
         var tasks=ids.Distinct().Select(id=>Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==id)??throw new InvalidOperationException("unknown_task_id")).ToArray();
         if(decisionIntent.Length>0&&tasks.Any(t=>t.state=="running")&&!agentWasInDanger)throw new InvalidOperationException("active_plan_requires_changed_precondition_or_user_cancellation");
+        string cancelledBy=decisionIntent.Length>0?"model":"user_or_external_request";
         foreach(var t in tasks.Where(t=>t.state=="running")) {
+            t.cancellation_requested_by=cancelledBy;
             var result=JsonSerializer.SerializeToElement(AgentReceipt(t.command_id!,true),AgentJson.Options);
             if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"){t.error="cancellation_pending_native_action";continue;}
             string status=result.TryGetProperty("status",out var ended)&&ended.GetString()=="succeeded"?"succeeded":"cancelled";
             Data.Autoplay.Schedule.Finish(t,status,"model_cancel_requested",AgentJson.Encode(result));agentClaims.Remove(t.command_id!);
         }
-        Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t.state!="running").Select(t=>t.spec.id));return new{status=tasks.Any(t=>t.state=="running")?"cancelling_native_action":"cancelled_pending",revision=Data.Autoplay.Schedule.Revision};
+        Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t.state!="running").Select(t=>t.spec.id),"cancelled_by_"+cancelledBy);return new{status=tasks.Any(t=>t.state=="running")?"cancelling_native_action":"cancelled_pending",revision=Data.Autoplay.Schedule.Revision};
     }
     internal object AgentPlanArchive()=>new{archived=Data.Autoplay.Schedule.Archive(),revision=Data.Autoplay.Schedule.Revision};
     private object QueueLegacyAction(AgentCall call) {
@@ -91,13 +95,23 @@ public sealed partial class ModEntry {
         if(CapacityState.IsConstraint(code)){RecordCapacityConstraint(code,actor);return;}
         if(RecoveryPolicy.CanWait(code))return;
         SurvivalRecord("local_failure",new{actor,code,day=Game1.Date.TotalDays});
-        if(agentFailures.Failed(actor,code))EnterSurvival("sleep","repeated_failure_six:"+actor+":"+code);
+        WakeAgent("local_failure_reobserve:"+actor+":"+code);
+    }
+    private void CaptureScheduledOutcome(ScheduledAgentTask task) {
+        var receipt=string.IsNullOrEmpty(task.receipt)?new System.Text.Json.Nodes.JsonObject():System.Text.Json.Nodes.JsonNode.Parse(task.receipt!) as System.Text.Json.Nodes.JsonObject??new();
+        receipt["status"]=task.state;receipt["task_id"]=task.spec.id;receipt["intent_id"]=task.spec.intent_id;receipt["actor"]=task.spec.actor;
+        if(task.cancellation_requested_by.Length>0)receipt["cancellation_requested_by"]=task.cancellation_requested_by;
+        if(receipt["stop_reason"]==null)receipt["stop_reason"]=task.error;
+        if(receipt["resume_policy"]==null)receipt["resume_policy"]="reobserve_then_submit_remaining_work_no_blind_replay";
+        FinalizeCashReservation(task,JsonSerializer.SerializeToElement(receipt));
+        CaptureObservation(task.spec.tool,JsonSerializer.SerializeToElement(receipt),"outcome");
+        WakeAgent("task_terminal:"+task.spec.id);
     }
     private void CompleteScheduled(ScheduledAgentTask task,JsonElement result) {
         if(task.spec.goal_id.Length>0)goalAutomationAt=DateTime.MinValue;
         string state=result.TryGetProperty("status",out var status)?status.GetString()??"failed":"failed";
         string? error=result.TryGetProperty("error",out var e)&&e.ValueKind==JsonValueKind.String?e.GetString():null;
-        if(state is not("succeeded" or "cancelled" or "partial"))state="failed";
+        if(state is not("succeeded" or "cancelled" or "partial" or "blocked"))state="failed";
         if(state=="failed")RefreshCapacityVersion();
         var outcome=OperationsPolicy.Outcome(task.spec.tool,result);
         if(CapacityState.IsConstraint(error))RecordCapacityConstraint(error!,task.spec.actor);
@@ -136,7 +150,9 @@ public sealed partial class ModEntry {
         }
     }
     private void TickAgentSchedule() {
-        if(TickTaskPreparation())return;
+        Data.Autoplay.Schedule.Finished=CaptureScheduledOutcome;
+        long stage=System.Diagnostics.Stopwatch.GetTimestamp();
+        bool preparing=TickTaskPreparation();FrameStage("schedule.preparation",ref stage);if(preparing)return;
         var schedule=Data.Autoplay.Schedule;
         foreach(var task in schedule.Tasks.Where(t=>t.state=="running").ToArray()) {
             JsonElement result;
@@ -145,10 +161,12 @@ public sealed partial class ModEntry {
             if(result.TryGetProperty("status",out var s)&&s.GetString()=="running")continue;
             CompleteScheduled(task,result);
         }
-        PrepareServiceWindows();
+        FrameStage("schedule.receipts",ref stage);PrepareServiceWindows();FrameStage("schedule.services",ref stage);
         if(!AutoplayRunning || Game1.eventUp || Game1.fadeToBlack || Game1.locationRequest!=null)return;
+        foreach(var sleeping in schedule.Tasks.Where(t=>t.wait_reason=="companion_finishing_before_sleep"))if(!schedule.Tasks.Any(t=>t.state=="running"&&t.spec.actor!="player"))sleeping.wait_reason=null;
         long version=schedule.EventVersion;
         var ready=schedule.Ready(Game1.Date.TotalDays,Game1.timeOfDay,SpatialOrder,WorkActorBusy);
+        FrameStage("schedule.readiness_routes",ref stage);
         if(schedule.EventVersion!=version)WakeAgent("expired_or_failed_dependency");
         foreach(var task in ready) {
             if(!AutoplayRunning)break;
@@ -169,11 +187,14 @@ public sealed partial class ModEntry {
                 if(task.spec.tool=="player.sleep")sleepReview=null;
                 if(task.spec.tool=="work.run"&&AgentToolRegistry.Text(task.spec.args,"goal")=="water"&&WateringNoWork(task.spec.args) is {} noWater) {CompleteScheduled(task,JsonSerializer.SerializeToElement(noWater,AgentJson.Options));continue;}
                 if(task.spec.tool=="player.social"&&SocialPreflight(task.spec.args) is {} access) {CompleteScheduled(task,JsonSerializer.SerializeToElement(access,AgentJson.Options));continue;}
-                if(!PrepareTaskKit(task))continue;
+                FrameStage("schedule.preflight",ref stage);
+                if(!PrepareTaskKit(task)){FrameStage("schedule.kit",ref stage);continue;}
+                FrameStage("schedule.kit",ref stage);
                 if(!AdmitOperation(task))continue;
                 CheckKnownFailure(task);
-                RecordSpatialDispatch(task);
+                RecordSpatialDispatch(task);FrameStage("schedule.admission",ref stage);
                 var result=JsonSerializer.SerializeToElement(agentTools.Execute(task.spec.tool,task.spec.args),AgentJson.Options);
+                FrameStage("schedule.native_dispatch",ref stage);
                 Data.Autoplay.Record("task_started",AgentJson.Encode(new{id=task.spec.id,task.spec.intent_id,task.spec.source,task.spec.purpose,actor=task.spec.actor,tool=task.spec.tool,result}));
                 if(result.TryGetProperty("status",out var s)&&s.GetString()=="running"&&result.TryGetProperty("command_id",out var id))schedule.Started(task,id.GetString()!);
                 else CompleteScheduled(task,result);

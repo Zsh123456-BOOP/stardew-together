@@ -34,24 +34,43 @@ public sealed partial class ModEntry {
         EnterSurvival("sleep","model_requested_end_day:"+reason);
         return new{status="safe_end_day",reason,note="模型结束今日安排；程序负责原生返家过夜。玩家仍可手动暂停。"};
     }
+    private DateTime modelRecoveryAt;
+    private int schemaFailures;
+    private string? decisionBlockedReason;
+    private void ModelRecovered() {
+        var s=Data.Autoplay.Survival;s.ModelFailures=0;schemaFailures=0;modelRecoveryAt=DateTime.MinValue;decisionBlockedReason=null;
+        if(s.RoutineBeforeFallback!=null){Data.Autoplay.Routine=s.RoutineBeforeFallback;s.RoutineBeforeFallback=null;}
+    }
     private void ModelUnavailable(Exception e,string? reply,bool applying) {
-        if(SurvivalState.Fatal(e.Message)){PauseAutoplay(e.Message);return;}
-        bool exhausted=Data.Autoplay.Survival.ModelFailed();
-        SurvivalRecord("model_unavailable",new{error=e.Message,reply,applying,attempt=Data.Autoplay.Survival.ModelFailures});
-        if(exhausted)EnterSurvival("routine","model_unavailable_three_attempts");
-        else {WakeAgent("model_failure_retry");agentNext=DateTime.UtcNow.AddSeconds(2);}
+        string stage=ModelFailurePolicy.Classify(e,applying);
+        SurvivalRecord("decision_failure",new{stage,error=e.Message,applying,reply});
+        if(SurvivalState.Fatal(e.Message)){PauseAutoplay(stage+":"+e.Message);return;}
+        if(stage=="local_context_pack"){decisionBlockedReason=stage+":"+e.Message;WakeAgent("decision_blocked_drain_native_work_then_hold_clock");return;}
+        var s=Data.Autoplay.Survival;
+        if(stage!="transport") {
+            if(++schemaFailures>=3){decisionBlockedReason="decision_contract_failed_three_attempts:"+e.Message;return;}
+            WakeAgent("decision_contract_error:"+e.Message);modelRecoveryAt=DateTime.UtcNow.AddSeconds(2);return;
+        }
+        s.ModelFailed();
+        SurvivalRecord("model_unavailable",new{stage,error=e.Message,attempt=s.ModelFailures,retained_tasks=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id)});
+        if(s.ModelFailures>=6){decisionBlockedReason="transport_unavailable_after_bounded_retries";return;}
+        if(s.ModelFailures>=3&&!Data.Autoplay.Routine.Enabled) {
+            s.RoutineBeforeFallback??=Data.Autoplay.Routine;
+            Data.Autoplay.Routine=new(){Enabled=true,Version=Data.Autoplay.Routine.Version+1,Assignments=new(){["harvest"]="player",["water"]="player",["feed"]="player",["pet"]="player",["animal_collect"]="player"}};
+        }
+        WakeAgent("transport_retry_preserve_work");modelRecoveryAt=DateTime.UtcNow.AddSeconds(Math.Min(60,2*Math.Pow(2,s.ModelFailures)));
     }
     private void SurvivalNewDay() {
         var s=Data.Autoplay.Survival;
         if(!s.NewDay(Game1.Date.TotalDays))return;
         if(s.RoutineBeforeFallback!=null){Data.Autoplay.Routine=s.RoutineBeforeFallback;s.RoutineBeforeFallback=null;}
-        survivalResetPending=false;survivalSleepId=null;survivalRetryAt=DateTime.MinValue;agentFailures.Clear();
+        survivalResetPending=false;survivalSleepId=null;survivalRetryAt=DateTime.MinValue;agentFailures.Clear();ModelRecovered();
         if(AutoplayRunning)SurvivalRecord("survival_new_day",new{day=s.Day,s.LastSavedDay,Data.Autoplay.SleepDays,mode=s.Mode});
     }
     private bool TickSurvival() {
         if(!AutoplayRunning)return false;
         var s=Data.Autoplay.Survival;
-        bool effective=playerExecutor.Busy || semanticJobs.Values.Any(j=>j.actor=="player"&&j.status=="running") || Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.actor=="player"&&t.state=="queued"&&t.spec.day==Game1.Date.TotalDays&&t.spec.not_before<=Game1.timeOfDay&&t.spec.deadline>=Game1.timeOfDay&&t.wait_reason==null&&t.spec.after.All(id=>Data.Autoplay.Schedule.Tasks.Any(p=>p.spec.id==id&&p.state=="succeeded")));
+        bool effective=OperationActorOccupied("player");
         if(s.Mode=="model"&&Game1.timeOfDay>=2200&&nightWarningDay!=Game1.Date.TotalDays) {
             nightWarningDay=Game1.Date.TotalDays;
             SurvivalRecord("night_warning",NightStatus());WakeAgent("night_warning_review_remaining_work_and_return");
@@ -62,12 +81,13 @@ public sealed partial class ModEntry {
             // Respect an in-flight tool impact or save; do not lose its native receipt.
             foreach(var j in semanticJobs.Values.Where(j=>j.status=="running").ToArray())SemanticReceipt(j.command_id,true);
             foreach(var t in Data.Autoplay.Schedule.Tasks.Where(t=>t.state=="running").ToArray()) {
+                t.cancellation_requested_by="survival:"+s.Reason;
                 var r=JsonSerializer.SerializeToElement(AgentReceipt(t.command_id!,true),AgentJson.Options);
                 if(r.TryGetProperty("status",out var status)&&status.GetString()=="running")return true;
                 CompleteScheduled(t,r);
             }
             if(playerExecutor.Busy){playerExecutor.Cancel();if(playerExecutor.Busy)return true;}
-            Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id).ToArray());
+            Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id).ToArray(),"cancelled_by_survival:"+s.Reason);
             survivalResetPending=false;
             if(s.Mode=="routine") {
                 // Reuse the existing maintenance executor, without purchases or new investment.
@@ -134,7 +154,7 @@ public sealed partial class ModEntry {
         try{allowed=File.Exists(ResumeConsentPath)&&JsonDocument.Parse(File.ReadAllText(ResumeConsentPath)).RootElement.GetProperty("allowed").GetBoolean();}catch{}
         if(!allowed){Data.Autoplay.Status="paused";s.AutoResume=false;Data.Autoplay.Detail="自动恢复授权已撤回或无法读取";return;}
         // Reload only intentions: interrupted coordinates/menus/receipts are never replayed.
-        Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id).ToArray());
+        Data.Autoplay.Schedule.CancelPending(Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal).Select(t=>t.spec.id).ToArray(),"cancelled_by_checkpoint_restore");
         Data.Autoplay.Schedule.Prepare=PrepareOperation;s.Resumes++;SurvivalNewDay();
         survivalResetPending=false;survivalSleepId=null;agentKnownActors.Clear();agentKnownActors.Add("player");
         foreach(var a in World().GetProperty("actors").EnumerateArray())agentKnownActors.Add(a.GetProperty("id").GetString()!);

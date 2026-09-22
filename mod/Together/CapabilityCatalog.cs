@@ -48,6 +48,8 @@ public sealed partial class ModEntry {
         string kind=AgentToolRegistry.Text(args,"kind");int offset=AgentToolRegistry.Number(args,"offset",0),limit=Math.Clamp(AgentToolRegistry.Number(args,"limit",30),1,80);
         if(offset<0)throw new InvalidOperationException("invalid_offset");
         var rows=ReadNativeGoalRows();
+        var kinds=rows.Select(g=>g.kind).Distinct().OrderBy(k=>k).ToArray();
+        if(kind.Length>0&&!kinds.Contains(kind))return new{status="invalid_kind",kind,allowed_kinds=kinds,note="recipe不是目录类别；制作使用crafting，烹饪使用cooking。参数错误不是没有配方。"};
         var filtered=rows.Where(g=>kind.Length==0||g.kind==kind).ToArray();
         return new{schema_version=1,day=Game1.Date.TotalDays,save_id=Game1.uniqueIDForThisGame.ToString(),total=filtered.Length,offset,limit,next_offset=offset+limit<filtered.Length?(int?)(offset+limit):null,
             goals=filtered.Skip(offset).Take(limit),policy=new{routes="路线互斥需逐条件核查，独立路线存档分开统计",repeatable="只枚举当前已接原生任务；重复委托没有有限全部完成终点",unknown="未适配条件明确标 gap，不伪造依赖或完成",actor="进度默认归属 Farmer，NPC 劳动不自动等于原生计数"}};

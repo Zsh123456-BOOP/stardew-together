@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from agent.client import Bridge
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--mods-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18806);p.add_argument('--probe-only',action='store_true');a=p.parse_args();mods=a.mods_dir.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
+ p=argparse.ArgumentParser();p.add_argument('--mods-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--port',type=int,default=18806);p.add_argument('--probe-only',action='store_true');p.add_argument('--contracts-only',action='store_true');a=p.parse_args();mods=a.mods_dir.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
  def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
  cfg=mods/'Together/config.json';settings=json.loads(cfg.read_text()) if cfg.exists() else {};settings.update(RecordModelTrace=True,Autonomy=False,SinglePlayerAutoplay=True,ModelTokenBudgetPerDay=0,EnableMemoryReflections=False);cfg.write_text(json.dumps(settings,ensure_ascii=False,indent=2))
  log=(out/'game.log').open('w');proc=subprocess.Popen([sys.executable,'scripts/launch.py','--companion','--lab','--keep-window','--mods-dir',str(mods),'--port',str(a.port)],cwd=ROOT,stdin=subprocess.PIPE,stdout=log,stderr=subprocess.STDOUT,text=True,start_new_session=True);write('process.json',dict(pid=proc.pid))
@@ -38,16 +38,32 @@ def main():
   except Exception as e:checks.append(dict(name=name,passed=False,error=str(e)));print('FAIL '+name+': '+str(e),flush=True)
   write('checks.json',checks)
  def query():
-  r=qr('queries');write('queries.json',r);assert len(r['pending'])==6
-  for q in r['pending']:assert q['result']['results'][0]['status'] in ('observed','not_found'),q
+  r=qr('queries');write('queries.json',r);assert 0<len(r['pending'])<=6
+  assert len(qr('read')['queries'])==6
   qr('model_query');end=time.monotonic()+80
   while time.monotonic()<end:
    r=qr('model_result')
    if r['status']!='running':break
    time.sleep(1)
   write('query-model.json',r);assert r['status']=='succeeded'
+  for batch in range(6):
+   if all(q['Delivered'] for q in qr('read')['queries']):break
+   qr('model_query');end=time.monotonic()+80
+   while time.monotonic()<end:
+    r=qr('model_result')
+    if r['status']!='running':break
+    time.sleep(1)
+   write(f'query-model-{batch+2}.json',r);assert r['status']=='succeeded'
   assert all(q['Delivered'] for q in qr('read')['queries'])
  run('six-native-queries-delivered-to-real-model',query)
+ def operating():
+  r=sc('operating_loop_probe');write('operating-loop-probe.json',r);assert all(r['checks'].values()),r['checks']
+ run('operating-loop-runtime-contracts',operating)
+ if a.contracts_only:
+  write('result.json',dict(passed=all(c['passed'] for c in checks),checks=checks,scope='targeted runtime contracts, not a continuous trial'))
+  proc.stdin.write('agent_quit\n');proc.stdin.flush();proc.stdin.close();log.close()
+  if not all(c['passed'] for c in checks):raise SystemExit(1)
+  return
  def route():
   qr('route_site');time.sleep(2);r=qr('route');write('town-route.json',r)
   assert not r['Reachable'] and r['Reason']=='route_origin_inside_static_collision',r
@@ -95,12 +111,13 @@ def main():
   qr('shop_site');time.sleep(2);sc('preparation_resume');deadline=time.monotonic()+65
   while time.monotonic()<deadline and qr('read')['snapshot']['time']<930:time.sleep(1)
   r=wait(tool('player.service',location='SeedShop',shop='SeedShop',service='shop'),'native-shop',120);assert r['status']=='succeeded',r
-  quote=tool('shop.read');write('shop-quote.json',quote);decision=quote['seed_decision']
+  quote=tool('shop.read');write('shop-quote.json',quote);decision=quote['seed_decision'];spent_before=qr('read')['actual_spent']
   key=next(x.split('=',1)[1].strip().strip('"').strip("'") for x in (ROOT/'.env').read_text().splitlines() if x.startswith('DEEPSEEK_API_KEY='))
   request=dict(model=settings.get('Model','deepseek-flash'),messages=[dict(role='system',content='根据给定原生报价，选择一种当季能成熟的种子购买2包用于组合测试，说明理由。只输出JSON {"item":"真实QID","unit_price":报价,"reason":"理由"}。不猜价格，不选超预算物品。'),dict(role='user',content=json.dumps(decision,ensure_ascii=False))],response_format=dict(type='json_object'),thinking=dict(type='disabled'),max_tokens=500)
   write('selection-request.json',request);req=urllib.request.Request('https://api.deepseek.com/chat/completions',data=json.dumps(request).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+key})
   with urllib.request.urlopen(req,timeout=60) as response:reply=json.load(response)
   write('selection-response.json',reply);choice=json.loads(reply['choices'][0]['message']['content']);r=wait(tool('player.buy',shop='SeedShop',item=choice['item'],count=2,max_unit_price=choice['unit_price'],budget=2*choice['unit_price'],keep_gold=0),'purchase',45);assert r['status']=='succeeded',r
+  assert qr('read')['actual_spent']-spent_before==2*choice['unit_price'],'native purchase ledger mismatch'
   tool('menu.close') # player.buy may already close its own native menu.
   r=wait(tool('player.travel',location='Farm'),'purchase-return',180);assert r['status']=='succeeded',r
   plan=tool('farm.plan',seed=choice['item'],count=2);write('purchase-plan.json',plan);assert plan['options'],plan

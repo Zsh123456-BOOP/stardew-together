@@ -5,20 +5,36 @@ namespace Together;
 public sealed partial class ModEntry {
     private string[] queryRequestIds=Array.Empty<string>();
     private bool HasPendingQueries=>Data.Autoplay.Memory.Queries.Any(q=>!q.Delivered);
-    private object PendingQueries()=>Data.Autoplay.Memory.Queries.Where(q=>!q.Delivered).Select(q=>new{result_id=q.Id,call_id=q.Call,tool=q.Tool,args=q.Args,observed_day=q.Day,result=q.Result.GetRawText().Length<=1800?(object)q.Result:q.Page(),delivery="pending",note="历史查询结果；交易仍核验实时资金/库存/菜单"}).ToArray();
+    private object PendingQueries()=>QueryResult.Pending(Data.Autoplay.Memory.Queries);
+    private string CaptureObservation(string tool,JsonElement result,string kind="query",string call="",JsonElement args=default) {
+        var q=new QueryResult{Tool=tool,Call=call,Kind=kind,Args=args.ValueKind==JsonValueKind.Undefined?JsonSerializer.SerializeToElement(new{}):args.Clone(),Result=result.Clone(),Day=Game1.Date.TotalDays,Time=Game1.timeOfDay};
+        Data.Autoplay.Memory.Queries.Add(q);Data.Autoplay.Record("query_completed",AgentJson.Encode(q));IndexQueryEvidence(q.Id);WakeAgent("observation_ready:"+kind);return q.Id;
+    }
+    private void IndexQueryEvidence(string id) {string bucket=agentSaveEpoch+"-"+Game1.Date.TotalDays;if(memoryArchive!=null&&Data.Autoplay.Memory.Cursors.TryGetValue(bucket,out int cursor))Data.Autoplay.Memory.QueryEvidence[id]=bucket+":"+cursor;}
     private string? CaptureQuery(AgentCall call,JsonElement observed) {
-        if(!QueryResult.IsRead(call.tool))return null;
-        var q=new QueryResult{Call=call.id,Tool=call.tool,Args=call.args.Clone(),Result=observed.Clone(),Day=Game1.Date.TotalDays};
-        Data.Autoplay.Memory.Queries.Add(q);
-        Data.Autoplay.Record("query_completed",AgentJson.Encode(q));WakeAgent("query_results_ready");return q.Id;
+        if(!QueryResult.IsRead(call.tool,call.args))return null;
+        return CaptureObservation(call.tool,observed,"query",call.id,call.args);
     }
     private void AcknowledgeQueries() {
         foreach(var q in Data.Autoplay.Memory.Queries.Where(q=>queryRequestIds.Contains(q.Id)))q.Delivered=true;
         if(queryRequestIds.Length>0)Data.Autoplay.Record("query_results_delivered",AgentJson.Encode(new{result_ids=queryRequestIds,agentRequestDay,note="收到对应HTTP回复，证明请求已送达，不证明正确理解"}));
         var old=Data.Autoplay.Memory.Queries.Where(q=>q.Delivered).SkipLast(32).Select(q=>q.Id).ToHashSet();
+        foreach(var q in Data.Autoplay.Memory.Queries.Where(q=>old.Contains(q.Id)&&!Data.Autoplay.Memory.QueryEvidence.ContainsKey(q.Id))) {Data.Autoplay.Record("query_archived",AgentJson.Encode(q));IndexQueryEvidence(q.Id);}
         Data.Autoplay.Memory.Queries.RemoveAll(q=>old.Contains(q.Id));queryRequestIds=Array.Empty<string>();
     }
-    internal object ReadQueryResult(JsonElement args)=>Data.Autoplay.Memory.Queries.FirstOrDefault(q=>q.Id==AgentToolRegistry.Text(args,"id"))?.Page(AgentToolRegistry.Number(args,"offset",0),AgentToolRegistry.Number(args,"count",12))??new{status="not_found",note="回执不在当前会话窗口，memory.search可查原始query_completed归档"};
+    internal object ReadQueryResult(JsonElement args) {
+        string id=AgentToolRegistry.Text(args,"id");int offset=Math.Max(0,AgentToolRegistry.Number(args,"offset",0));
+        if(id.Length==0){var rows=Data.Autoplay.Memory.Queries.Where(q=>!q.Delivered).ToArray();return new{total=rows.Length,offset,results=rows.Skip(offset).Take(12).Select(q=>new{result_id=q.Id,q.Tool,q.Kind,q.Day,q.Time}),next_offset=offset+12<rows.Length?(int?)(offset+12):null};}
+        var found=Data.Autoplay.Memory.Queries.FirstOrDefault(q=>q.Id==id);
+        if(found==null&&Data.Autoplay.Memory.QueryEvidence.TryGetValue(id,out var evidence)&&memoryArchive!=null)found=memoryArchive.Query(evidence,id);
+        return found?.Page(offset,AgentToolRegistry.Number(args,"count",12))??new{status="not_found",note="旧版未建索引的回执可用memory.search以result_id检索query_completed，再memory.evidence续读"};
+    }
+    internal object ReadContextSection(JsonElement args)=>AgentToolRegistry.Text(args,"section") switch {
+        "farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
+        "progression"=>DailyProgressDigest(),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
+        "earlier_observation_summaries" or "recent"=>RecentAgentContext(),"memory"=>AgentMemoryContext(),"goals"=>GoalContext(),"operating_candidates"=>OperatingOpportunities(),
+        "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),_=>throw new InvalidOperationException("unknown_context_section")
+    };
     internal object SearchPlanningKnowledge(JsonElement args) {
         string exact=AgentToolRegistry.Text(args,"id"),kind=AgentToolRegistry.Text(args,"kind","all");
         var queries=args.TryGetProperty("queries",out var batch)&&batch.ValueKind==JsonValueKind.Array?batch.EnumerateArray().Select(v=>v.GetString()??"").ToArray():new[]{AgentToolRegistry.Text(args,"query")};

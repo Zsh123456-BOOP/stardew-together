@@ -5,7 +5,7 @@ using StardewValley.Tools;
 namespace Together;
 public sealed record OperatingOpportunity(string Id,string Purpose,string Tool,object Args,string Evidence,int Energy,int Minutes,object? Requirements=null);
 public sealed partial class ModEntry {
-    private IEnumerable<T> AvailableTools<T>() where T:Tool=>Game1.player.Items.OfType<T>().Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer().OfType<T>()));
+    private IEnumerable<T> AvailableTools<T>() where T:Tool=>Game1.player.Items.OfType<T>().Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer().OfType<T>()));
     private bool AvailableTool<T>() where T:Tool=>AvailableTools<T>().Any();
     private List<OperatingOpportunity> OperatingOpportunities() {
         var rows=new List<OperatingOpportunity>();var player=Game1.player;ReadGoalRecipes();
@@ -18,8 +18,7 @@ public sealed partial class ModEntry {
         if(Game1.mailbox.Count>0)rows.Add(new("mail","读取实际邮件，检查经营解锁","player.read_mail",new{},$"mail={Game1.mailbox.Count}",0,20));
         if(Facts.MachinesReady>0)rows.Add(new("production","收取已完成加工并安排补料","farm.business_status",new{},$"ready_machines={Facts.MachinesReady}",0,30));
         if(AvailableTool<FishingRod>()&&player.Stamina>=8&&Game1.timeOfDay<1900) {
-            var blocked=Data.Autoplay.Failures.Entries.Any(e=>e.Day==Game1.Date.TotalDays&&e.Reason.Contains("fishing_stalled"));
-            if(!blocked) {
+            {
                 string location=FishingLocations("").FirstOrDefault()?.NameOrUniqueName??"";
                 if(location.Length>0)rows.Add(new("fish-income","农务之外用可用体力获得真实渔获，补给后续作","work.run",new{goal="fish",location,count=3,reserve_stamina=0,until=Math.Min(2100,Game1.timeOfDay+400)},"rod_owned_in_bag_or_shared_storage;automatic_loadout;native_fishing_conditions;catch_not_guaranteed",24,90));
             }

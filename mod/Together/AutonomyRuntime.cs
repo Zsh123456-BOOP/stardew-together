@@ -2,7 +2,7 @@ using StardewValley;
 namespace Together;
 public sealed partial class ModEntry {
     private int PendingPurchaseCash()=>(int)Math.Min(int.MaxValue,Data.Autoplay.Schedule.Tasks
-        .Where(t=>!t.Terminal).GroupBy(t=>t.spec.intent_id).Sum(g=>(long)IntentCash(g)));
+        .Where(t=>!t.Terminal).GroupBy(t=>t.spec.intent_id).Sum(g=>(long)IntentCash(g))+Data.Business.UnverifiedCash.Values.Sum(v=>(long)v));
     private object InvestmentObservation()=>new {
         automation_enabled=Data.FarmInvestment.Enabled,repeat=Data.FarmInvestment.Repeat,
         status=AutonomyPolicy.InvestmentState(Data.FarmInvestment.Phase,Data.FarmInvestment.Error),

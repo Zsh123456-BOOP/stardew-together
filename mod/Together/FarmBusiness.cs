@@ -12,7 +12,9 @@ public sealed class FarmBusiness {
     public int FeedDays {get;set;}=7;
     public int Day {get;set;}=-1;
     public int ReservedToday {get;set;}
-    public int ActiveReservation {get;set;}
+    public int ActiveReservation {get;set;} // Legacy save field; live commitments derive from task intents.
+    public Dictionary<string,int> UnverifiedCash {get;set;}=new();
+    public Dictionary<string,string> BlockedConditions {get;set;}=new();
     public string Activity {get;set;}="";
     public string Reason {get;set;}="";
     public string ChildGoal {get;set;}="";

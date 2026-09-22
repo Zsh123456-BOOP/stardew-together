@@ -51,9 +51,9 @@ public sealed partial class ModEntry {
     }
     private bool RunBusinessDevelopment() {
         var b=Data.Business;var options=BusinessDevelopmentOptions().Where(o=>o.Id==Data.Operating.Production.Selected).DistinctBy(o=>o.Id).ToArray();
-        foreach(var option in BusinessMath.Rank(options,Game1.player.Money,b.KeepGold,b.DailyBudget,b.ReservedToday+Data.FarmInvestment.ReservedToday)
+        foreach(var option in BusinessMath.Rank(options,BusinessCashAvailable(ownDevelopment:true),0,-1,0)
             .OrderBy(o=>o.Id==b.PendingAsset?0:1)) {
-            if(b.RetryAfter.GetValueOrDefault(option.Id)>BusinessMinute)continue;
+            if(b.BlockedConditions.GetValueOrDefault(option.Id)==BusinessCondition())continue;
             var actions=new List<(string Tool,object Args)>();b.PendingAsset=option.Id;
             if(option.Kind=="machine") {
                 if(!BusinessMaterials(new(){[option.Item]=1},actions))return b.Tasks.Count>0;

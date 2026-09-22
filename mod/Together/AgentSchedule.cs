@@ -11,6 +11,7 @@ public sealed class AgentTaskSpec {
     public JsonElement args {get;set;}=JsonSerializer.SerializeToElement(new{});
     public List<string> after {get;set;}=new();
     public List<string> sequence_after {get;set;}=new();
+    public string sleep_review_basis {get;set;}="";
     public int sleep_review_day {get;set;}=-1;
     public int sleep_review_time {get;set;}=-1;
     public long sleep_review_progress {get;set;}=-1;
@@ -28,6 +29,7 @@ public sealed class ScheduledAgentTask {
     public AgentTaskSpec spec {get;set;}=new();
     public string state {get;set;}="queued";
     public string? command_id {get;set;}
+    public string cancellation_requested_by {get;set;}="";
     public string? error {get;set;}
     public string? wait_reason {get;set;}
     public string? receipt {get;set;}
@@ -40,6 +42,8 @@ public sealed class PlanStepRejected : InvalidOperationException {
 public sealed class AgentSchedule {
     [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
     public Action<AgentTaskSpec>? Prepare {get;set;}
+    [System.Text.Json.Serialization.JsonIgnore,Newtonsoft.Json.JsonIgnore]
+    public Action<ScheduledAgentTask>? Finished {get;set;}
     public int Revision {get;set;}
     public long EventVersion {get;set;}
     public List<ScheduledAgentTask> Tasks {get;set;}=new();
@@ -81,7 +85,9 @@ public sealed class AgentSchedule {
         foreach(var t in staged)Visit(t.spec.id);
         // Keep task receipts bounded without deleting dependencies still referenced by active plans.
         if(Tasks.Count+staged.Count>192)throw new InvalidOperationException("plan_history_full_archive_terminal_tasks");
-        Tasks.AddRange(staged);Submissions[submission]=fingerprint;
+        Tasks.AddRange(staged);
+        foreach(var blocked in staged.Where(t=>t.Terminal)){blocked.receipt=AgentJson.Encode(new{status="blocked",error=blocked.error,stop_reason=blocked.error,executed=false,completed=0});Finished?.Invoke(blocked);}
+        Submissions[submission]=fingerprint;
         foreach(var key in Submissions.Keys.Take(Math.Max(0,Submissions.Count-96)).ToArray())Submissions.Remove(key);
         Revision++;EventVersion++;return true;
     }
@@ -92,27 +98,37 @@ public sealed class AgentSchedule {
         var copy=args.Deserialize<Dictionary<string,JsonElement>>()!;copy["expected_revision"]=JsonSerializer.SerializeToElement(currentRevision);
         return JsonSerializer.SerializeToElement(copy);
     }
+    public (string State,string? Reason,int? Next) Readiness(ScheduledAgentTask t,int day,int time) {
+        if(t.Terminal)return ("terminal",t.error,null);
+        if(t.state=="running")return ("running",null,null);
+        if(t.state=="needs_review")return ("waiting_condition",t.error,null);
+        if(t.spec.day<day||t.spec.day==day&&time>t.spec.deadline)return ("blocked","task_window_expired_replan",null);
+        if(t.spec.after.Any(id=>Tasks.FirstOrDefault(x=>x.spec.id==id) is not {} d||d.Terminal&&d.state!="succeeded"||d.state=="needs_review"))return ("blocked","dependency_not_completed_replan",null);
+        if(t.spec.day>day)return ("waiting_until","future_day",t.spec.not_before);
+        if(t.spec.sequence_after.Any(id=>!Tasks.Any(d=>d.spec.id==id)))return ("blocked","sequence_dependency_missing_replan",null);
+        if(!t.spec.after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded"))||!t.spec.sequence_after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.Terminal)))return ("waiting_condition","dependencies_pending",null);
+        if(time<t.spec.not_before)return ("waiting_until",t.wait_reason??"before_start",t.spec.not_before);
+        if(t.wait_reason!=null)return ("waiting_condition",t.wait_reason,null);
+        return ("runnable",null,null);
+    }
+    public bool Covers(string actor,int day,int time)=>Tasks.Any(t=>t.spec.actor==actor&&Readiness(t,day,time).State is "running" or "runnable");
     public List<ScheduledAgentTask> Ready(int day,int time,Func<IEnumerable<ScheduledAgentTask>,IEnumerable<ScheduledAgentTask>>? order=null,Func<string,bool>? externallyBusy=null) {
-        foreach(var t in Tasks.Where(t=>t.state=="queued")) {
-            if(t.spec.day<day || t.spec.day==day&&time>t.spec.deadline){t.state="blocked";t.error="task_window_expired_replan";EventVersion++;}
-            else if(t.spec.after.Any(id=>Tasks.FirstOrDefault(x=>x.spec.id==id) is not {} d || d.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review")){t.state="blocked";t.error="dependency_not_completed_replan";EventVersion++;}
-        }
-        var busy=Tasks.Where(t=>t.state is "running" or "needs_review").Select(t=>t.spec.actor).ToHashSet();
-        IEnumerable<ScheduledAgentTask> eligible=Tasks.Where(t=>t.state=="queued"&&!busy.Contains(t.spec.actor)&&externallyBusy?.Invoke(t.spec.actor)!=true&&t.spec.sequence_after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.Terminal))&&t.spec.day==day&&time>=t.spec.not_before&&t.spec.after.All(id=>Tasks.Any(d=>d.spec.id==id&&d.state=="succeeded")))
-            .OrderByDescending(t=>t.spec.priority)
-            .ThenByDescending(t=>Tasks.Any(p=>p.spec.intent_id==t.spec.intent_id&&p.state=="succeeded"));
+        foreach(var t in Tasks.Where(t=>t.state=="queued").ToArray()) {var readiness=Readiness(t,day,time);if(readiness.State=="blocked")Finish(t,"blocked",readiness.Reason,AgentJson.Encode(new{status="blocked",stop_reason=readiness.Reason,executed=false,completed=0}));}
+        var busy=Tasks.Where(t=>t.state=="running").Select(t=>t.spec.actor).ToHashSet();
+        IEnumerable<ScheduledAgentTask> eligible=Tasks.Where(t=>Readiness(t,day,time).State=="runnable"&&!busy.Contains(t.spec.actor)&&externallyBusy?.Invoke(t.spec.actor)!=true)
+            .OrderByDescending(t=>t.spec.priority).ThenByDescending(t=>Tasks.Any(p=>p.spec.intent_id==t.spec.intent_id&&p.state=="succeeded"));
         return (order==null?eligible:order(eligible)).GroupBy(t=>t.spec.actor).Select(g=>g.First()).ToList();
     }
     public void Started(ScheduledAgentTask t,string command){t.state="running";t.command_id=command;t.error=null;t.wait_reason=null;EventVersion++;}
-    public void Finish(ScheduledAgentTask t,string status,string? error,string receipt){t.state=status;t.error=error;t.receipt=receipt;EventVersion++;}
+    public void Finish(ScheduledAgentTask t,string status,string? error,string receipt){bool changed=!t.Terminal||t.state!=status||t.receipt!=receipt;t.state=status;t.error=error;t.receipt=receipt;t.wait_reason=null;if(changed){EventVersion++;Finished?.Invoke(t);}}
     public void Suspend() {
         foreach(var t in Tasks.Where(t=>!t.Terminal)){t.state="needs_review";t.error="interrupted_read_world_before_replacing";}
         EventVersion++;Revision++;
     }
-    public void CancelPending(IEnumerable<string> ids) {
+    public void CancelPending(IEnumerable<string> ids,string reason="cancelled_by_model") {
         var wanted=ids.Distinct().Select(id=>Tasks.FirstOrDefault(t=>t.spec.id==id)??throw new InvalidOperationException("unknown_task_id")).ToArray();
         if(wanted.Any(t=>t.state=="running"))throw new InvalidOperationException("running_task_cancel_requires_executor");
-        foreach(var t in wanted.Where(t=>!t.Terminal)){t.state="cancelled";t.error="cancelled_by_model";}
+        foreach(var t in wanted.Where(t=>!t.Terminal))Finish(t,"cancelled",reason,AgentJson.Encode(new{status="cancelled",stop_reason=reason,executed=false,completed=0}));
         Revision++;EventVersion++;
     }
     public int Archive() {

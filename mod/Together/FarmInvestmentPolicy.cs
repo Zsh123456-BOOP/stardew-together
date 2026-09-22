@@ -29,5 +29,5 @@ public sealed class FarmInvestmentPolicy {
 
 public static class ReinvestmentReview {
     public static bool Needed(int oldCash,int cash,int oldCrops,int crops,int oldSeeds,int seeds,int remainingBudget,int time)=>
-        time<1500&&oldCash>=0&&(seeds>oldSeeds||crops<oldCrops||cash>oldCash&&remainingBudget>0);
+        time<2600&&oldCash>=0&&(seeds>oldSeeds||crops<oldCrops||cash>oldCash&&remainingBudget>0);
 }

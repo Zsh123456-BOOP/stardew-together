@@ -40,19 +40,42 @@ public sealed class FarmInvestmentPolicy {
 public sealed class SeedPurchaseManifest {
     public int Day {get;set;}=-1;
     public Dictionary<string,int> Approved {get;set;}=new();
+    public Dictionary<string,int> Planned {get;set;}=new();
     public Dictionary<string,int> Purchased {get;set;}=new();
+    public bool PlanFinalized {get;set;}
+    public string PlanReason {get;set;}="";
     public HashSet<string> Receipts {get;set;}=new();
-    public int Remaining(string item)=>Math.Max(0,Approved.GetValueOrDefault(item)-Purchased.GetValueOrDefault(item));
+    public int Allowance(string item)=>Math.Max(0,Approved.GetValueOrDefault(item)-Purchased.GetValueOrDefault(item));
+    public int Remaining(string item)=>Math.Max(0,(PlanFinalized?Planned:Approved).GetValueOrDefault(item)-Purchased.GetValueOrDefault(item));
+    public int NotScheduled(string item)=>PlanFinalized?Math.Max(0,Approved.GetValueOrDefault(item)-Math.Max(Planned.GetValueOrDefault(item),Purchased.GetValueOrDefault(item))):0;
+    private void NewDay(int day){Day=day;Approved.Clear();Planned.Clear();Purchased.Clear();Receipts.Clear();PlanFinalized=false;PlanReason="";}
     public void Select(int day,Dictionary<string,int> items) {
-        if(day!=Day){Day=day;Purchased.Clear();Receipts.Clear();}
-        // Reselection replaces only the unfulfilled allowance. Goods already
-        // delivered remain accounted for even when selecting additional seeds.
-        Approved=new(Purchased);
+        if(items.Any(p=>p.Value<0))throw new InvalidOperationException("seed_selection_negative_quantity");
+        if(day!=Day)NewDay(day);
+        Approved=new(Purchased);Planned.Clear();PlanFinalized=false;PlanReason="selection_upper_limits_only";
         foreach(var row in items)Approved[row.Key]=Purchased.GetValueOrDefault(row.Key)+row.Value;
     }
+    public void ValidatePlan(int day,IReadOnlyDictionary<string,int> quantities) {
+        if(day!=Day||quantities.Any(p=>p.Value<0||p.Value>Allowance(p.Key)))throw new InvalidOperationException("seed_plan_exceeds_selection");
+    }
+    public void FinalizePlan(int day,IReadOnlyDictionary<string,int> quantities,string reason) {
+        ValidatePlan(day,quantities);
+        // Validate the whole batch before mutating. An upper limit that the
+        // planner did not use is not an interrupted purchase to retry.
+        Planned=new(Purchased);
+        foreach(var row in quantities)Planned[row.Key]=Purchased.GetValueOrDefault(row.Key)+row.Value;
+        PlanFinalized=true;PlanReason=reason;
+    }
+    public void Close(int day,string reason) {if(day==Day)FinalizePlan(day,new Dictionary<string,int>(),reason);}
     public void Receive(int day,string receipt,string item,int units) {
-        if(day!=Day||units<=0||!Approved.ContainsKey(item)||!Receipts.Add(receipt+":"+item))return;
+        if(day<Day||units<=0||string.IsNullOrEmpty(item))return;
+        if(day!=Day)NewDay(day);
+        if(!Receipts.Add(receipt+":"+item))return;
         Purchased[item]=Purchased.GetValueOrDefault(item)+units;
+        // Direct additional purchases enter accounting only after native goods
+        // arrive. A rejected proposal never increases pending authorization.
+        Approved[item]=Math.Max(Approved.GetValueOrDefault(item),Purchased[item]);
+        if(PlanFinalized)Planned[item]=Math.Max(Planned.GetValueOrDefault(item),Purchased[item]);
     }
     public string? Validate(int day,string item,int count,string additionalReason)=>day==Day&&Approved.ContainsKey(item)&&count>Remaining(item)&&additionalReason.Trim().Length<3?"seed_purchase_exceeds_remaining_manifest:acknowledge_owned_seeds_with_additional_reason":null;
 }

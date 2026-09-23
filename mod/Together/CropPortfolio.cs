@@ -85,6 +85,6 @@ public static class CropPortfolio {
                 if(keep--<=0)break;for(int day=harvest+1;day<=end+1;day++)calendar.GameStates[day].Wallet-=seed.SalePrice;
             }
         }
-        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop,SeasonCashForecast.Plan(s,plants,spent,cancellation)){PreparationTiles=plants.Count==0?new():bed.ToList(),FirstDayEnergy=plants.Count==0?0:s.Grid.Where(c=>bed.Contains(c.Tile)).Sum(c=>c.ClearCost)+s.Grid.Where(c=>plants.Any(p=>p.Tile==c.Tile)).Sum(c=>(c.Tilled?0:4)+(c.Watered?0:4))};
+        return new(plants,purchases,spent,manual,calendar.GameStates.Where(x=>x.Key>=s.Date&&(x.Key==s.Date||x.Key==end+1||x.Value.DayOfInterest)).Select(x=>new{day=x.Key,projected_gold=x.Value.Wallet,free_plots=x.Value.FreeTiles}).ToArray(),stop,SeasonCashForecast.Plan(s,plants,spent,cancellation)){PreparationTiles=plants.Count==0?new():bed.ToList(),FirstDayEnergy=plants.Count==0?0:(int)Math.Ceiling(s.Grid.Where(c=>bed.Contains(c.Tile)).Sum(c=>c.ClearCost)+s.Grid.Where(c=>plants.Any(p=>p.Tile==c.Tile)).Sum(FarmLayout.CultivationEnergy))};
     }
 }

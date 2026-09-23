@@ -82,7 +82,7 @@ public static class WorldReader {
         foreach(var building in farm.buildings) {var indoors=building.GetIndoors();if(indoors!=null)locations.Add(indoors);}
         foreach(var location in locations) {
             foreach(var entry in location.terrainFeatures.Pairs)if(entry.Value is HoeDirt dirt && dirt.crop is {} crop) {
-                bool dead=crop.dead.Value,ripe=dirt.readyForHarvest(),dry=!dead && !ripe && dirt.state.Value==HoeDirt.dry;
+                bool dead=crop.dead.Value,ripe=dirt.readyForHarvest(),dry=!dead && !ripe && dirt.needsWatering() && dirt.state.Value==HoeDirt.dry;
                 if(dead)f.DeadCrops++;if(ripe)f.RipeCrops++;if(dry)f.DryCrops++;
                 f.Crops.Add(new{location=location.NameOrUniqueName,x=(int)entry.Key.X,y=(int)entry.Key.Y,item=crop.indexOfHarvest.Value,dead,ripe,dry,
                     phase=crop.currentPhase.Value,day_in_phase=crop.dayOfCurrentPhase.Value,phase_days=crop.phaseDays.ToArray()});
@@ -143,8 +143,8 @@ public static class WorldReader {
             try {
                 using var document=System.Text.Json.JsonDocument.Parse(ledger);var root=document.RootElement;
                 f.SpentToday=root.GetProperty("Day").GetInt32()==f.Day?root.GetProperty("Spent").GetInt32():0;
-                f.Purchased=root.GetProperty("Purchased").EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
-                if(root.TryGetProperty("PurchasedItems",out var purchasedItems))f.PurchasedItems=purchasedItems.EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
+                if(root.GetProperty("Day").GetInt32()==f.Day)f.Purchased=root.GetProperty("Purchased").EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
+                if(root.GetProperty("Day").GetInt32()==f.Day&&root.TryGetProperty("PurchasedItems",out var purchasedItems))f.PurchasedItems=purchasedItems.EnumerateObject().ToDictionary(x=>x.Name,x=>x.Value.GetInt32());
                 f.Transactions=root.GetProperty("Entries").EnumerateArray().Select(x=>x.GetString()??"").TakeLast(20).ToList();
             }catch{f.Errors.Add("economy_ledger_unreadable");}
         }

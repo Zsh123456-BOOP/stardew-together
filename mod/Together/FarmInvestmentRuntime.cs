@@ -48,13 +48,14 @@ public sealed partial class ModEntry {
                     if(Game1.activeClickableMenu is ShopMenu shop) {if(shop.heldItem!=null||!shop.readyToClose())throw new InvalidOperationException("purchase_recovery_requires_receiving_held_item");shop.exitThisMenu();}
                     if(Game1.activeClickableMenu!=null)return;
                     Data.Autoplay.Schedule.CancelPending(tasks.Where(t=>t!=null&&!t.Terminal).Select(t=>t!.spec.id),"partial_purchase_recovery");
+                    p.Purchase.Close(Game1.Date.TotalDays,"partial_purchase_recovery_use_delivered_seeds_only");
                     p.PurchaseRecoveryUsed=true;p.OwnedSeedsOnly=true;p.OwnedSeedsPassDone=true;p.Phase="start_planning";p.Tasks.Clear();
                     // Keep the original spending reservation. Replan only goods
                     // already delivered, without re-buying the failed manifest.
                     Data.Autoplay.Record("farm_purchase_partial_recovery","现场采购部分失败；保留原预算预留，按真实已到货种子重新规划。");return;
                 }
                 if(tasks.Any(t=>t==null||t.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review"))throw new InvalidOperationException("farm_investment_task_interrupted_read_plan_before_retry");
-                if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";p.Error="";p.SeedReviewDay=Game1.Date.TotalDays;p.SeedReviewCash=SeedAllowance();Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
+                if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";p.Error="";p.Purchase.Close(Game1.Date.TotalDays,"completed_native_purchase_and_planting");p.SeedReviewDay=Game1.Date.TotalDays;p.SeedReviewCash=SeedAllowance();Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
             }
             if(p.Phase=="observing_shop") {
                 var task=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==p.ServiceTask);
@@ -71,7 +72,7 @@ public sealed partial class ModEntry {
             if(p.Phase=="planning") {
                 if(!economyJobs.TryGetValue(p.PlanId,out var job)||job.Epoch!=agentSaveEpoch||job.Snapshot.Day!=Game1.Date.TotalDays)throw new InvalidOperationException("farm_investment_snapshot_lost_replan");
                 if(!job.Task.IsCompleted)return;
-                var result=job.Task.GetAwaiter().GetResult();if(result.Plants.Count==0){p.Phase="done";p.Error=result.StopReason;return;}
+                var result=job.Task.GetAwaiter().GetResult();if(result.Plants.Count==0){p.Purchase.Close(Game1.Date.TotalDays,result.StopReason);p.Phase="done";p.Error=result.StopReason;return;}
                 if(result.FirstDayEnergy>AvailablePlantingEnergy()){p.Phase="start_planning";p.PlanId="";return;}
                 if(result.Spent>SeedAllowance())throw new InvalidOperationException("farm_investment_budget_changed");
                 if(Data.Autoplay.Schedule.Tasks.Count+24>180)Data.Autoplay.Schedule.Archive();
@@ -83,19 +84,19 @@ public sealed partial class ModEntry {
                 p.Tasks=taskIds.EnumerateArray().Select(t=>t.GetString()!).ToList();p.Phase="executing";
                 Data.Autoplay.Record("farm_investment_plan",AgentJson.Encode(new{p.Day,p.PlanId,p.ReservedToday,p.Tasks,result.Plants}));return;
             }
-            if(!InvestmentWindowFits()){p.Phase="done";p.Error="insufficient_remaining_work_and_return_window";return;}
+            if(!InvestmentWindowFits()){p.Purchase.Close(Game1.Date.TotalDays,"insufficient_remaining_work_and_return_window");p.Phase="done";p.Error="insufficient_remaining_work_and_return_window";return;}
             if(p.Phase=="idle") {
                 // Harvest first; otherwise ripe tiles are missing from the new
                 // layout and a premature no-space result suppresses reinvestment.
                 if(Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Any(d=>d.crop!=null&&!d.crop.dead.Value&&d.readyForHarvest()))return;
                 p.ReviewedCash=Game1.player.Money;p.ReviewedCrops=Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
                 p.ReviewedSeeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74).Sum(i=>i.Stack);p.Reviews++;
-                if(p.ManualWaterLimit>=0&&p.ReviewedCrops>=p.ManualWaterLimit&&p.CropLocation=="Farm"){p.Phase="done";p.Error="care_capacity_full_wait_for_harvest";return;}
+                if(p.ManualWaterLimit>=0&&p.ReviewedCrops>=p.ManualWaterLimit&&p.CropLocation=="Farm"){p.Purchase.Close(Game1.Date.TotalDays,"care_capacity_full");p.Phase="done";p.Error="care_capacity_full_wait_for_harvest";return;}
 
                 bool ownedSeeds=Game1.player.Items.Concat(SharedStorage().SelectMany(s=>s.Chest.GetItemsForPlayer())).Any(i=>i?.Category==-74);
                 if(!p.OwnedSeedsPassDone&&ownedSeeds) {p.OwnedSeedsPassDone=true;p.OwnedSeedsOnly=true;p.Phase="start_planning";}
                 else {
-                var service=ServiceWindow(p.Location);if(service.Reason!="available"||Game1.timeOfDay>=service.Close){p.Phase="done";p.Error="shop_window_unavailable_use_owned_seeds_or_other_work";WakeAgent(p.Error);return;}
+                var service=ServiceWindow(p.Location);if(service.Reason!="available"||Game1.timeOfDay>=service.Close){p.Purchase.Close(Game1.Date.TotalDays,"shop_window_unavailable");p.Phase="done";p.Error="shop_window_unavailable_use_owned_seeds_or_other_work";WakeAgent(p.Error);return;}
                 if(Game1.timeOfDay<service.Open)return;
                 if(SeedAllowance()>0&&!(quoteEpoch==agentSaveEpoch&&seedQuotes.Values.Any(q=>q.Day==Game1.Date.TotalDays&&q.Shop==p.Shop))) {
                     if(Data.Autoplay.Schedule.Tasks.Count>180)Data.Autoplay.Schedule.Archive();
@@ -111,6 +112,6 @@ public sealed partial class ModEntry {
                 var response=JsonSerializer.SerializeToElement(PlanFarmEconomy(JsonSerializer.SerializeToElement(new{budget=p.OwnedSeedsOnly||p.Error=="shop_unavailable_use_owned_seeds_only"?0:SeedAllowance(),keep_gold=p.KeepGold+UnscheduledDevelopmentCash(),plots=p.Plots,max_daily_manual_water=p.ManualWaterLimit,priority=p.Priority,location=p.CropLocation})));
                 p.PlanId=response.GetProperty("plan_id").GetString()!;p.Phase="planning";
             }
-        }catch(Exception error){p.Phase="blocked";p.Error=error is InvalidOperationException?error.Message:error.GetType().Name;Data.Autoplay.Record("farm_investment_blocked",p.Error);WakeAgent("farm_investment_blocked");}
+        }catch(Exception error){p.Purchase.Close(Game1.Date.TotalDays,"workflow_interrupted_reobserve_delivered_goods");p.Phase="blocked";p.Error=error is InvalidOperationException?error.Message:error.GetType().Name;Data.Autoplay.Record("farm_investment_blocked",p.Error);WakeAgent("farm_investment_blocked");}
     }
 }

@@ -19,6 +19,10 @@ public sealed partial class ModEntry {
         }
         var result=PlayerExecutor.ReadShop(args);var menu=(ShopMenu)Game1.activeClickableMenu;
         if(quoteEpoch!=agentSaveEpoch){seedQuotes.Clear();observedProducts.Clear();quoteEpoch=agentSaveEpoch;}
+        // A fresh shelf replaces this shop's old quote set, including products
+        // that became sold out; absence must not resurrect an earlier offer.
+        foreach(var key in seedQuotes.Where(p=>p.Value.Shop==menu.ShopId).Select(p=>p.Key).ToArray())seedQuotes.Remove(key);
+        foreach(var key in observedProducts.Keys.Where(k=>k.StartsWith(menu.ShopId+":",StringComparison.Ordinal)).ToArray())observedProducts.Remove(key);
         foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {IsRecipe:false} observed&&pair.Value.Stock>0)observedProducts[menu.ShopId+":"+observed.QualifiedItemId]=(observed.getOne(),observed.Stack,Game1.Date.TotalDays);
         if(menu.currency==0)foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {Category:-74,IsRecipe:false} item&&pair.Value.TradeItem==null&&pair.Value.ActionsOnPurchase?.Count is not >0&&pair.Value.Price>=0&&pair.Value.Stock>0&&item.CanBuyItem(Game1.player))
             seedQuotes[menu.ShopId+":"+item.QualifiedItemId]=new(item.QualifiedItemId,menu.ShopId,Game1.currentLocation.NameOrUniqueName,Game1.Date.TotalDays,pair.Value.Price,pair.Value.Stock,item.Stack);
@@ -43,11 +47,12 @@ public sealed partial class ModEntry {
         // Poll each live claim once, not once per every map tile.
         foreach(var claim in agentClaims.Values.ToArray())AgentTileBusy(claim.Location,claim.X,claim.Y);
         var occupiedClaims=agentClaims.Values.Where(c=>c.Location==l.NameOrUniqueName).Select(c=>new Point(c.X,c.Y)).ToHashSet();
+        float tillEnergy=PlantingSwing<StardewValley.Tools.Hoe>(),waterEnergy=PlantingSwing<StardewValley.Tools.WateringCan>();
         for(int y=0;y<l.Map.Layers[0].LayerHeight;y++)for(int x=0;x<l.Map.Layers[0].LayerWidth;x++) {
             var at=new FarmCell(x,y);var v=new Vector2(x,y);var feature=l.terrainFeatures.GetValueOrDefault(v);var dirt=feature as HoeDirt;int clearance=PlotClearCost(l,new(x,y));bool pass=PlayerExecutor.Passable(l,new(x,y))||clearance>0;
             if(l.CanRefillWateringCanOnTile(x,y))water.Add(at);
             bool legal=!occupiedClaims.Contains(new(x,y))&&!IsPlacementProtected(l.NameOrUniqueName,new(x,y),false)&&pass&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null&&l.doesTileHaveProperty(x,y,"NoSpawn","Back")!="All"&&l.doesTileHaveProperty(x,y,"TouchAction","Back")==null&&l.doesTileHaveProperty(x,y,"Action","Buildings")==null;
-            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
+            grid.Add(new(at,legal,pass,dirt?.state.Value==1,irrigation.Contains(v),l.IsGreenhouse||scares.Any(o=>Vector2.Distance(o.Key,v)<o.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler(),TillEnergy:tillEnergy,WaterEnergy:waterEnergy));
         }
         ApplyFarmZoning(l,grid,anchors);grid=DistrictGrid(l,grid);
         var distances=FarmLayout.WaterDistances(grid,water);grid=grid.Select(c=>c with{DistanceToWater=distances.GetValueOrDefault(c.Tile,10000)}).ToList();
@@ -132,7 +137,12 @@ public sealed partial class ModEntry {
             farmPlantPlans[plan.Id]=plan;Add("work.run",new{goal="plant",plan_id=plan.Id},"按预算组合与通道布局播种照料");
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};
+        if(Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays)Data.FarmInvestment.Purchase.ValidatePlan(Game1.Date.TotalDays,result.Purchases.ToDictionary(b=>b.Seed,b=>b.Count));
         Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);job.Submitted=true;
+        if(Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays) {
+            Data.FarmInvestment.Purchase.FinalizePlan(Game1.Date.TotalDays,result.Purchases.ToDictionary(b=>b.Seed,b=>b.Count),result.StopReason);
+            Data.Autoplay.Record("seed_plan_finalized",AgentJson.Encode(new{planId,purchases=result.Purchases,reason=result.StopReason,status=SeedPurchaseStatus()}));
+        }
         if(!PlayerExecutor.LoadedLocation(job.Location)!.IsGreenhouse)District(PlayerExecutor.LoadedLocation(job.Location)!).Commit(result.PreparationTiles);
         return new{status="queued",tasks=tasks.Select(t=>t.id),result.Spent,note="采购/播种以各阶段原生回执为准。"};
     }

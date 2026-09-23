@@ -47,9 +47,9 @@ public sealed partial class ModEntry {
         int wood=p.Items.Where(i=>i?.QualifiedItemId=="(O)388").Sum(i=>i.Stack),cargo=PartnerCargoCount("(O)388");
         int missing=Math.Max(0,cost-wood-cargo);
         // Preserve pending crop care and the actual slot required by crafting.
-        if(!chest&&(wood+cargo==0||!CapacityAdapter.CanReceive(p,ItemRegistry.Create("(O)388"),Math.Max(0,missing))||p.Stamina-missing*4<20+Facts.DryCrops*4))return false;
+        if(!chest&&(wood+cargo==0||!CapacityAdapter.CanReceive(p,ItemRegistry.Create("(O)388"),Math.Max(0,missing))||p.Stamina-missing*4<20+PendingFarmEnergy()))return false;
         var actions=new List<(string Tool,object Args)>();
-        if(missing>0)actions.Add(("work.run",new{goal="wood",location="Farm",count=missing,reserve_stamina=Math.Max(20,20+Facts.DryCrops*4)}));
+        if(missing>0)actions.Add(("work.run",new{goal="wood",location="Farm",count=missing,reserve_stamina=Math.Max(20,20+PendingFarmEnergy())}));
         actions.Add(("work.run",new{goal="storage_expand",until=2100}));
         return QueueBusiness("initial_storage",actions,"汇合真实材料、原生制作首个仓库，避免重复采木与满包后才准备仓储");
     }

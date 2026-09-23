@@ -13,7 +13,7 @@ public sealed partial class ModEntry {
             int owned=o.Id.Contains(":owned-seeds:")?OwnedSeeds().Where(i=>o.Id.EndsWith(":"+i.QualifiedItemId)).Sum(i=>i.Stack):0;
             return new ReviewOption(o.Id,owned>0&&o.Tool=="work.run"?null:o.Energy,o.Minutes,owned>0?"owned_seeds;additional_seed_cost=0;defer_planting_and_watering_delays_growth;compare_future_yield_and_care;layout_cost_from_farm.plan":o.Tool is "player.service" or "shop.read"?"visit_quote_only;buy_or_plant_separately;profit_unknown_until_quote":"shown_action_estimate",owned);
         }).ToList();
-        if(Facts.DryCrops>0&&!options.Any(o=>o.id=="water"))options.Add(new("care:dry_crops",(float)Math.Ceiling(Facts.DryCrops*Math.Max(0,2-.1*Game1.player.FarmingLevel)),30,"watering_estimate;tool_route_not_verified"));
+        if(Facts.DryCrops>0&&!options.Any(o=>o.id=="water"))options.Add(new("care:dry_crops",DryFarmEnergy(),30,"watering_estimate;tool_route_not_verified"));
         return DecisionReviewPolicy.Select(options);
     }
     private object DecisionReviewContext(IEnumerable<OperatingOpportunity> opportunities)=>new {

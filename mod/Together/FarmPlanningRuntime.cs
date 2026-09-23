@@ -70,6 +70,7 @@ public sealed partial class ModEntry {
         var water=new List<Point>();var grid=new List<LayoutCell>();
         foreach(var pair in l.objects.Pairs)if(pair.Value.bigCraftable.Value){var stand=WorkStand(l,pair.Key.ToPoint());if(stand.HasValue)anchors.Add(new(stand.Value.X,stand.Value.Y));}
         foreach(var pair in l.terrainFeatures.Pairs)if(pair.Value is HoeDirt {crop:not null}){var stand=WorkStand(l,pair.Key.ToPoint());if(stand.HasValue)anchors.Add(new(stand.Value.X,stand.Value.Y));}
+        float tillEnergy=PlantingSwing<Hoe>(),waterEnergy=PlantingSwing<WateringCan>();
         int width=l.Map.Layers[0].LayerWidth,height=l.Map.Layers[0].LayerHeight;
         for(int y=0;y<height;y++)for(int x=0;x<width;x++)if(l.CanRefillWateringCanOnTile(x,y))water.Add(new(x,y));
         foreach(var w in water){var stand=WorkStand(l,w);if(stand.HasValue){anchors.Add(new(stand.Value.X,stand.Value.Y));break;}}
@@ -80,7 +81,7 @@ public sealed partial class ModEntry {
             bool plantable=!IsPlacementProtected(l.NameOrUniqueName,new(x,y))&&passable&&(!l.objects.ContainsKey(v)||clearance>0)&&(feature==null||dirt is {crop:null})&&l.doesTileHaveProperty(x,y,"Diggable","Back")!=null;
             if(l.doesTileHaveProperty(x,y,"NoSpawn","Back")=="All" || l.doesTileHaveProperty(x,y,"Action","Buildings")!=null || l.doesTileHaveProperty(x,y,"TouchAction","Back")!=null)plantable=false;
             bool irrigation=irrigated.Contains(v)&&l.doesTileHaveProperty(x,y,"NoSprinklers","Back")!="T";
-            grid.Add(new(new(x,y),plantable,passable,dirt?.state.Value==1,irrigation,l.IsGreenhouse||scares.Any(s=>Vector2.Distance(s.Key,v)<s.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler()));
+            grid.Add(new(new(x,y),plantable,passable,dirt?.state.Value==1,irrigation,l.IsGreenhouse||scares.Any(s=>Vector2.Distance(s.Key,v)<s.Value.GetRadiusForScarecrow()),dirt!=null,0,clearance,l.objects.TryGetValue(v,out var equipment)&&equipment.IsSprinkler(),TillEnergy:tillEnergy,WaterEnergy:waterEnergy));
         }
         var zoning=ApplyFarmZoning(l,grid,anchors);grid=DistrictGrid(l,grid);
         var waterDistance=FarmLayout.WaterDistances(grid,water.Select(w=>new FarmCell(w.X,w.Y)));
@@ -105,7 +106,7 @@ public sealed partial class ModEntry {
                 var dirt=l.terrainFeatures.GetValueOrDefault(new Vector2(c.Tile.X,c.Tile.Y)) as HoeDirt;
                 float speed=dirt?.HasFertilizer()==true?dirt.GetFertilizerSpeedBoost():fertilizer switch{"(O)465"=>.1f,"(O)466"=>.25f,"(O)918"=>.33f,_=>0};
                 growth[c.Tile]=CropGrowth.Stages(data.DaysInPhase,speed,p.professions.Contains(5),paddy).Sum();
-                return c with{Irrigated=c.Irrigated||paddy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
+                return c with{Irrigated=c.Irrigated||paddy,WaterEnergy=paddy?0:c.WaterEnergy,Plantable=c.Plantable&&l.CanPlantSeedsHere(id,c.Tile.X,c.Tile.Y,false,out _)&&Game1.dayOfMonth+growth[c.Tile]<=horizon};
             }).ToList();
             var chosen=FarmLayout.Choose(seedGrid,new(p.TilePoint.X,p.TilePoint.Y),anchors,Math.Min(max,seed.Value),possibilities.Values.Any(d=>d.IsRaised),manual,protectedOnly,energyBudget:AvailablePlantingEnergy());
             Data.Autoplay.Record("plot_choice_evidence",AgentJson.Encode(new{seed=seed.Key,requested=max,chosen.Score,chosen.StopReason,selected=chosen.Tiles.Select(t=>seedGrid.First(c=>c.Tile==t)),available_tilled=seedGrid.Where(c=>c.Plantable&&c.Tilled),available_untilled=seedGrid.Count(c=>c.Plantable&&!c.Tilled),score_formula="entry*2+shape_difference*3+sum(planning_penalty+clear_cost*3+unirrigated*25+unprotected*8+untilled*6+water_distance*.2)",selection="maximal_feasible_compact_area_then_score"}));
@@ -116,7 +117,7 @@ public sealed partial class ModEntry {
             double gross=plan.GrowthByTile.Values.Sum(d=>new StardewCropCalculatorLibrary.Crop(seed.Key,d,calc.yieldRate,0,calc.sellPrice).NumHarvests(Game1.dayOfMonth,horizon)*calc.sellPrice);
             bool missing=!p.basicShipped.ContainsKey(data.HarvestItemId)||Facts.Bundles.Any(b=>!b.Complete&&b.Missing.Any(n=>n.Item=="(O)"+data.HarvestItemId));
             double score=priority=="collection"?(missing?100000:0)+gross:priority=="low_labor"?gross/Math.Max(1,plan.ManualWatering*Math.Max(1,horizon-Game1.dayOfMonth)):gross;
-            options.Add((score,new{plan_id=plan.Id,next_action=new{tool="work.run",args=new{goal="plant",plan_id=plan.Id}},plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,labor_budget=FarmLaborBudget(),estimated_today_base_energy=plan.Tiles.Sum(t=>(l.terrainFeatures.GetValueOrDefault(new(t.X,t.Y)) is HoeDirt?0:2)+(l.terrainFeatures.GetValueOrDefault(new(t.X,t.Y)) is HoeDirt {state.Value:1}?0:2))+plan.PreparationTiles.Sum(t=>PlotClearCost(l,new(t.X,t.Y))),unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,possible_crops=possibilities.Select(c=>new{seed=c.Key,harvest=c.Value.HarvestItemId,days=c.Value.DaysInPhase.Sum()}),forecast=possibilities.Count==1?FarmForecast(plan):(object)new{kind="random_native_crop_outcomes",growth_days=new[]{possibilities.Values.Min(c=>c.DaysInPhase.Sum()),possibilities.Values.Max(c=>c.DaysInPhase.Sum())},base_sale_range=possibilities.Values.Select(c=>ItemRegistry.Create<StardewValley.Object>("(O)"+c.HarvestItemId).Price).OrderBy(x=>x).ToArray(),note="每格由原生随机决定，不承诺确定收入；规划按最长生长期，读取不消耗随机数"}}));
+            options.Add((score,new{plan_id=plan.Id,next_action=new{tool="work.run",args=new{goal="plant",plan_id=plan.Id}},plan.Seed,plan.Fertilizer,count=plan.Tiles.Count,tiles=plan.Tiles,preparation="clear_entire_bed_then_till_then_plant_then_water",clearance=plan.Tiles.Where(t=>PlotClearCost(l,new(t.X,t.Y))>0),harvest_day_range=new[]{Game1.dayOfMonth+plan.GrowthByTile.Values.Min(),Game1.dayOfMonth+plan.GrowthByTile.Values.Max()},growing_window_end=horizon,manual_water_per_day=plan.ManualWatering,labor_budget=FarmLaborBudget(),estimated_today_base_energy=FarmLayout.PlantingEnergy(seedGrid.Where(c=>plan.Tiles.Contains(c.Tile))),unprotected_tiles=plan.Unprotected,seed_purchase_cost=0,owned_seeds_only=true,plan.StopReason,possible_crops=possibilities.Select(c=>new{seed=c.Key,harvest=c.Value.HarvestItemId,days=c.Value.DaysInPhase.Sum()}),forecast=possibilities.Count==1?FarmForecast(plan):(object)new{kind="random_native_crop_outcomes",growth_days=new[]{possibilities.Values.Min(c=>c.DaysInPhase.Sum()),possibilities.Values.Max(c=>c.DaysInPhase.Sum())},base_sale_range=possibilities.Values.Select(c=>ItemRegistry.Create<StardewValley.Object>("(O)"+c.HarvestItemId).Price).OrderBy(x=>x).ToArray(),note="每格由原生随机决定，不承诺确定收入；规划按最长生长期，读取不消耗随机数"}}));
         }
         foreach(var key in farmPlantPlans.Where(p=>p.Value.Epoch!=agentSaveEpoch||p.Value.Day!=Game1.Date.TotalDays).Select(p=>p.Key).ToArray())farmPlantPlans.Remove(key);
         foreach(var key in farmPlantPlans.Keys.Take(Math.Max(0,farmPlantPlans.Count-128)).ToArray())farmPlantPlans.Remove(key);
@@ -178,7 +179,7 @@ public sealed partial class ModEntry {
         foreach(var tile in preparation)if(l.terrainFeatures.TryGetValue(new(tile.X,tile.Y),out var feature)&&feature is not HoeDirt){StopSemanticWork(j,"planned_plot_terrain_changed");return;}
         var cultivation=plan.CultivationTiles.Count>0?plan.CultivationTiles:plan.Tiles;
         var untilled=cultivation.Where(t=>!l.terrainFeatures.ContainsKey(new(t.X,t.Y))).ToList();
-        if(untilled.Count>0){PlantBatch(j,"till",WorkSlot(i=>i is Hoe),untilled,"plant_till",4);return;}
+        if(untilled.Count>0){int slot=WorkSlot(i=>i is Hoe);PlantBatch(j,"till",slot,untilled,"plant_till",PlayerExecutor.SwingEnergy(Game1.player.Items.ElementAtOrDefault(slot) as Tool));return;}
         foreach(var tile in plan.Tiles) {
             var dirt=(HoeDirt)l.terrainFeatures[new(tile.X,tile.Y)];
             if(dirt.crop is {} crop&&(!plan.NativeCrops.TryGetValue(tile,out var expectedCrop)||expectedCrop!=crop.indexOfHarvest.Value)){StopSemanticWork(j,"different_crop_on_planned_tile");return;}
@@ -200,19 +201,19 @@ public sealed partial class ModEntry {
             }
             PlantBatch(j,"plant",WorkSlot(i=>i.QualifiedItemId==plan.Seed),empty,"plant_seed",0);return;
         }
-        var dry=plan.Tiles.Where(t=>((HoeDirt)l.terrainFeatures[new(t.X,t.Y)]).state.Value!=1).ToList();
+        var dry=plan.Tiles.Where(t=>l.terrainFeatures[new(t.X,t.Y)] is HoeDirt d&&d.needsWatering()&&d.state.Value!=1).ToList();
         if(dry.Count>0) {
             int slot=WorkSlot(i=>i is WateringCan);if(slot<0){StopSemanticWork(j,"watering_can_missing");return;}
             var can=(WateringCan)Game1.player.Items[slot];if(can.WaterLeft==0){RefillWork(j,slot,can);return;}
-            PlantBatch(j,"water",slot,dry.Take(can.WaterLeft).ToList(),"plant_water",4);return;
+            PlantBatch(j,"water",slot,dry.Take(can.WaterLeft).ToList(),"plant_water",PlayerExecutor.SwingEnergy(can));return;
         }
         j.completed=plan.Tiles.Count;StopSemanticWork(j,"planned_crops_planted_and_watered",true);
     }
-    private void PlantBatch(SemanticJob j,string skill,int slot,List<FarmCell> tiles,string phase,int energy) {
+    private void PlantBatch(SemanticJob j,string skill,int slot,List<FarmCell> tiles,string phase,float energy) {
         if(slot<0){StopSemanticWork(j,"plant_"+skill+"_supply_missing");return;}
         int count=Math.Min(8,tiles.Count);
-        if(energy>0)count=Math.Min(count,Math.Max(0,(int)(Game1.player.Stamina-j.Reserve)/energy));
-        else count=Math.Min(count,Game1.player.Items[slot].Stack);
+        if(energy>0)count=Math.Min(count,Math.Max(0,(int)Math.Floor((Game1.player.Stamina-j.Reserve)/energy+0.0001f)));
+        else if(Game1.player.Items[slot] is not Tool)count=Math.Min(count,Game1.player.Items[slot].Stack);
         if(count<=0){if(TryWorkFood(j))return;StopSemanticWork(j,"energy_reserve_reached");return;}
         var batch=tiles.Take(count).ToArray();
         if(skill=="plant"&&farmPlantPlans.TryGetValue(j.PlanId,out var plan)&&plan.RaisedTiles.Count>0) {

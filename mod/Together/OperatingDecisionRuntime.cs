@@ -13,7 +13,7 @@ public sealed partial class ModEntry {
     private object FarmLaborBudget() {
         var farm=Game1.getFarm();var irrigated=farm.objects.Values.Where(o=>o.IsSprinkler()).SelectMany(o=>o.GetSprinklerTiles()).ToHashSet();
         var care=farm.terrainFeatures.Pairs.Where(p=>p.Value is HoeDirt {crop:not null} d&&!d.crop.dead.Value&&d.needsWatering()).ToArray();
-        return OperatingDecisionPolicy.Labor(Game1.player.Stamina,Game1.player.MaxStamina,PendingFarmEnergy(),care.Count(p=>((HoeDirt)p.Value).state.Value!=1),care.Count(p=>!irrigated.Contains(p.Key)),OwnedSeeds().Sum(i=>i.Stack),Game1.player.FarmingLevel);
+        return OperatingDecisionPolicy.Labor(Game1.player.Stamina,Game1.player.MaxStamina,PendingFarmEnergy(),care.Count(p=>((HoeDirt)p.Value).state.Value!=1),care.Count(p=>!irrigated.Contains(p.Key)),OwnedSeeds().Sum(i=>i.Stack),Game1.player.FarmingLevel,PlantingSwing<StardewValley.Tools.Hoe>(),PlantingSwing<StardewValley.Tools.WateringCan>());
     }
     private bool ExistingStorageAcceptsCargo() {
         var cargo=Game1.player.Items.Where(i=>i!=null&&StoreCount(i)>0).ToArray();

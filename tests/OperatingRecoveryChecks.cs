@@ -76,8 +76,10 @@ public static class OperatingRecoveryChecks {
         check(order.Validate(0,"(O)472",5,"原有10份用于原田块，新增5份用于新田块且已重算照料") ==null,"explicit additional investment is still possible");
         order.Receive(0,"purchase-potato:0","(O)475",4);
         check(order.Remaining("(O)475")==0&&order.Purchased.Values.Sum()==14,"both native deliveries close purchasing while unplanted inventory remains a separate fact");
-        order.Receive(1,"next-day","(O)472",5);
-        check(order.Purchased["(O)472"]==10&&order.Validate(1,"(O)472",5,"")==null,"yesterday's manifest does not constrain unrelated next-day purchases");
+        var tomorrow=JsonSerializer.Deserialize<SeedPurchaseManifest>(JsonSerializer.Serialize(order))!;
+        check(tomorrow.Validate(1,"(O)472",5,"")==null,"yesterday's manifest does not constrain unrelated next-day purchases");
+        tomorrow.Receive(1,"next-day","(O)472",5);
+        check(tomorrow.Purchased["(O)472"]==5&&tomorrow.Purchased.Count==1,"a new native purchase resets daily quantities without mixing yesterday's goods");
         order.Select(0,new(){{"(O)472",5}});order.Receive(0,"purchase-parsnip:0","(O)472",10);
         check(order.Purchased["(O)472"]==10&&order.Approved["(O)472"]==15&&order.Remaining("(O)472")==5&&order.Purchased["(O)475"]==4,"explicit same-day reselection preserves prior deliveries and their replay protection");
         var owned=new ReviewOption("plan:owned-seeds:(O)472",0,1,"plan_owned_seeds;purchase_cost=0",10);

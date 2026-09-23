@@ -1,8 +1,16 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 namespace Together;
 
 public sealed record NativeCost(string Currency,int Amount,string Item,int Units);
 public static class NativeCosts {
+    public static void EnterDay(JsonObject ledger,int day) {
+        if(ledger["Day"]?.GetValue<int>()==day)return;
+        ledger["Day"]=day;ledger["Spent"]=0;ledger["NativeReceipts"]=new JsonArray();
+        foreach(string field in new[]{"SpentByCurrency","SpentByCommand","Purchased","PurchasedItems"})ledger[field]=new JsonObject();
+        // Dated Entries remain historical evidence; today's numerical totals do not.
+    }
+
     public static IEnumerable<NativeCost> Read(JsonElement e) {
         string Text(string k)=>e.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??"":"";
         int Number(string k,int fallback=0)=>e.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out int n)?n:fallback;

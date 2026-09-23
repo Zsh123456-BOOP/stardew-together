@@ -11,6 +11,7 @@ public sealed partial class ModEntry {
         var batch=JsonSerializer.SerializeToElement(ReadContextSection(JsonSerializer.SerializeToElement(new{sections=new[]{"assets","labor_budget"}})),AgentJson.Options);
         var catalog=JsonSerializer.SerializeToElement(AgentProgressCatalog(JsonSerializer.SerializeToElement(new{kind="achievement",next_only=true,limit=80})),AgentJson.Options);
         var checks=new Dictionary<string,bool>{
+            ["purchase_plan_distinct_from_selection"]=view.GetProperty("purchase_status").TryGetProperty("plan_finalized",out _)&&view.GetProperty("purchase_status").TryGetProperty("plan_reason",out _),
             ["native_next_achievement_series_unique"]=next.Select(r=>r.GetProperty("series").GetString()).Distinct().Count()==next.Length,
             ["native_achievement_summary_has_no_full_definition"]=!AgentJson.Encode(catalog).Contains("native_definition"),
             ["native_catalog_matches_selector"]=catalog.GetProperty("total").GetInt32()==next.Length,

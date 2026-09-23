@@ -24,7 +24,7 @@ public sealed partial class ModEntry {
     private void RecordNativePurchases(PlayerAction action) {
         const string key="stardewagent.together/economy";
         var ledger=Game1.player.modData.TryGetValue(key,out var raw)?JsonNode.Parse(raw)!.AsObject():new JsonObject();
-        if(ledger["Day"]?.GetValue<int>()!=Game1.Date.TotalDays){ledger["Day"]=Game1.Date.TotalDays;ledger["Spent"]=0;ledger["NativeReceipts"]=new JsonArray();ledger["SpentByCurrency"]=new JsonObject();ledger["SpentByCommand"]=new JsonObject();}
+        NativeCosts.EnterDay(ledger,Game1.Date.TotalDays);
         ledger["SpentByCurrency"]??=new JsonObject();ledger["SpentByCommand"]??=new JsonObject();ledger["Purchased"]??=new JsonObject();ledger["PurchasedItems"]??=new JsonObject();ledger["NativeReceipts"]??=new JsonArray();ledger["Entries"]??=new JsonArray();
         var receipts=ledger["NativeReceipts"]!.AsArray();var items=ledger["PurchasedItems"]!.AsObject();var entries=ledger["Entries"]!.AsArray();bool changed=false;
         for(int n=0;n<action.effects.Count;n++) {
@@ -35,7 +35,7 @@ public sealed partial class ModEntry {
                 var currencies=ledger["SpentByCurrency"]!.AsObject();currencies[c.Currency]=(currencies[c.Currency]?.GetValue<int>()??0)+c.Amount;
                 if(c.Currency=="gold") {ledger["Spent"]=(ledger["Spent"]?.GetValue<int>()??0)+c.Amount;var commands=ledger["SpentByCommand"]!.AsObject();commands[action.command_id]=(commands[action.command_id]?.GetValue<int>()??0)+c.Amount;}
                 if(c.Units>0&&c.Item.Length>0)items[c.Item]=(items[c.Item]?.GetValue<int>()??0)+c.Units;
-                Data.FarmInvestment.Purchase.Receive(Game1.Date.TotalDays,id,c.Item,c.Units);
+                if(c.Units>0&&c.Item.Length>0&&ItemRegistry.Create(c.Item).Category==-74)Data.FarmInvestment.Purchase.Receive(Game1.Date.TotalDays,id,c.Item,c.Units);
                 entries.Add($"{Game1.Date.TotalDays}/{Game1.timeOfDay} 原生交易 {c.Item} ×{c.Units}，{c.Currency} 支出 {c.Amount}");
             }
             receipts.Add(id);changed=true;

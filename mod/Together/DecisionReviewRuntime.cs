@@ -9,14 +9,16 @@ public sealed partial class ModEntry {
     private ReviewOption[] SleepAlternatives(IEnumerable<OperatingOpportunity> opportunities) {
         // Only the shown step is costed: opening a shop is not planting its seeds,
         // and registering a construction goal does not cost zero total energy.
-        var options=opportunities.Where(o=>o.Tool is "player.service" or "player.social" or "player.collect_home_gifts" or "player.read_mail" or "shop.read" or "farm.select_seeds"||o.Tool=="work.run"&&AgentToolRegistry.Text(JsonSerializer.SerializeToElement(o.Args),"goal") is "water" or "harvest" or "forage" or "fish")
-            .Select(o=>new ReviewOption(o.Id,o.Energy,o.Minutes,o.Tool is "player.service" or "shop.read"?"visit_quote_only;buy_or_plant_separately;profit_unknown_until_quote":"shown_action_estimate" )).ToList();
+        var options=opportunities.Select(o=> {
+            int owned=o.Id.Contains(":owned-seeds:")?OwnedSeeds().Where(i=>o.Id.EndsWith(":"+i.QualifiedItemId)).Sum(i=>i.Stack):0;
+            return new ReviewOption(o.Id,owned>0&&o.Tool=="work.run"?null:o.Energy,o.Minutes,owned>0?"owned_seeds;additional_seed_cost=0;defer_planting_and_watering_delays_growth;compare_future_yield_and_care;layout_cost_from_farm.plan":o.Tool is "player.service" or "shop.read"?"visit_quote_only;buy_or_plant_separately;profit_unknown_until_quote":"shown_action_estimate",owned);
+        }).ToList();
         if(Facts.DryCrops>0&&!options.Any(o=>o.id=="water"))options.Add(new("care:dry_crops",(float)Math.Ceiling(Facts.DryCrops*Math.Max(0,2-.1*Game1.player.FarmingLevel)),30,"watering_estimate;tool_route_not_verified"));
-        return options.OrderBy(o=>o.id is "water" or "care:dry_crops" or "harvest"?0:o.id.Contains("seed")||o.id=="inspect:current-shop"?1:o.energy==0?2:3).Take(3).ToArray();
+        return DecisionReviewPolicy.Select(options);
     }
     private object DecisionReviewContext(IEnumerable<OperatingOpportunity> opportunities)=>new {
         sleep_alternatives=SleepAlternatives(opportunities),last_rejection=reviewFailure,
-        rule="sleep/agent.pause逐项比较此处最多3项：energy/time须符合当前估算，价值取舍用low_value或defer并说明。报价未知不等于收益为零；询价/采购不含锄地浇水。资源批量劳动显式给reserve_stamina与labor_review；留给后续工作的体力由模型决定。"
+        rule="sleep/agent.pause比较此处最多3项；energy/time须符合估算。low_value/defer须value.today和value.defer比较今日行动与推迟的未来收益/照料成本；已有种子另填owned_seeds、additional_seed_cost=0、growth_tradeoff。无即时回款不等于无价值。"
     };
     private void RecordDecisionReview(string action,JsonElement args,object facts,string? error) {
         Data.Autoplay.Record("decision_review",AgentJson.Encode(new{action,args,facts,error,accepted=error==null}));

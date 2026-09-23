@@ -4,7 +4,7 @@ public static class DecisionReviewChecks {
     private static JsonElement J(object value)=>JsonSerializer.SerializeToElement(value,AgentJson.Options);
     public static void Run(Action<bool,string> check) {
         var seed=new ReviewOption("inspect:seed-offers",0,30,"visit_quote_only");
-        JsonElement Sleep(string because,string id="inspect:seed-offers")=>J(new{reason="作物照料完毕后决定收工",alternatives=new[]{new{id,because,detail="比较本次到店的成本与未来照料后决定暂缓"}}});
+        JsonElement Sleep(string because,string id="inspect:seed-offers")=>J(new{reason="作物照料完毕后决定收工",alternatives=new[]{new{id,because,detail="比较本次到店的成本与未来照料后决定暂缓",value=new{today="今天询价保留扩种机会",defer="推迟一天了解报价，优先当前照料"}}}});
         check(DecisionReviewPolicy.Sleep(Sleep("energy"),12,875,new[]{seed})=="decision_review:energy_contradiction:inspect:seed-offers","09:40 regression: stamina 12 cannot exclude zero-energy seed visit");
         check(DecisionReviewPolicy.Sleep(Sleep("time"),12,875,new[]{seed})=="decision_review:time_contradiction:inspect:seed-offers","09:40 regression: 875 remaining minutes cannot imply urgent return for a 30-minute visit");
         check(DecisionReviewPolicy.Sleep(Sleep("low_value"),12,875,new[]{seed})==null,"feasible shopping does not force buying or waiting until evening");
@@ -17,7 +17,7 @@ public static class DecisionReviewChecks {
         check(DecisionReviewPolicy.Sleep(Sleep("energy","closed-shop"),12,875,new[]{seed})!.Contains("changed_or_duplicate"),"stale or invented candidate IDs require fresh comparison");
         check(DecisionReviewPolicy.Sleep(J(new{reason="决定明日继续",alternatives=new[]{new{id=seed.id,because="defer",detail=""}}}),12,875,new[]{seed})!.Contains("detail_required"),"bare labels do not count as an explanation");
         check(DecisionReviewPolicy.Sleep(Sleep("unavailable"),12,875,new[]{seed})!.Contains("invalid_comparison"),"invented condition codes are rejected");
-        var rows=new[]{new{id=seed.id,because="defer",detail="保留现金等待后续投资"},new{id=seed.id,because="defer",detail="保留现金等待后续投资"}};
+        var rows=new[]{new{id=seed.id,because="defer",detail="保留现金等待后续投资",value=new{today="今天了解可买种类与成本",defer="明日询价可能推迟成熟"}},new{id=seed.id,because="defer",detail="保留现金等待后续投资",value=new{today="今天了解可买种类与成本",defer="明日询价可能推迟成熟"}}};
         check(DecisionReviewPolicy.Sleep(J(new{reason="决定明日继续",alternatives=rows}),12,875,new[]{seed})!.Contains("duplicate"),"duplicate assessment cannot replace another candidate");
         check(DecisionReviewPolicy.Sleep(Sleep("defer"),12,875,new[]{seed,new ReviewOption("forage:Farm",0,10,"forage")})=="decision_review:compare_current_alternatives","selected alternatives cannot be silently skipped");
         check(DecisionReviewPolicy.Sleep(J(new{reason="决定明日继续",alternatives=rows.Concat(rows)}),12,875,new[]{seed})!.Contains("max_3"),"review size is bounded instead of expanding world catalogue");

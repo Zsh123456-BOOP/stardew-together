@@ -1,5 +1,6 @@
 namespace Together;
 public sealed class FarmInvestmentPolicy {
+    public SeedPurchaseManifest Purchase {get;set;}=new();
     public bool Enabled {get;set;}
     public bool Repeat {get;set;}
     public int BudgetPerDay {get;set;}=-1;
@@ -25,6 +26,28 @@ public sealed class FarmInvestmentPolicy {
     public string ServiceTask {get;set;}="";
     public string PlanId {get;set;}="";
     public List<string> Tasks {get;set;}=new();
+}
+
+// Authorization survives quote refreshes and interrupted work. Only native
+// receipts consume it; queue submission is never evidence of a purchase.
+public sealed class SeedPurchaseManifest {
+    public int Day {get;set;}=-1;
+    public Dictionary<string,int> Approved {get;set;}=new();
+    public Dictionary<string,int> Purchased {get;set;}=new();
+    public HashSet<string> Receipts {get;set;}=new();
+    public int Remaining(string item)=>Math.Max(0,Approved.GetValueOrDefault(item)-Purchased.GetValueOrDefault(item));
+    public void Select(int day,Dictionary<string,int> items) {
+        if(day!=Day){Day=day;Purchased.Clear();Receipts.Clear();}
+        // Reselection replaces only the unfulfilled allowance. Goods already
+        // delivered remain accounted for even when selecting additional seeds.
+        Approved=new(Purchased);
+        foreach(var row in items)Approved[row.Key]=Purchased.GetValueOrDefault(row.Key)+row.Value;
+    }
+    public void Receive(int day,string receipt,string item,int units) {
+        if(day!=Day||units<=0||!Approved.ContainsKey(item)||!Receipts.Add(receipt+":"+item))return;
+        Purchased[item]=Purchased.GetValueOrDefault(item)+units;
+    }
+    public string? Validate(int day,string item,int count,string additionalReason)=>day==Day&&Approved.ContainsKey(item)&&count>Remaining(item)&&additionalReason.Trim().Length<3?"seed_purchase_exceeds_remaining_manifest:acknowledge_owned_seeds_with_additional_reason":null;
 }
 
 public static class ReinvestmentReview {

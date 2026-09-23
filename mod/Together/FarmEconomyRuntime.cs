@@ -12,6 +12,11 @@ public sealed partial class ModEntry {
     private string quoteEpoch="";
     private readonly Dictionary<string,(Item Item,int Units,int Day)> observedProducts=new();
     internal object ObserveShop(JsonElement args) {
+        if(Game1.activeClickableMenu is not ShopMenu) {
+            string target=AgentToolRegistry.Text(args,"location",Data.FarmInvestment.Location);
+            var window=ServiceWindow(target);
+            return new{status="not_observed",reason=OperatingDecisionPolicy.ShopObservation(window.Reason,Game1.timeOfDay,window.Open,window.Close,Game1.currentLocation.NameOrUniqueName==target),current_location=Game1.currentLocation.NameOrUniqueName,service_hours=ServiceHours(target),next=new{tool="player.service",args=new{location=target,service="shop",shop=Data.FarmInvestment.Shop}},note="尚无现场报价；到店/开门与打开商店菜单不同。营业前安排其他工作或有界等待，不重复shop.read。"};
+        }
         var result=PlayerExecutor.ReadShop(args);var menu=(ShopMenu)Game1.activeClickableMenu;
         if(quoteEpoch!=agentSaveEpoch){seedQuotes.Clear();observedProducts.Clear();quoteEpoch=agentSaveEpoch;}
         foreach(var pair in menu.itemPriceAndStock)if(pair.Key is Item {IsRecipe:false} observed&&pair.Value.Stock>0)observedProducts[menu.ShopId+":"+observed.QualifiedItemId]=(observed.getOne(),observed.Stack,Game1.Date.TotalDays);
@@ -128,7 +133,6 @@ public sealed partial class ModEntry {
         }
         if(tasks.Count==0)return new{status="no_feasible_planting_work",result.StopReason};
         Data.Autoplay.Schedule.Submit("farm-"+planId,Data.Autoplay.Schedule.Revision,tasks,Game1.Date.TotalDays,ordered:true);job.Submitted=true;
-        foreach(var buy in result.Purchases)selectedSeeds[buy.Seed]-=buy.Count;
         if(!PlayerExecutor.LoadedLocation(job.Location)!.IsGreenhouse)District(PlayerExecutor.LoadedLocation(job.Location)!).Commit(result.PreparationTiles);
         return new{status="queued",tasks=tasks.Select(t=>t.id),result.Spent,note="采购/播种以各阶段原生回执为准。"};
     }

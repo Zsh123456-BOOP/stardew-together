@@ -23,6 +23,7 @@ internal sealed class PlayerRouteController : PathFindController {
     }
     private Queue<Point>? localRoute;
     private DateTime nextLocalSearch;
+    private Point? localSearchTarget;
     private static bool Arrived(Rectangle box,Point tile) {
         var cell=new Rectangle(tile.X*64+2,tile.Y*64,60,64);
         return (cell.Contains(box)||box.Width>cell.Width&&cell.Contains(box.Center))&&cell.Bottom-box.Bottom>=2;
@@ -58,7 +59,7 @@ internal sealed class PlayerRouteController : PathFindController {
         p.MovePosition(time,Game1.viewport,Game1.currentLocation);return true;
     }
     private bool TryLocalStep(GameTime time,Point tile) {
-        if(DateTime.UtcNow<nextLocalSearch)return false;nextLocalSearch=DateTime.UtcNow.AddSeconds(1);
+        if(localSearchTarget==tile&&DateTime.UtcNow<nextLocalSearch)return false;localSearchTarget=tile;nextLocalSearch=DateTime.UtcNow.AddSeconds(1);
         var origin=Game1.player.GetBoundingBox();var clock=System.Diagnostics.Stopwatch.StartNew();int probes=0;
         Rectangle At(FarmCell v)=>new(origin.X+v.X,origin.Y+v.Y,origin.Width,origin.Height);
         var path=LocalWalkRouting.Find(v=>Arrived(At(v),tile),(a,b)=>{
@@ -86,7 +87,12 @@ internal sealed class PlayerRouteController : PathFindController {
                     if(TryLocalStep(time,tile))return;Block(tile,npc.Name);return;
                 }
             }
-            if(tile!=p.TilePoint&&!PlayerExecutor.Passable(Game1.currentLocation,tile)){Block(tile);return;}
+            if(tile!=p.TilePoint&&!PlayerExecutor.Passable(Game1.currentLocation,tile)){
+                // A blocked tile-centre box does not prove every offset corridor
+                // is blocked. Use the same swept-body route as corner recovery.
+                if(TryLocalStep(time,tile))return;
+                Block(tile);return;
+            }
         }
         Blocked=false;DynamicBlocker=null;
         int count=pathToEndPoint.Count;var before=Game1.player.Position;var map=Game1.currentLocation;

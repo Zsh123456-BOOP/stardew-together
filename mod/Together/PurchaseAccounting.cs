@@ -35,6 +35,7 @@ public sealed partial class ModEntry {
                 var currencies=ledger["SpentByCurrency"]!.AsObject();currencies[c.Currency]=(currencies[c.Currency]?.GetValue<int>()??0)+c.Amount;
                 if(c.Currency=="gold") {ledger["Spent"]=(ledger["Spent"]?.GetValue<int>()??0)+c.Amount;var commands=ledger["SpentByCommand"]!.AsObject();commands[action.command_id]=(commands[action.command_id]?.GetValue<int>()??0)+c.Amount;}
                 if(c.Units>0&&c.Item.Length>0)items[c.Item]=(items[c.Item]?.GetValue<int>()??0)+c.Units;
+                Data.FarmInvestment.Purchase.Receive(Game1.Date.TotalDays,id,c.Item,c.Units);
                 entries.Add($"{Game1.Date.TotalDays}/{Game1.timeOfDay} 原生交易 {c.Item} ×{c.Units}，{c.Currency} 支出 {c.Amount}");
             }
             receipts.Add(id);changed=true;

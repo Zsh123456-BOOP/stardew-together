@@ -16,7 +16,7 @@ public static class DecisionContext {
         root.Remove("native_tool_exchange");
         if(root["now"]==null)return; // Non-game prompts and legacy unit contracts are unchanged.
         if(root["day"] is JsonObject day)foreach(string key in day.Select(p=>p.Key).ToArray())if(key is not ("day" or "time" or "location" or "budget" or "chores" or "routine" or "priorities" or "resource_targets" or "today_completed_batches"))day.Remove(key);
-        if(root["service_hours"] is JsonArray services)foreach(var service in services.OfType<JsonObject>())foreach(string key in service.Select(p=>p.Key).ToArray())if(key is not ("location" or "reason" or "opens" or "closes" or "can_enter_now" or "closed_today"))service.Remove(key);
+        if(root["service_hours"] is JsonArray services)foreach(var service in services.OfType<JsonObject>())foreach(string key in service.Select(p=>p.Key).ToArray())if(key is not ("location" or "reason" or "opens" or "closes" or "can_enter_now" or "closed_today" or "recheck_at"))service.Remove(key);
         if(root["goals"] is JsonObject currentGoals)currentGoals.Remove("note");
         var unchanged=new Dictionary<string,string>();
         if(root["pending_queries"] is JsonArray queries)foreach(var q in queries.OfType<JsonObject>()) {

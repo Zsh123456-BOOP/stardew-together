@@ -40,7 +40,13 @@ public static class OnDemandContext {
         if(root["prerequisites"] is JsonObject p)p["facts"]=facts;
         else if(facts.Count>0)root["prerequisites"]=new JsonObject{["facts"]=facts};
         if(root["service_hours"] is JsonArray services) {
-            var relevant=services.OfType<JsonObject>().Where(s=>destinations.Contains(Text(s["location"]))).Select(s=>Copy(s)).ToArray();
+            // Closed-now services remain future options. Compact their facts instead
+            // of erasing the opening time until the service is already open.
+            var relevant=services.OfType<JsonObject>().Select(s=>{
+                var row=(JsonObject)Copy(s)!;
+                Keep(row,"location","opens","closes","can_enter_now","reason","closed_today","recheck_at");
+                return (JsonNode?)row;
+            }).ToArray();
             root["service_hours"]=new JsonArray(relevant);
         }
         if(root["day"] is JsonObject day){day.Remove("day");day.Remove("time");day.Remove("location");if(day["budget"] is JsonObject budget){budget.Remove("stamina");budget.Remove("estimate_note");}if(day["routine"] is JsonObject routine&&routine["Enabled"]?.ToString()=="false")day["routine"]=new JsonObject{["Enabled"]=false};}

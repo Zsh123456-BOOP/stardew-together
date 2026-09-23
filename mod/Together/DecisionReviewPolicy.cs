@@ -2,8 +2,11 @@ using System.Text.Json;
 namespace Together;
 
 // Feasibility belongs to observed facts; relative value remains the model's choice.
-public sealed record ReviewOption(string id,float? energy,int minutes,string scope);
+public sealed record ReviewOption(string id,float? energy,int minutes,string scope,int owned_seeds=0);
 public static class DecisionReviewPolicy {
+    public static ReviewOption[] Select(IEnumerable<ReviewOption> options)=>options
+        .OrderBy(o=>o.id is "water" or "care:dry_crops" or "harvest"?0:o.owned_seeds>0?1:o.id.Contains("seed")||o.id=="inspect:current-shop"?2:o.energy==0?3:4)
+        .GroupBy(o=>o.owned_seeds==0&&(o.id.Contains("seed")||o.id=="inspect:current-shop")?"seed-quote-selection":o.id).Select(g=>g.First()).Take(3).ToArray();
     private static string Text(JsonElement a,string k)=>a.ValueKind==JsonValueKind.Object&&a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??"":"";
     public static string? Sleep(JsonElement args,float stamina,int workMinutes,IReadOnlyList<ReviewOption> options) {
         if(Text(args,"reason").Trim().Length<3)return "decision_review:sleep_reason_required";
@@ -17,7 +20,15 @@ public static class DecisionReviewPolicy {
             switch(reason) {
                 case "energy":if(!option.energy.HasValue)return "decision_review:energy_unknown_not_infeasible:"+id;if(option.energy<=stamina)return "decision_review:energy_contradiction:"+id;break;
                 case "time":if(option.minutes<=workMinutes)return "decision_review:time_contradiction:"+id;break;
-                case "low_value":case "defer":break;
+                case "low_value":case "defer":
+                    if(!row.TryGetProperty("value",out var value)||value.ValueKind!=JsonValueKind.Object||Text(value,"today").Trim().Length<3||Text(value,"defer").Trim().Length<3)
+                        return "decision_review:compare_today_and_deferred_future_value:"+id;
+                    if(option.owned_seeds>0) {
+                        if(!value.TryGetProperty("owned_seeds",out var owned)||owned.ValueKind!=JsonValueKind.Number||!owned.TryGetInt32(out int n)||n!=option.owned_seeds)return "decision_review:owned_seed_count_changed:"+id;
+                        if(!value.TryGetProperty("additional_seed_cost",out var cost)||cost.ValueKind!=JsonValueKind.Number||!cost.TryGetInt32(out int c)||c!=0)return "decision_review:owned_seeds_need_no_new_purchase:"+id;
+                        if(Text(value,"growth_tradeoff").Trim().Length<3)return "decision_review:deferred_planting_growth_tradeoff_required:"+id;
+                    }
+                    break;
                 default:return "decision_review:invalid_comparison_reason:"+id;
             }
         }

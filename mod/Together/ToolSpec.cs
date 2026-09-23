@@ -15,9 +15,9 @@ public static class ToolSpecs {
     private static JsonObject Field(string type,string? description=null)=>description==null?new(){["type"]=type}:new(){["type"]=type,["description"]=description};
     private static JsonObject Enum(params string[] values)=>new(){["type"]="string",["enum"]=JsonSerializer.SerializeToNode(values)};
     public static ToolSpec[] Select(IReadOnlyDictionary<string,string> selected,JsonElement context)=>selected.Select(p=>p.Key=="work.run"?Work(context):p.Key is "player.sleep" or "agent.pause"?Sleep(p.Key):NativeToolProtocol.LegacySpec(p.Key,p.Value)).ToArray();
-    public const string SleepDescription="结束今日安排，原生返家/结算/保存。按decision_review.sleep_alternatives逐项提交alternatives（最多3项）；energy/time须符合当前成本估算，low_value/defer说明取舍，未知报价不能当零收益。允许合理早睡，无固定睡觉时间。排队后状态变化需重新评估；连续3次矛盾且无实际进展则暂停保留日志。";
+    public const string SleepDescription="结束今日安排，原生返家/结算/保存。按decision_review.sleep_alternatives逐项提交alternatives（最多3项）；energy/time须符合当前成本估算，low_value/defer提供value.today和value.defer比较未来价值；已有种子另填owned_seeds、additional_seed_cost=0、growth_tradeoff。未知报价不能当零收益。允许合理早睡，无固定睡觉时间。排队后状态变化需重新评估；连续3次矛盾且无实际进展则暂停保留日志。";
     public static ToolSpec Sleep(string name) {
-        var comparison=new JsonObject{["type"]="object",["properties"]=new JsonObject{["id"]=Field("string"),["because"]=Enum("energy","time","low_value","defer"),["detail"]=Field("string")},["required"]=new JsonArray("id","because","detail")};
+        var comparison=new JsonObject{["type"]="object",["properties"]=new JsonObject{["id"]=Field("string"),["because"]=Enum("energy","time","low_value","defer"),["detail"]=Field("string"),["value"]=new JsonObject{["type"]="object",["properties"]=new JsonObject{["today"]=Field("string"),["defer"]=Field("string"),["owned_seeds"]=Field("integer"),["additional_seed_cost"]=Field("integer"),["growth_tradeoff"]=Field("string")},["required"]=new JsonArray("today","defer")}},["required"]=new JsonArray("id","because","detail")};
         var schema=new JsonObject{["type"]="object",["properties"]=new JsonObject{["reason"]=Field("string"),["review"]=Field("string"),["alternatives"]=new JsonObject{["type"]="array",["maxItems"]=3,["items"]=comparison},["_plan"]=Field("string")},["required"]=new JsonArray("reason")};
         return new(name,SleepDescription,NativeToolProtocol.CompactSchema(schema),Array.Empty<string>());
     }

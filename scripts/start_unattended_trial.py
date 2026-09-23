@@ -43,7 +43,7 @@ def main():
   if a.preflight:
    probe=b.request('POST','/lab/together',dict(session_id=b.session,scenario='on_demand_probe'));write('preflight.json',probe)
    if not probe.get('checks') or not all(probe['checks'].values()):raise RuntimeError('native_preflight_failed')
-  goal=f'正常时间自主经营连续{a.days}个游戏日。只控制玩家，小禾关闭，不招募伙伴。自己决定种植、采购、采集、钓鱼、任务与投资取舍；维护连续计划，真实原生操作并正常睡觉过夜。你可以自主选择销毁普通未预留物品，先使用inventory.capacity核对用途、数量和真实腾格效果。经营和资金回流是目标，不是只睡觉刷天数。'
+  goal='正常时间持续自主经营农场，以未来净收益、生产能力与任务推进为目标。只控制玩家，小禾关闭，不招募伙伴。自己决定种植、采购、采集、钓鱼、任务与投资取舍；维护连续计划，真实原生操作并正常睡觉过夜。你可以自主选择销毁普通未预留物品，先使用inventory.capacity核对用途、数量和真实腾格效果。经营和资金回流是目标，不是只睡觉刷天数。'
   r=b.request('POST','/lab/together',dict(session_id=b.session,scenario='survival_start',goal=goal,trial_days=a.days));write('start-receipt.json',r)
   d=b.request('GET','/lab/together')['autoplay'];write('started-state.json',d)
   if d['state']['Status']!='running' or d['state']['TrialTargetDay']!=d['snapshot']['day']+a.days:raise RuntimeError('trial_start_not_verified')

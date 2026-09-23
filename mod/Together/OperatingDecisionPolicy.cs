@@ -1,6 +1,7 @@
 using System.Text.Json;
 namespace Together;
 public static class OperatingDecisionPolicy {
+    public static string ShopObservation(string window,int time,int open,int close,bool atShop)=>window!="available"||time>=close?"closed_today_or_window_ended":time<open?"before_opening":!atShop?"not_at_shop":"shop_menu_not_open";
     public static bool CanCompletePurchaseVisit(JsonElement args,string[] locations) {
         int Number(string key)=>args.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out int n)?n:-1;
         return locations.Distinct().Count()==1&&Number("count")>0&&Number("budget")>=0&&Number("max_unit_price")>=0&&Number("keep_gold")>=0&&

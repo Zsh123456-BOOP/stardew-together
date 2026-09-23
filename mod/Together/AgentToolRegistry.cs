@@ -34,7 +34,7 @@ public sealed class AgentToolRegistry {
         ["farm.business"]="{enabled?:bool,expand?:bool,budget_per_day?:-1或非负整数,keep_gold?:int,max_animals?:0..96,max_machines?:0..200,feed_days?:2..28}: 可选持续经营例行（并非工具权限开关）；budget_per_day默认-1无每日上限，keep_gold默认0。模型可以直接调用采购/生产工具而不启用此例行。日常照料、种植投资、饲料补给、机器投料收货、余量销售、按供给扩建畜舍与加工产能；预算共享，正常时间，不追逐成就",
         ["farm.business_status"]="{}: 实际经营账本、现金/待结算/在制品、产能投资选项、预计回收期依据与阻碍；待结算金额不可支出",
         ["player.acquire_animal"]="{type,name,location?:AnimalShop,budget,keep_gold}: 真实到牧场柜台选择动物、自动选已完工兼容畜舍并命名购买，核验原生动物和费用",
-        ["player.procure"]="{location,shop,item,count,max_unit_price,budget,keep_gold,recipe?:bool}: 真实前往商店、读取现场商品并按上限原生采购，自动收货关菜单；配方与普通商品可区分；缺货/闭店返回原因",
+        ["player.procure"]="{location,shop,item,count,max_unit_price,budget,keep_gold,recipe?:bool,additional_reason?:string}: 真实前往商店、读取现场商品并按上限原生采购，自动收货关菜单；配方与普通商品可区分；缺货/闭店返回原因",
         ["shop.sources"]="{item,recipe?:bool}: 游戏数据中的潜在商店、准确室内地图与今日门禁时间；不是当前报价，采购时现场重新核价",
         ["services.read"]="{location?:原生室内地图名,npc?:人物原名}: npc查询返回真实位置、门禁、可达交谈站位、目的地图步数、跨图数与受阻条件。location查询返回真实入口开闭时间、今天是否可进与复查时间；不保证柜台有人。SeedShop是店内地图，Town只是室外；营业中仍需原生服务和报价校验",
         ["progress.pursue"]="{targets?:1..128个原生目标ID,enabled?:bool,budget_per_day?:-1或非负整数,keep_gold?:int,gift_value_per_day?:int,gift_value_limit?:int,income_shipping?:bool,income_keep_per_item?:0..999,nuts_per_day?:0..130,keep_nuts?:0..130,route?:community|joja}: 持久推进已绑定制作/烹饪、建筑、完美度分项、关系、钓鱼/蟹笼、献祭/Joja、修船、馆藏、交付、出货、地牢、锻造与街机目标；gift_value为礼物可售价值预算而非扣款，默认0仅聊天；算法备料和排队，按真实进度核验，每日金额预算先预留。暂停取消未执行依赖，未知后期目标仍明确阻碍",
@@ -46,7 +46,7 @@ public sealed class AgentToolRegistry {
         ["player.eat"]="{slot:int}: 吃真实背包的一份普通食物，原生动画/恢复/消耗核验；保留物由高层补给政策决定",
         ["player.craft"]="{recipe:原生配方名,count?:1..99}: 连续制作指定批次，自动原生菜单/材料消耗/成品入包/统计核验；只用背包原料，缺料需先取货",
         ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
-        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
+        ["farm.select_seeds"]="{quote_token:string,additional_reason?:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
         ["shop.read"]="{offset?:int,limit?:1..100}: 读取当前已打开原生商店完整分页的实际货品、价格、货币、条件和库存；不远程打开商店",
         ["crab_pots.read"]="{}: 自有蟹笼、水域类型、真实产物和缺饵状态",
         ["player.crab_pots"]="{mode:place|tend,location?:地图ID,item?:目标蟹笼鱼QID,bait?:鱼饵QID,count?:0..40}: 算法选择合适海/淡水岸边放置真实蟹笼；tend收取原生产物并补饵，0处理当前地图全部。核验放置/投饵消耗与玩家捕获统计；须原生过夜生成捕获",
@@ -106,7 +106,7 @@ public sealed class AgentToolRegistry {
         ["player.find_lost_item"]="{quest_id:已观察任务ID}: 自动走到原生失物地点，寻找已生成的真实任务物品、走近拾取及确认提示，按itemFound和入包核验；不会生成失物或更改任务标记。",
         ["player.combat"]="{order_id?:特殊订单ID,objective?:目标索引,quest_id?:已观察讨伐任务ID,count?:0..50,min_health?:20..200}: 指定quest_id时优先真实目标敌人且按该任务计数；选择背包近战武器，当前地图持续接近/原生挥击/换目标；0清理当前已出现怪物，原生击杀归属核验，低生命或无伤害停止请求撤退/换策略；不宣称已有全部敌种战术",
         ["player.mine_descend"]="{}: 当前矿层自动找到已揭露且可达的真实梯子，走近原生交互并核验换层；未发现梯子先采矿/战斗，不直接生成通道或改层数",
-        ["player.buy"]="{shop:string,item:物品ID,count:int,max_unit_price:int,budget:int,keep_gold?:int,currency?:0|1|2|4,keep_currency?:int,trade_item?:ID,trade_budget?:int}: 当前原生商店连续采购；count为购买次数，支持配方学习、ClintUpgrade升级启动、金币/节日积分/赌场币/齐钻及物品兑换，核验真实消耗和原生结果。默认金币，其它货币须显式指定currency和保留额；兑换需trade_item与trade_budget。配方或升级一次只买1份，自定义购买回调需专属核验",
+        ["player.buy"]="{shop:string,item:物品ID,count:int,max_unit_price:int,budget:int,keep_gold?:int,currency?:0|1|2|4,keep_currency?:int,trade_item?:ID,trade_budget?:int,additional_reason?:string}: 当前原生商店连续采购；count为购买次数，支持配方学习、ClintUpgrade升级启动、金币/节日积分/赌场币/齐钻及物品兑换，核验真实消耗和原生结果。默认金币，其它货币须显式指定currency和保留额；兑换需trade_item与trade_budget。配方或升级一次只买1份，自定义购买回调需专属核验",
         ["storage.policy"]="{auto_expand?:bool,max_shared_chests?:0..32,wood_budget_per_day?:0..999}: 设置并读取自动扩容政策，默认最多4个共享箱/每日100木材；始终通过原生制作放置，预算与目标材料保护生效",
         ["storage.configure"]="{location?:string,x:int,y:int,role:output|none}: 给已观察的真实玩家箱设置同行收货/取货标记；不转移物资；work.run(goal=withdraw,item=ID,count=数量,quality=最低品质)自动去共享箱取货",
         ["farm.autonomy"]="{enabled?:bool,budget_per_day?:-1或非负整数,keep_gold?:int,plots?:1..96,max_daily_manual_water?:-1或0..9999,priority?:income|collection|low_labor,shop?:SeedShop,location?:SeedShop}: 持续每日按实际现金与现场报价重新投资，自动采购/布局/取种/播种，失败保留原因；默认关闭",
@@ -147,7 +147,7 @@ public sealed class AgentToolRegistry {
         ["player.interact"]="{x:int,y:int,slot?:int}: 邻格原生交互，如收获、NPC、机器、门、矿梯",
         ["player.place"]="{slot:int,x:int,y:int}: 使用真实持有的种子/可放物品，原生判定及消耗",
         ["player.ship"]="{slot:int}: 在真实农场出货箱旁，将指定槽位整叠可售物品投入出货箱；次日原生结算，不提前加钱",
-        ["player.sleep"]="{reason:string,review?:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string}]}: "+ToolSpecs.SleepDescription,
+        ["player.sleep"]="{reason:string,review?:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string,value?:{today:string,defer:string,owned_seeds?:int,additional_seed_cost?:int,growth_tradeoff?:string}}]}: "+ToolSpecs.SleepDescription,
         ["menu.read"]="{}: 原生菜单文本、可选响应、组件id、token、手持物；不使用截图",
         ["menu.open"]="{page:inventory|crafting|journal}: 打开相应原生菜单",
         ["menu.choose"]="{token:string,id:string,right?:bool,goal_id?:string,purchase?:与player.buy相同的明确预算参数}: 原生菜单选择；locked不可用，制作复用player.craft/cook校验和执行，购买必须purchase与所选报价匹配并交player.buy。无效果返回menu_no_effect，同一token/id第三次执行层停机；手持物不得丢弃，业务菜单请用对应player工具。排队不代表完成",
@@ -157,7 +157,7 @@ public sealed class AgentToolRegistry {
         ["action.status"]="{id:string}: 动作真实进度和前后证据；也接受 plan 的任务 id，排队状态不是完成",
         ["action.cancel"]="{id:string}: 取消尚可取消的动作，已消耗物资不回滚",
         ["agent.wait"]="{seconds:1..60}: 等待游戏进展，期间不重复请求模型",
-        ["agent.pause"]="{reason:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string}]}: "+ToolSpecs.SleepDescription
+        ["agent.pause"]="{reason:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string,value?:{today:string,defer:string,owned_seeds?:int,additional_seed_cost?:int,growth_tradeoff?:string}}]}: "+ToolSpecs.SleepDescription
     };
     internal static string Text(JsonElement a,string k,string fallback="")=>a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??fallback:fallback;
     internal static int Number(JsonElement a,string k,int fallback=0)=>AgentNumbers.Read(a,k,fallback);
@@ -166,6 +166,7 @@ public sealed class AgentToolRegistry {
         if(!Context.IsWorldReady || Context.IsMultiplayer)throw new InvalidOperationException("single_player_world_required");
         if(!Catalog.ContainsKey(tool))throw new InvalidOperationException("unknown_tool");
         mod.ValidateToolDeclaration(tool,args);
+        mod.ValidateSeedPurchase(tool,args);
         if((IsPlayerMutation(tool)&&mod.WorkActorBusy("player")) || tool=="companion.assign"&&mod.WorkActorBusy(Text(args,"actor_id")))throw new InvalidOperationException("actor_owned_by_work_job_cancel_or_wait");
         if(tool.StartsWith("menu.") && tool!="menu.read" && player.Busy && !player.NeedsMenuChoice)throw new InvalidOperationException("player_busy");
         if(tool is "player.use_tool" or "player.place" or "player.interact" or "player.work") {

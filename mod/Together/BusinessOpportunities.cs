@@ -20,6 +20,9 @@ public sealed partial class ModEntry {
             var possible=NativeSeedPlan.Options(seed.Key,farm);if(possible.Count==0||possible.Values.Any(c=>!NativeSeedPlan.Fits(c,farm)))continue;
             int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
             var ready=farmPlantPlans.Values.LastOrDefault(plan=>plan.Epoch==agentSaveEpoch&&plan.Day==Game1.Date.TotalDays&&plan.Location==farm.NameOrUniqueName&&plan.Seed==seed.Key&&plan.Tiles.Any(t=>!farm.terrainFeatures.TryGetValue(new(t.X,t.Y),out var f)||f is HoeDirt {crop:null}));
+            // A failed child is a recovery decision, never a reason to erase
+            // owned inventory or blindly replay the same blocked plan.
+            if(ready!=null&&Data.Autoplay.Schedule.Tasks.Any(t=>t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"plan_id")==ready.Id&&t.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review"))ready=null;
             if(ready!=null) {
                 rows.Add(new("plant:owned-seeds:"+seed.Key,"执行已生成的田块方案，消费现有种子；完成后可释放整叠种子占格","work.run",new{goal="plant",plan_id=ready.Id},$"native_owned_seeds={seed.Sum(i=>i.Stack)};plan={ready.Id};tiles={ready.Tiles.Count};not_yet_planted",0,30));continue;
             }

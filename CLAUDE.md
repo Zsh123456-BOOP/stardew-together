@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 本项目协作约定
+
+- 本机统一在 `/Users/zhongsuhua/Desktop/星露谷agent开发` 的主工作目录开发。不要新建独立 Git worktree；从旧 worktree 打开的任务也须将命令工作目录切到桌面项目。
+- 已有旧 worktree 暂留运行日志与测试进程所需文件，不作为继续开发的位置；不要为清理目录中断正在运行的游戏测试。
+- 按维护者要求，后续新提交的 author 在 `LHB <181707840+LHBVv@users.noreply.github.com>` 与 `zsq040123-cloud <325341769+zsq040123-cloud@users.noreply.github.com>` 之间随机选择，逐次用 `git commit --author` 指定；保留实际 committer，不改全局 Git 身份配置。
+- 推送后核对桌面分支与远程版本。用户尚未提交的修改须保留，不能因同步而覆盖，也不混入无关提交。
+
 ## 项目定位
 
 让 DeepSeek 驱动的 Agent 在真实星露谷（Stardew Valley 1.6.15 + SMAPI 4.5.2）里**同时控制玩家本体和一个同行 NPC**，自主经营农场、正常睡觉换日，目标是完整通关。不使用视觉模型、向量库或截图；所有世界状态从 SMAPI 直接读取，所有动作走原生交互与原生结算。

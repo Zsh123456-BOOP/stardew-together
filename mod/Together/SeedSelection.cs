@@ -67,7 +67,7 @@ public sealed partial class ModEntry {
     }
     private object SeedPurchaseStatus()=>new {
         day=Data.FarmInvestment.Purchase.Day,phase=Data.FarmInvestment.Phase,error=Data.FarmInvestment.Error,
-        items=Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays?Data.FarmInvestment.Purchase.Approved.Select(p=>new{item=p.Key,approved=p.Value,purchased=Data.FarmInvestment.Purchase.Purchased.GetValueOrDefault(p.Key),remaining_to_buy=Data.FarmInvestment.Purchase.Remaining(p.Key),unplanted_owned=OwnedSeeds().Where(i=>i.QualifiedItemId==p.Key).Sum(i=>i.Stack)}).ToArray():null,
+        items=Data.FarmInvestment.Purchase.Approved.Where(p=>Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays).Select(p=>new{item=p.Key,approved=p.Value,purchased=Data.FarmInvestment.Purchase.Purchased.GetValueOrDefault(p.Key),remaining_to_buy=Data.FarmInvestment.Purchase.Remaining(p.Key),unplanted_owned=OwnedSeeds().Where(i=>i.QualifiedItemId==p.Key).Sum(i=>i.Stack)}).ToArray(),
         rule="已买数量来自原生回执，待买不等于必须立即买；先处理现有种子与中断步骤。追加采购/重新选品须additional_reason说明现有库存及新增用途。"
     };
 }

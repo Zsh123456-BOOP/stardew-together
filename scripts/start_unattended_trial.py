@@ -16,7 +16,7 @@ def main():
  out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);mods=a.mods_dir.resolve()
  def write(n,v):(out/n).write_text(json.dumps(v,ensure_ascii=False,indent=2))
  cfg=mods/'Together/config.json';settings=json.loads(cfg.read_text());settings.update(RecordModelTrace=True,Autonomy=False,SinglePlayerAutoplay=True);cfg.write_text(json.dumps(settings,ensure_ascii=False,indent=2))
- write('manifest.json',dict(commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),days=a.days,mods=str(mods),dll_sha256=hashlib.sha256((mods/'Together/Together.dll').read_bytes()).hexdigest(),model=settings.get('Model'),token_budget=settings.get('ModelTokenBudgetPerDay'),normal_time=True,supervised=False,restarts_allowed=False,scope='user trial, not 14-day acceptance'))
+ write('manifest.json',dict(commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),days=a.days,mods=str(mods),dll_sha256=hashlib.sha256((mods/'Together/Together.dll').read_bytes()).hexdigest(),bridge_dll_sha256=hashlib.sha256((mods/'AgentBridge/AgentBridge.dll').read_bytes()).hexdigest(),presentation_defaults=dict(windowed=True,muted=True,width=1280,height=800),model=settings.get('Model'),token_budget=settings.get('ModelTokenBudgetPerDay'),normal_time=True,supervised=False,restarts_allowed=False,scope='user trial, not 14-day acceptance'))
  with (out/'game.log').open('w') as log:
   command=[sys.executable,'scripts/launch.py','--companion','--lab','--keep-window','--mods-dir',str(mods),'--port',str(a.port)]
   if a.config_root:command+=['--config-root',str(a.config_root.resolve())]
@@ -38,6 +38,9 @@ def main():
   if b is None or not commanded:raise RuntimeError('bridge_or_isolated_save_path_not_ready')
   state=b.state()
   if state['player']['name']!='AgentLab':raise RuntimeError('wrong_save')
+  presentation=b.request('GET','/health').get('presentation',{})
+  write('presentation.json',presentation)
+  if not presentation.get('windowed') or any(presentation.get(k)!=0 for k in ('music','sound','ambient','footsteps')):raise RuntimeError('windowed_muted_defaults_not_applied')
   write('initial-world.json',state)
   if a.config_root:write('save-isolation.json',dict(config_root=str(a.config_root.resolve()),saves_path=h['saves_path'],save_name=a.save_name))
   if a.preflight:

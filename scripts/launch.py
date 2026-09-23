@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 from build import GAME, ROOT
+from launch_preferences import prepare_presentation
 
 p = argparse.ArgumentParser()
 p.add_argument('--keep-window', action='store_true', help='Keep native stdin open after supervisor exits')
@@ -21,6 +22,7 @@ args = p.parse_args()
 if args.config_root:
     if not args.lab or not args.config_root.is_dir():p.error('--config-root requires --lab and an existing directory')
     os.environ['XDG_CONFIG_HOME']=str(args.config_root.resolve())
+    prepare_presentation(args.config_root.resolve())
 mods = Path(args.mods_dir).resolve() if args.mods_dir else ROOT / ('work/CompanionMods' if args.companion else 'work/Mods')
 if not 1024 <= args.port <= 65535:p.error('invalid port')
 runtime_lock = None
@@ -33,7 +35,7 @@ if args.companion:
 if not (mods / 'AgentBridge/AgentBridge.dll').exists():
     raise SystemExit('Run python3 scripts/build.py first')
 token = secrets.token_urlsafe(32)
-config = {'Port': args.port, 'Token': token, 'EnableLab': args.lab, 'Backend': 'squad' if args.companion else 'farmtronics'}
+config = {'Port': args.port, 'Token': token, 'EnableLab': args.lab, 'Backend': 'squad' if args.companion else 'farmtronics', 'Windowed': True, 'Muted': True, 'WindowWidth': 1280, 'WindowHeight': 800}
 for path, value in [(mods / 'AgentBridge/config.json', config), (ROOT / '.local.json', {'url': f'http://127.0.0.1:{args.port}', 'token': token})]:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as f:

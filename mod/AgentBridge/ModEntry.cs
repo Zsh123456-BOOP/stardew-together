@@ -25,6 +25,10 @@ public sealed class Config {
     public string Token { get; set; } = "";
     public bool EnableLab { get; set; } = false;
     public string Backend { get; set; } = "farmtronics";
+    public bool Windowed { get; set; } = true;
+    public bool Muted { get; set; } = true;
+    public int WindowWidth { get; set; } = 1280;
+    public int WindowHeight { get; set; } = 800;
 }
 
 public sealed class ModEntry : Mod {
@@ -42,6 +46,7 @@ public sealed class ModEntry : Mod {
         config = helper.ReadConfig<Config>();
         if (config.Token.Length < 24) { Monitor.Log("Missing local bridge token; run scripts/launch.py.", LogLevel.Error); return; }
         helper.Events.GameLoop.GameLaunched += (_, _) => {
+            ApplyPresentation();
             string modId = config.Backend == "squad" ? "ThaliaFawnheart.TheStardewSquad" : "strout.farmtronics";
             api = helper.ModRegistry.GetApi<IGameControl>(modId);
             if (config.EnableLab) Game1.options.pauseWhenOutOfFocus = false;
@@ -85,8 +90,25 @@ public sealed class ModEntry : Mod {
     }
 
     private void ResetSession() {
+        // Native save loading can replace Options, including its volume levels.
+        ApplyPresentation();
         session = Guid.NewGuid().ToString("N");
         commands.Clear(); running.Clear(); api?.Reset();
+    }
+
+    private void ApplyPresentation() {
+        if (config.Windowed) {
+            Game1.options.setWindowedOption("Windowed");
+            Game1.options.preferredResolutionX = Math.Clamp(config.WindowWidth, 800, 2560);
+            Game1.options.preferredResolutionY = Math.Clamp(config.WindowHeight, 600, 1440);
+            Game1.graphics.PreferredBackBufferWidth = Game1.options.preferredResolutionX;
+            Game1.graphics.PreferredBackBufferHeight = Game1.options.preferredResolutionY;
+            Game1.graphics.ApplyChanges();
+        }
+        if (config.Muted) {
+            Game1.options.musicVolumeLevel = Game1.options.soundVolumeLevel = Game1.options.ambientVolumeLevel = Game1.options.footstepVolumeLevel = 0;
+            Game1.initializeVolumeLevels();
+        }
     }
 
     private async Task Listen() {
@@ -150,7 +172,9 @@ public sealed class ModEntry : Mod {
     }
 
     private Response Process(Request r) {
-        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1, backend = config.Backend, saves_path = config.EnableLab ? Constants.SavesPath : null});
+        if (r.Method == "GET" && r.Path == "/health") return Ok(new {ready = Context.IsWorldReady, api_connected = api != null, session_id = session, protocol = 1, backend = config.Backend, saves_path = config.EnableLab ? Constants.SavesPath : null,
+            presentation = new {windowed = Game1.options.isCurrentlyWindowed(), width = GameRunner.instance.Window.ClientBounds.Width, height = GameRunner.instance.Window.ClientBounds.Height,
+                music = Game1.options.musicVolumeLevel, sound = Game1.options.soundVolumeLevel, ambient = Game1.options.ambientVolumeLevel, footsteps = Game1.options.footstepVolumeLevel}});
         if (api == null || !Context.IsWorldReady) return new(503, "{\"error\":\"world_not_ready\"}");
         if (r.Method == "GET" && r.Path == "/state") {
             var state = JsonSerializer.Deserialize<Dictionary<string, object>>(api.GetState())!;

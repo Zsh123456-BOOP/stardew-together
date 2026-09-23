@@ -4,8 +4,8 @@ using StardewValley;
 using StardewValley.Menus;
 namespace Together;
 public sealed partial class ModEntry {
-    private sealed record SeedOffer(string Item,string Name,int Price,int Stock,int Growth,int LastDay,int Sale,int Regrow,int Harvests,int Water,int Maximum);
-    private string selectionQuote="",selectionEpoch="";
+    private sealed record SeedOffer(string Item,string Name,int Price,int Stock,int Growth,int LastDay,int Sale,int Regrow,int Harvests,int Water,int Maximum,int BagMaximum);
+    private string selectionQuote="",selectionEpoch="",consumedSelectionQuote="";
     private int selectionDay=-1;
     private List<SeedOffer> selectionOffers=new();
     private Dictionary<string,int> selectedSeeds=>Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays?Data.FarmInvestment.Purchase.Approved.ToDictionary(p=>p.Key,p=>Data.FarmInvestment.Purchase.Remaining(p.Key)):new();
@@ -21,20 +21,21 @@ public sealed partial class ModEntry {
             int last=CropGrowth.SeasonEnd((int)farm.GetSeason(),Game1.dayOfMonth,c.Seasons.Select(x=>(int)x).ToHashSet(),farm.SeedsIgnoreSeasonsHere());
             int harvests=growth<=last-Game1.dayOfMonth?1+(c.RegrowDays>0?(last-Game1.dayOfMonth-growth)/c.RegrowDays:0):0;
             int sale=ItemRegistry.Create<StardewValley.Object>(ItemRegistry.QualifyItemId(c.HarvestItemId)!).sellToStorePrice();
-            rows.Add(new(q.Seed,ItemRegistry.GetDataOrErrorItem(q.Seed).DisplayName,q.Price,q.Stock,growth,last,sale,c.RegrowDays,harvests,harvests>1?last-Game1.dayOfMonth:growth,harvests==0?0:Math.Min(q.Stock,q.Price==0?Data.FarmInvestment.Plots:budget/q.Price)));
+            var seedItem=ItemRegistry.Create(q.Seed);var capacity=new CapacityAdapter(Game1.player,new[]{seedItem});
+            int bagMaximum=CapacityPlan.MaxPut(capacity.Snapshot,capacity.Key(seedItem),capacity.Limit(seedItem));
+            rows.Add(new(q.Seed,ItemRegistry.GetDataOrErrorItem(q.Seed).DisplayName,q.Price,q.Stock,growth,last,sale,c.RegrowDays,harvests,harvests>1?last-Game1.dayOfMonth:growth,harvests==0?0:Math.Min(q.Stock,q.Price==0?Data.FarmInvestment.Plots:budget/q.Price),bagMaximum));
         }
         string signature=AgentJson.Encode(new{day=Game1.Date.TotalDays,shop=menu.ShopId,rows,budget});
-        if(selectionEpoch!=agentSaveEpoch||selectionDay!=Game1.Date.TotalDays||selectionSignature!=signature){selectionQuote=Guid.NewGuid().ToString("N");selectionSignature=signature;}
+        if(selectionEpoch!=agentSaveEpoch||selectionDay!=Game1.Date.TotalDays||selectionSignature!=signature||selectionQuote==consumedSelectionQuote){selectionQuote=Guid.NewGuid().ToString("N");selectionSignature=signature;}
         selectionEpoch=agentSaveEpoch;selectionDay=Game1.Date.TotalDays;selectionOffers=rows;
         var root=JsonSerializer.SerializeToNode(native)!.AsObject();
-        root["seed_decision"]=JsonSerializer.SerializeToNode(new{quote_token=selectionQuote,labor_budget=FarmLaborBudget(),budget,keep_gold=Data.FarmInvestment.KeepGold,candidates=rows,comparison=rows.Select(r=>new{r.Item,r.Name,r.Price,can_buy_now=r.Maximum,mature_on=new{year=(Game1.Date.TotalDays+r.Growth)/112+1,season=new[]{"spring","summer","fall","winter"}[((Game1.Date.TotalDays+r.Growth)/28)%4],day=(Game1.Date.TotalDays+r.Growth)%28+1},r.Growth,r.Harvests,r.Regrow,base_first_harvest_net=r.Sale-r.Price,base_net_per_growth_day=(r.Sale-r.Price)/(double)Math.Max(1,r.Growth),estimated_water_energy=2*r.Water,existing_dry_crops=Facts.DryCrops}),fastest_available=rows.Where(r=>r.Maximum>0).OrderBy(r=>r.Growth).Select(r=>r.Item).FirstOrDefault(),algorithm_recommendation=rows.Where(r=>r.Maximum>0).OrderByDescending(r=>(r.Sale-r.Price)/(double)Math.Max(1,r.Growth)).Select(r=>r.Item).FirstOrDefault(),assumptions="Growth是基础土地或已观察空耕地中的最早成熟时间（含真实肥料/稻田/职业减免）；并非所有地块都能达到，数量及每格成熟由farm.plan再次核验。原生作物数据；基础品质每次一份，Water为预计每株浇水天数，约每次2点基础体力，实际受技能与工具影响；成熟日=当前日+Growth，照料需求是建议而非株数上限，不预言天气/额外产量；报价不是选品授权",next="farm.select_seeds 提交商品ID、数量上限和取舍理由；空items明确选择暂不采购。算法只缩减不可行数量，不替换商品。"});return root;
+        root["seed_decision"]=JsonSerializer.SerializeToNode(new{quote_token=selectionQuote,labor_budget=FarmLaborBudget(),budget,keep_gold=Data.FarmInvestment.KeepGold,candidates=rows,comparison=rows.Select(r=>new{r.Item,r.Name,r.Price,cash_stock_max=r.Maximum,bag_only_max=r.BagMaximum,can_buy_now=Math.Min(r.Maximum,r.BagMaximum),mature_on=new{year=(Game1.Date.TotalDays+r.Growth)/112+1,season=new[]{"spring","summer","fall","winter"}[((Game1.Date.TotalDays+r.Growth)/28)%4],day=(Game1.Date.TotalDays+r.Growth)%28+1},r.Growth,r.Harvests,r.Regrow,base_first_harvest_net=r.Sale-r.Price,base_net_per_growth_day=(r.Sale-r.Price)/(double)Math.Max(1,r.Growth),estimated_water_energy=2*r.Water,existing_dry_crops=Facts.DryCrops}),fastest_available=rows.Where(r=>r.Maximum>0).OrderBy(r=>r.Growth).Select(r=>r.Item).FirstOrDefault(),algorithm_recommendation=rows.Where(r=>r.Maximum>0).OrderByDescending(r=>(r.Sale-r.Price)/(double)Math.Max(1,r.Growth)).Select(r=>r.Item).FirstOrDefault(),assumptions="Growth是基础土地或已观察空耕地中的最早成熟时间（含真实肥料/稻田/职业减免）；并非所有地块都能达到，数量及每格成熟由farm.plan再次核验。原生作物数据；基础品质每次一份，Water为预计每株浇水天数，约每次2点基础体力，实际受技能与工具影响；成熟日=当前日+Growth，照料需求是建议而非株数上限，不预言天气/额外产量；报价不是选品授权",next="farm.select_seeds 提交商品ID、数量上限和取舍理由；空items明确选择暂不采购。算法只缩减不可行数量，不替换商品。bag_only_max为单独购买此品种时可装的份数，多个品种共享空槽；一格可堆叠多份。"});return root;
     }
     private string selectionSignature="";
     internal object SelectSeeds(JsonElement args) {
-        if(selectionEpoch!=agentSaveEpoch||selectionDay!=Game1.Date.TotalDays||AgentToolRegistry.Text(args,"quote_token")!=selectionQuote)throw new InvalidOperationException("seed_quote_expired_read_shop_again");
-        // Observed quotes authorize selection; there is no secondary business permission.
-        if(Data.FarmInvestment.Phase is "planning" or "executing" or "start_planning")throw new InvalidOperationException("seed_selection_not_pending_do_not_replace_active_plan");
-        string reason=AgentToolRegistry.Text(args,"reason");if(string.IsNullOrWhiteSpace(reason))throw new InvalidOperationException("seed_selection_reason_required");
+        string reason=AgentToolRegistry.Text(args,"reason");
+        string? selectionError=SeedSelectionPolicy.Validate(selectionEpoch==agentSaveEpoch&&selectionDay==Game1.Date.TotalDays&&AgentToolRegistry.Text(args,"quote_token")==selectionQuote,selectionQuote==consumedSelectionQuote,Data.FarmInvestment.Phase,reason);
+        if(selectionError!=null)throw new InvalidOperationException(selectionError);
         if(!args.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)throw new InvalidOperationException("seed_selection_items_required");
         var requested=new List<SeedRequest>();var seen=new HashSet<string>();
         foreach(var row in items.EnumerateArray()) {
@@ -45,10 +46,8 @@ public sealed partial class ModEntry {
         var allocation=AutonomyPolicy.Seeds(requested,SeedAllowance());
         var chosen=allocation.Where(p=>p.Value>0).ToDictionary(p=>p.Key,p=>p.Value);
         int cost=requested.Sum(r=>allocation[r.Item]*r.Price);
-        if(Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays&&Data.FarmInvestment.Purchase.Purchased.Values.Any(n=>n>0)&&AgentToolRegistry.Text(args,"additional_reason").Trim().Length<3)
-            throw new InvalidOperationException("seed_reselection_requires_additional_reason_review_owned_and_remaining");
         if(Game1.activeClickableMenu is ShopMenu menu){if(menu.heldItem!=null||!menu.readyToClose())throw new InvalidOperationException("receive_shop_held_item_before_selection");menu.exitThisMenu();}
-        Data.FarmInvestment.Purchase.Select(Game1.Date.TotalDays,chosen);selectionApproved=true;selectionDeferralBasis=SeedDecisionBasis();seedSelectionIntent=decisionIntent;Data.FarmInvestment.Enabled=true;
+        Data.FarmInvestment.Purchase.Select(Game1.Date.TotalDays,chosen);consumedSelectionQuote=selectionQuote;selectionApproved=true;selectionDeferralBasis=SeedDecisionBasis();seedSelectionIntent=decisionIntent;Data.FarmInvestment.Enabled=true;
         if(Data.FarmInvestment.Day!=Game1.Date.TotalDays){Data.FarmInvestment.Day=Game1.Date.TotalDays;Data.FarmInvestment.ReservedToday=0;Data.FarmInvestment.Tasks.Clear();}
         Data.FarmInvestment.Error="";Data.FarmInvestment.OwnedSeedsPassDone=true;Data.FarmInvestment.Phase="start_planning";Data.FarmInvestment.OwnedSeedsOnly=chosen.Count==0;
         var result=new{status="selection_approved_not_purchased",quote_token=selectionQuote,candidates=selectionOffers,requested,chosen,adjustments=requested.Where(r=>allocation[r.Item]!=r.Count).Select(r=>new{r.Item,requested=r.Count,accepted=allocation[r.Item],reason="current_cash_or_stock"}),reason,estimated_cost=cost,source="model_explicit_selection"};
@@ -68,6 +67,6 @@ public sealed partial class ModEntry {
     private object SeedPurchaseStatus()=>new {
         day=Data.FarmInvestment.Purchase.Day,phase=Data.FarmInvestment.Phase,error=Data.FarmInvestment.Error,
         items=Data.FarmInvestment.Purchase.Approved.Where(p=>Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays).Select(p=>new{item=p.Key,approved=p.Value,purchased=Data.FarmInvestment.Purchase.Purchased.GetValueOrDefault(p.Key),remaining_to_buy=Data.FarmInvestment.Purchase.Remaining(p.Key),unplanted_owned=OwnedSeeds().Where(i=>i.QualifiedItemId==p.Key).Sum(i=>i.Stack)}).ToArray(),
-        rule="已买数量来自原生回执，待买不等于必须立即买；先处理现有种子与中断步骤。追加采购/重新选品须additional_reason说明现有库存及新增用途。"
+        rule="已买数量来自原生回执，待买不等于必须立即买；先处理现有种子与中断步骤。重新选品用新quote_token，reason说明现有库存和新增用途；直接buy/procure超出剩余额度须additional_reason。"
     };
 }

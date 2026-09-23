@@ -46,7 +46,7 @@ public sealed class AgentToolRegistry {
         ["player.eat"]="{slot:int}: 吃真实背包的一份普通食物，原生动画/恢复/消耗核验；保留物由高层补给政策决定",
         ["player.craft"]="{recipe:原生配方名,count?:1..99}: 连续制作指定批次，自动原生菜单/材料消耗/成品入包/统计核验；只用背包原料，缺料需先取货",
         ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
-        ["farm.select_seeds"]="{quote_token:string,additional_reason?:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
+        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购，已买过也可拒绝；追加用途统一写reason。每个quote_token仅接受一次，需再次选品时重新shop.read。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
         ["shop.read"]="{offset?:int,limit?:1..100}: 读取当前已打开原生商店完整分页的实际货品、价格、货币、条件和库存；不远程打开商店",
         ["crab_pots.read"]="{}: 自有蟹笼、水域类型、真实产物和缺饵状态",
         ["player.crab_pots"]="{mode:place|tend,location?:地图ID,item?:目标蟹笼鱼QID,bait?:鱼饵QID,count?:0..40}: 算法选择合适海/淡水岸边放置真实蟹笼；tend收取原生产物并补饵，0处理当前地图全部。核验放置/投饵消耗与玩家捕获统计；须原生过夜生成捕获",

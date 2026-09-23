@@ -9,7 +9,7 @@ public sealed partial class ModEntry {
     private IEnumerable<Item> OwnedSeeds()=>Game1.player.Items.Concat(SharedStorage().Where(s=>!s.Chest.GetMutex().IsLocked()).SelectMany(s=>s.Chest.GetItemsForPlayer())).Where(i=>i?.Category==-74);
     private object PlantingExecutionFacts()=>new {
         unplanted_owned_seeds=OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Select(g=>new{item=g.Key,name=g.First().DisplayName,count=g.Sum(i=>i.Stack)}).ToArray(),
-        actual_farm_crops=Game1.getFarm().terrainFeatures.Values.OfType<HoeDirt>().Where(d=>d.crop!=null&&!d.crop.dead.Value).GroupBy(d=>d.crop.netSeedIndex.Value).Select(g=>new{seed=g.Key,planted=g.Count(),watered=g.Count(d=>d.state.Value==1),ripe=g.Count(d=>d.readyForHarvest())}).ToArray(),
+        actual_farm_crops=Game1.getFarm().terrainFeatures.Values.OfType<HoeDirt>().Where(d=>d.crop!=null&&!d.crop.dead.Value).GroupBy(d=>d.crop.netSeedIndex.Value).Select(g=>new{seed=g.Key,seed_name=ItemRegistry.GetDataOrErrorItem(ItemRegistry.QualifyItemId(g.Key)??g.Key).DisplayName,planted=g.Count(),watered=g.Count(d=>d.state.Value==1),ripe=g.Count(d=>d.readyForHarvest())}).ToArray(),
         queued_planting=Data.Autoplay.Schedule.Tasks.Where(t=>!t.Terminal&&t.spec.tool=="work.run"&&AgentToolRegistry.Text(t.spec.args,"goal")=="plant").Select(t=>new{t.spec.id,t.state,t.spec.args}).ToArray(),
         evidence="原生种子库存与地里作物分开计数；采购或口头计划不算播种完成。未种种子由模型安排，不自动派工。"
     };

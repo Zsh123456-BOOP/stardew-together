@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 namespace Together;
 public static class OverlayText {
+    public static string ResourceProgress(string name,int gained,int targets,int bag)=>$"最近采集：新增{gained}份{name}，处理{targets}处；背包现有{bag}份{name}";
     public static string Clean(string? text,int limit) {
         if(string.IsNullOrWhiteSpace(text))return "";
         text=Regex.Replace(text,@"\{[^{}]*\}"," ");

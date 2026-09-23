@@ -24,7 +24,8 @@ public sealed partial class ModEntry {
             ["shop_windows_retained_before_opening"]=view.GetProperty("service_hours").EnumerateArray().Any(s=>s.GetProperty("location").GetString()=="SeedShop"&&s.TryGetProperty("recheck_at",out _)),
             ["purchase_manifest_visible"]=view.GetProperty("purchase_status").TryGetProperty("items",out _),
             ["sleep_future_value_contract"]=specs.Single(s=>s.Name=="player.sleep").Parameters.GetProperty("properties").GetProperty("alternatives").GetProperty("items").GetProperty("properties").TryGetProperty("value",out _),
-            ["purchase_additional_reason_contract"]=new[]{"player.buy","player.procure","farm.select_seeds"}.All(name=>NativeToolProtocol.LegacySpec(name,AgentToolRegistry.Catalog[name]).Parameters.GetProperty("properties").TryGetProperty("additional_reason",out _)),
+            ["purchase_additional_reason_contract"]=new[]{"player.buy","player.procure"}.All(name=>NativeToolProtocol.LegacySpec(name,AgentToolRegistry.Catalog[name]).Parameters.GetProperty("properties").TryGetProperty("additional_reason",out _)),
+            ["seed_selection_single_reason"]=!NativeToolProtocol.LegacySpec("farm.select_seeds",AgentToolRegistry.Catalog["farm.select_seeds"]).Parameters.GetProperty("properties").TryGetProperty("additional_reason",out _),
             ["work_parameters_complete"]=specs.Single(s=>s.Name=="work.run").Parameters.GetProperty("properties").TryGetProperty("stock_target",out _)
         };
         return new{checks,source,definitions,packed_context=view,field_revisions=ContextRevisions.Fields(source),scope="read-only native wiring, no paid model or injected game progress"};

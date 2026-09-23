@@ -119,6 +119,7 @@ public sealed partial class ModEntry {
         // Recomputing every route/NPC/capacity option here multiplied one failure
         // into a seconds-long schedule frame and a recursive receipt. The next
         // decision snapshot observes alternatives once; explicit reads stay available.
+        if(ExecutionFailureWatch.CorrectableInput(error))obj["repair"]=ExecutionFailureWatch.Repair(error);
         obj["alternatives"]=JsonSerializer.SerializeToNode(new{read_via="context.read",args=new{section="operating_candidates"},reason="fresh_alternatives_in_next_decision"});
         if(error.Contains("service")||error.Contains("shop"))obj["service_hours"]=JsonSerializer.SerializeToNode(new{read_via="services.read"});
         if(error.Contains("social")||error.Contains("npc_")||error.Contains("route_access"))obj["social_access"]=JsonSerializer.SerializeToNode(new{read_via="services.read",args="npc=原任务人物"});

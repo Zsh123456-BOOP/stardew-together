@@ -41,6 +41,11 @@ public sealed record PutOp(StackKey Key,int Count,int MaxStack):CapacityOp;
 public sealed record RequireFreeOp(int Slots):CapacityOp;
 public sealed record CapacityVerdict(bool Feasible,int FailedStep,string Reason,int PeakOccupied,int FinalOccupied,int FreeSlotsAtEnd);
 public static class CapacityPlan {
+    public static int MaxPut(CapacitySnapshot start,StackKey key,int maxStack,int limit=9999) {
+        int low=0,high=Math.Max(0,limit);
+        while(low<high){int mid=low+(high-low+1)/2;if(Simulate(start,new CapacityOp[]{new PutOp(key,mid,maxStack)}).Feasible)low=mid;else high=mid-1;}
+        return low;
+    }
     public static bool FreeFits(int free,int required)=>Simulate(new(Math.Max(0,free),Array.Empty<(StackKey,int,int,bool)>()),new CapacityOp[]{new RequireFreeOp(Math.Max(0,required))}).Feasible;
     public static int RequiredSlots(string goal,int requested=0)=>Math.Max(0,requested);
     public static CapacityVerdict Simulate(CapacitySnapshot start,IReadOnlyList<CapacityOp> ops) {

@@ -41,7 +41,7 @@ public sealed partial class ModEntry {
         if(DateTime.UtcNow<overlayNext)return;overlayNext=DateTime.UtcNow.AddMilliseconds(250);
         long started=System.Diagnostics.Stopwatch.GetTimestamp();
         int width=Math.Clamp(Game1.uiViewport.Width/3,280,340),x=Math.Max(8,Game1.uiViewport.Width-width-20),y=Math.Min(290,Math.Max(50,Game1.uiViewport.Height/3));
-        bool compact=overlayCollapsed||Game1.activeClickableMenu!=null||Game1.uiViewport.Height<500;
+        bool compact=overlayCollapsed||AutoplayRunning&&Game1.activeClickableMenu!=null||Game1.uiViewport.Height<500;
         string mode=!AutoplayRunning?"已暂停":preparation!=null?"准备物资":agentPending!=null?(HasPendingQueries?"核对查询结果并规划":"安排接下来的事"):WorkActorBusy("player")||playerExecutor.Busy?"正在忙碌":Game1.eventUp?"观看剧情":"等待安排";
         overlayTitle="同行 · "+mode;
         var lines=new List<string>();
@@ -64,8 +64,11 @@ public sealed partial class ModEntry {
         var active=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.state=="running");
         string purpose=OverlaySentence(active?.spec.purpose,72);
         Add("正在  "+now);
-        string reason=OverlaySentence(purpose.Length>0?purpose:Data.Autoplay.Plan,50);
-        if(reason.Length>0)Add("原因  "+reason);
+        if(!AutoplayRunning)Add("暂停原因  "+OverlayPauseReason(Data.Autoplay.Detail));
+        var recentResource=semanticJobs.Values.LastOrDefault(j=>j.actor=="player"&&j.Day==Game1.Date.TotalDays&&j.status is "succeeded" or "partial"&&j.goal is "wood" or "stone" or "fiber" or "hardwood" or "resource"&&j.Item.Length>0);
+        if(recentResource!=null)Add(OverlayText.ResourceProgress(ItemRegistry.GetDataOrErrorItem(recentResource.Item).DisplayName,recentResource.gained,recentResource.completed,Game1.player.Items.Where(i=>i?.QualifiedItemId==recentResource.Item).Sum(i=>i!.Stack)));
+        string reason=AutoplayRunning?OverlaySentence(purpose.Length>0?purpose:Data.Autoplay.Plan,50):"";
+        if(reason.Length>0)Add("AI计划  "+reason);
         string intentKey=(active?.spec.id??action?.command_id??work?.command_id??"")+":"+purpose;
         if(intentKey!=overlayIntentKey){overlayIntentKey=intentKey;if(action is {status:"running"}||work!=null)Data.Autoplay.Record("overlay_intent_sample",AgentJson.Encode(new{task=active?.spec.id,covered=purpose.Length>0,source="scheduled_task_purpose",purpose}));}
         var next=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>!t.Terminal&&t.state=="queued"&&t.spec.actor=="player");
@@ -89,8 +92,15 @@ public sealed partial class ModEntry {
     private static string OverlayTool(string tool)=>tool switch {
         "player.move" or "player.travel" or "player.service"=>"前往下一个地点","player.sleep"=>"回家睡觉","player.procure" or "player.buy"=>"购买需要的物资","player.discard"=>"按计划销毁物品腾出空间","player.craft"=>"制作需要的物品","player.cook"=>"准备料理","player.machine"=>"照料加工设备","player.eat"=>"吃点东西恢复体力","player.place" or "player.place_facility"=>"放置设施","player.build"=>"安排农场建设","player.ship" or "player.ship_items"=>"出售已安排的产品","player.read_mail"=>"查看信件","player.collect_home_gifts"=>"领取初始物资","player.work" or "player.use_tool"=>"处理眼前的劳动","player.social"=>"与村民交流",_=>"执行已安排的操作"
     };
+    private static string OverlayPauseReason(string code) {
+        if(code.StartsWith("same_root_three_distinct_attempts:"))return "同类操作连续失败3次："+OverlayBlock(code);
+        if(code.StartsWith("decision_review_failed"))return "收工或体力评估连续未通过，请查看当前条件";
+        return FriendlyAgentReason(code);
+    }
     private static string OverlayBlock(string? code) {
         code??="";
+        if(code.Contains("seed_"))return "种子报价或采购参数未通过核验";
+        if(code.Contains("material_quantity_conflict"))return "新增数量与库存目标冲突，需二选一";
         if(code.Contains("capacity")||code.Contains("inventory"))return "容量不足，需要可行的存货、生产消耗或仓储前置；不会自行腾空";
         if(code.Contains("loadout_missing"))return "还缺这次劳动需要的工具或材料";
         if(code.Contains("path")||code.Contains("unreachable"))return "暂时走不到目标位置";

@@ -1,4 +1,9 @@
 namespace Together;
+public static class SeedSelectionPolicy {
+    // A fresh explicit selection already authorizes its new quantities. An empty
+    // list is a decline, irrespective of previous purchases; no second reason.
+    public static string? Validate(bool currentQuote,bool consumed,string phase,string reason)=>!currentQuote||consumed?"seed_quote_expired_read_shop_again":phase is "planning" or "executing" or "start_planning"?"seed_selection_not_pending_do_not_replace_active_plan":string.IsNullOrWhiteSpace(reason)?"seed_selection_reason_required":null;
+}
 public sealed class FarmInvestmentPolicy {
     public SeedPurchaseManifest Purchase {get;set;}=new();
     public bool Enabled {get;set;}

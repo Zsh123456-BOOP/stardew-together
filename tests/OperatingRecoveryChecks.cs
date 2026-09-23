@@ -3,6 +3,32 @@ using Together;
 public static class OperatingRecoveryChecks {
     private static JsonElement J(object value)=>JsonSerializer.SerializeToElement(value,AgentJson.Options);
     public static void Run(Action<bool,string> check) {
+        var purchase=new SeedPurchaseManifest();purchase.Select(0,new(){{"(O)472",9}});purchase.Receive(0,"native-nine","(O)472",9);
+        check(SeedSelectionPolicy.Validate(true,false,"done","已有24株，当前不追加采购")==null,"13:00 regression: a fresh empty selection can decline after earlier purchases");
+        purchase.Select(0,new());
+        check(purchase.Purchased["(O)472"]==9&&purchase.Remaining("(O)472")==0,"declining cancels unfulfilled allowance without deleting delivered items");
+        check(SeedSelectionPolicy.Validate(true,false,"done","追加一批防风草，已核对现有库存和照料")==null,"new explicit seed selection needs only its single reason");
+        purchase.Select(0,new(){{"(O)472",6}});
+        check(purchase.Remaining("(O)472")==6&&purchase.Purchased["(O)472"]==9,"fresh additional selection authorizes six new units without rebuying the prior nine");
+        check(SeedSelectionPolicy.Validate(true,true,"done","重复刚才的选择")!.StartsWith("seed_quote_expired"),"consumed selection quote rejects replay even after the original work finishes");
+        check(SeedSelectionPolicy.Validate(true,false,"executing","改动执行中的采购")!.Contains("not_pending"),"fresh quote cannot replace active purchase work");
+        check(SeedSelectionPolicy.Validate(false,false,"done","使用旧报价")!.StartsWith("seed_quote_expired"),"expired quote still requires native refresh");
+        var failureWatch=new ExecutionFailureWatch();int failures=0;
+        for(int n=0;n<3;n++)failures=failureWatch.Observe("trial",n.ToString(),"player","seed_selection_reason_required",2);
+        check(failures==3&&ExecutionFailureWatch.CorrectableInput("seed_selection_reason_required")&&!ExecutionFailureWatch.CorrectableInput("quality_evidence_failed"),"three selection-input errors are recoverable while native evidence failures remain fatal");
+        check(ExecutionFailureWatch.PurchaseInput("known_failure_conditions_unchanged:seed_quote_expired_read_shop_again:evidence=abc"),"unchanged-condition wrapper retains local purchase recovery instead of a frozen menu");
+        check(ExecutionFailureWatch.Repair("seed_selection_reason_required").Contains("items=[]"),"selection error response provides an explicit decline path");
+        check(WorkQuantity.Resolve(53,50,8,55,true).Error=="material_quantity_conflict_use_count_or_stock_target","08:20 regression: contradictory increment and total do not silently become two units");
+        check(WorkQuantity.Resolve(53,50,0,55,true).Missing==2&&WorkQuantity.Resolve(53,50,8,null,true).Target==61,"total 55 requests two extra units; incremental eight requests stock 61");
+        var receipt=J(ExecutionContract.Receipt(new{command_id="work:wood",goal="wood",status="succeeded",completed=3,gained=52,requested=49},"epoch",1));
+        check(receipt.GetProperty("quantity_units").GetProperty("completed").GetString()!.Contains("处数")&&receipt.GetProperty("actual_progress").GetProperty("gained").GetInt32()==52,"resource receipts distinguish three targets from fifty-two item units");
+        check(OverlayText.ResourceProgress("木材",2,2,55)=="最近采集：新增2份木材，处理2处；背包现有55份木材","overlay shows native item gain, target count and actual bag stock with units");
+        var seedKey=new StackKey("seed",0,"ordinary");var singleSlot=new CapacitySnapshot(1,Array.Empty<(StackKey,int,int,bool)>());
+        check(CapacityPlan.MaxPut(singleSlot,seedKey,999)==999&&singleSlot.FreeSlots==1,"one free bag slot holds a stack of 999 seeds and capacity simulation does not mutate inventory");
+        var partlyFilled=new CapacitySnapshot(1,new[]{(seedKey,990,999,false)});
+        check(CapacityPlan.MaxPut(partlyFilled,seedKey,999)==9&&CapacityPlan.MaxPut(partlyFilled,new("other",0,"ordinary"),999)==0,"native-compatible stack space counts without inventing slots for another seed type");
+        var care=J(OperatingDecisionPolicy.Labor(68,270,0,0,24,1,0));
+        check(care.GetProperty("today_pending_conservative").GetInt32()==0&&care.GetProperty("next_dry_day_water_estimate").GetDouble()==48&&care.GetProperty("care_note").GetString()!.Contains("重新浇水"),"watered today still exposes forty-eight energy of next-dry-day care");
         // Replay the failing day's relevant transitions, without inventing game
         // outcomes: closed shop -> authorized order -> partial native delivery
         // -> save/reload -> remaining purchase -> planting-versus-sleep review.

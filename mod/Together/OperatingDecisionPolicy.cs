@@ -1,6 +1,19 @@
 using System.Text.Json;
 namespace Together;
 public static class OperatingDecisionPolicy {
+    public static bool InvestmentOwnsPlayer(bool enabled,string phase)=>enabled&&phase is "start_planning" or "planning" or "executing" or "observing_shop";
+    // A completed/declined investment is reconsidered after new income or a new
+    // day, not merely because planting freed a bag slot or changed crop counts.
+    public static bool SeedReviewUseful(int day,int cash,int reviewedDay,int reviewedCash,bool quotesKnown,IEnumerable<(int Price,int Stock,int Harvests)> offers)=>
+        cash>=0&&(reviewedDay!=day||cash>reviewedCash)&&(!quotesKnown?cash>0:offers.Any(o=>o.Stock>0&&o.Harvests>0&&o.Price<=cash));
+    public static JsonElement ResourceDefaults(JsonElement args,int pendingCare) {
+        var values=args.Deserialize<Dictionary<string,JsonElement>>()!;
+        if(!values.ContainsKey("reserve_stamina"))values["reserve_stamina"]=JsonSerializer.SerializeToElement(Math.Clamp(pendingCare,0,270));
+        if(!values.ContainsKey("labor_review"))values["labor_review"]=JsonSerializer.SerializeToElement(new{purpose=AgentPurpose(args),followup="按当前待办照料预留体力，达到数量或体力边界即停止",care="preserve"});
+        return JsonSerializer.SerializeToElement(values);
+    }
+    private static string AgentPurpose(JsonElement args)=>args.TryGetProperty("purpose",out var p)&&p.ValueKind==JsonValueKind.String&&!string.IsNullOrWhiteSpace(p.GetString())?p.GetString()!:"按本次明确的材料数量或项目缺口备料";
+
     public static string ShopObservation(string window,int time,int open,int close,bool atShop)=>window!="available"||time>=close?"closed_today_or_window_ended":time<open?"before_opening":!atShop?"not_at_shop":"shop_menu_not_open";
     public static bool CanCompletePurchaseVisit(JsonElement args,string[] locations) {
         int Number(string key)=>args.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetInt32(out int n)?n:-1;

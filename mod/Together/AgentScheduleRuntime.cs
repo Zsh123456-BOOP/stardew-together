@@ -16,7 +16,7 @@ public sealed partial class ModEntry {
     private readonly HashSet<string> agentKnownActors=new(){"player"};
     private string agentIdleSignature="";
     private bool AgentActorHasWork(string actor)=>OperationActorOccupied(actor);
-    private bool AgentPlayerCovered()=>AgentActorHasWork("player")||Data.FarmInvestment.Enabled&&Data.FarmInvestment.Phase=="planning";
+    private bool AgentPlayerCovered()=>AgentActorHasWork("player")||InvestmentOwnsPlayer;
     private bool AgentWorkCovered()=>AgentPlayerCovered()&&ActiveActors.Where(a=>a!="player").All(AgentActorHasWork);
     private void WakeAgent(string reason) {
         if(!agentWakeReasons.Contains(reason))agentWakeReasons.Add(reason);
@@ -34,6 +34,7 @@ public sealed partial class ModEntry {
     internal object AgentPlanSubmit(JsonElement args) {
         var list=args.TryGetProperty("tasks",out var tasks)?JsonSerializer.Deserialize<List<AgentTaskSpec>>(tasks.GetRawText()):null;
         if(list==null)throw new InvalidOperationException("tasks_required");
+        if(decisionIntent.Length>0&&InvestmentOwnsPlayer&&list.Any(t=>t?.actor=="player"))return new{status="already_pending",source="active_seed_workflow",phase=Data.FarmInvestment.Phase,submitted_count=0,note="原采购播种链正在执行，完成或受阻后再提交玩家任务。"};
         if(list.Any(s=>s?.tool=="plan.submit"))return new{status="failed",error="invalid_plan_task_nested_submit",template=new{tool="player.procure",args=new{location="observed location",shop="observed shop id",item="quoted QID",count=1,max_unit_price="observed price",budget="explicit allowance",keep_gold="explicit reserve"}},note="tasks 中放实际执行工具，不能把 plan.submit 再嵌套为动作；先 player.service→shop.read 取得真实报价"};
         foreach(var spec in list.Where(s=>s!=null)) {
             if(!AgentSchedule.Queueable(spec.tool))return new{status="failed",error="plan_query_requires_observation",rejected_task=new{spec.id,spec.tool},submitted_count=0,revision=Data.Autoplay.Schedule.Revision,note="该工具返回需要读取的观察结果，不能放入动作队列。先直接调用查询，按真实结果提交执行工具；本次没有提交任何步骤。"};
@@ -80,6 +81,8 @@ public sealed partial class ModEntry {
             var receipt=new{status="already_pending",source="same_decision_seed_selection",purchased=false,selected_count=selected,note="本轮选品已经创建采购播种链；未重复购买。进度由farm.business_status返回。"};
             Data.Autoplay.Record("purchase_duplicate_coalesced",AgentJson.Encode(receipt));return receipt;
         }
+        if(decisionIntent.Length>0&&InvestmentOwnsPlayer&&(call.tool.StartsWith("player.")||call.tool=="work.run"&&AgentToolRegistry.Text(call.args,"actor_id","player")=="player"))
+            return new{status="already_pending",source="active_seed_workflow",phase=Data.FarmInvestment.Phase,note="原选种已授权采购、回田、播种和浇水；完成或实际受阻后再安排下一项，未另排动作。"};
         string actor=call.tool is "companion.assign" or "work.run"?AgentToolRegistry.Text(call.args,"actor_id","player"):"player";
         var previous=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>t.spec.actor==actor&&!t.Terminal&&t.spec.intent_id==decisionIntent);
         var duplicate=Data.Autoplay.Schedule.Tasks.LastOrDefault(t=>!t.Terminal&&t.spec.actor==actor&&FailureKnowledge.Key(actor,t.spec.tool,t.spec.args.GetRawText())==FailureKnowledge.Key(actor,call.tool,call.args.GetRawText()));

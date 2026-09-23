@@ -10,6 +10,14 @@ public static class DecisionReviewPolicy {
     private static string Text(JsonElement a,string k)=>a.ValueKind==JsonValueKind.Object&&a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??"":"";
     public static string? Sleep(JsonElement args,float stamina,int workMinutes,IReadOnlyList<ReviewOption> options) {
         if(Text(args,"reason").Trim().Length<3)return "decision_review:sleep_reason_required";
+        // The model acknowledges which observed work it elects to postpone;
+        // numeric feasibility remains a program fact, not a prose examination.
+        if(args.TryGetProperty("defer",out var deferred)) {
+            if(deferred.ValueKind!=JsonValueKind.Array||deferred.GetArrayLength()>3||deferred.EnumerateArray().Any(v=>v.ValueKind!=JsonValueKind.String))return "decision_review:defer_expected_ids_max_3";
+            var ids=deferred.EnumerateArray().Select(v=>v.GetString()!).ToArray();
+            if(ids.Distinct().Count()!=ids.Length||ids.Any(id=>!options.Any(o=>o.id==id)))return "decision_review:deferred_options_changed";
+            return options.Any(o=>!ids.Contains(o.id))?"decision_review:acknowledge_remaining_work":null;
+        }
         if(!args.TryGetProperty("alternatives",out var rows))return options.Count==0?null:"decision_review:alternatives_required";
         if(rows.ValueKind!=JsonValueKind.Array||rows.GetArrayLength()>3)return "decision_review:alternatives_expected_max_3";
         var seen=new HashSet<string>();
@@ -47,11 +55,11 @@ public static class DecisionReviewPolicy {
     }
 }
 
-// Reads and clock ticks cannot reset a repeated rejected decision. Verified native
-// progress or a new day can; changing the wording of the mistake cannot.
+// Counters are per action and root error; unrelated mistakes never combine into
+// a global halt. Runtime includes native progress/day in the key.
 public sealed class DecisionReviewAttempts {
-    private string basis="";
+    private readonly Dictionary<string,int> counts=new();
     public int Count {get;private set;}
-    public bool Reject(string current) {if(current!=basis){basis=current;Count=0;}return ++Count>=3;}
-    public void Clear(){basis="";Count=0;}
+    public bool Reject(string current) {if(counts.Count>256)counts.Clear();Count=counts[current]=counts.GetValueOrDefault(current)+1;return Count>=3;}
+    public void Clear(){counts.Clear();Count=0;}
 }

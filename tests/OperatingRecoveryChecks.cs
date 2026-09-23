@@ -3,6 +3,30 @@ using Together;
 public static class OperatingRecoveryChecks {
     private static JsonElement J(object value)=>JsonSerializer.SerializeToElement(value,AgentJson.Options);
     public static void Run(Action<bool,string> check) {
+        var observedOffers=new[]{(Price:20,Stock:999,Harvests:1),(Price:50,Stock:999,Harvests:1)};
+        check(!OperatingDecisionPolicy.SeedReviewUseful(0,10,-1,-1,true,observedOffers),"14:00 cash 10 versus observed minimum 20 removes shopping candidate");
+        check(OperatingDecisionPolicy.SeedReviewUseful(0,500,-1,-1,false,Array.Empty<(int,int,int)>()),"unknown first quote still permits discovery with available money");
+        check(!OperatingDecisionPolicy.SeedReviewUseful(0,50,0,50,true,observedOffers),"post-purchase cash unchanged does not trigger another shopping trip");
+        check(OperatingDecisionPolicy.SeedReviewUseful(0,70,0,50,true,observedOffers)&&OperatingDecisionPolicy.SeedReviewUseful(1,50,0,50,true,observedOffers),"new income or a new day reopens expansion review");
+        check(!OperatingDecisionPolicy.SeedReviewUseful(0,500,-1,-1,true,new[]{(20,0,1),(20,1,0)}),"sold-out or out-of-season quotes do not create executable seed opportunity");
+        foreach(var phase in new[]{"start_planning","planning","executing","observing_shop"})check(OperatingDecisionPolicy.InvestmentOwnsPlayer(true,phase),"investment owns player through phase "+phase);
+        foreach(var phase in new[]{"awaiting_selection","blocked","done","idle"})check(!OperatingDecisionPolicy.InvestmentOwnsPlayer(true,phase),"workflow releases model at phase "+phase);
+        check(!OperatingDecisionPolicy.InvestmentOwnsPlayer(false,"executing"),"disabled investment does not hold the actor");
+        var resource=OperatingDecisionPolicy.ResourceDefaults(J(new{goal="wood",count=47,labor_review=new{purpose="补齐箱子木材",followup="后续安排农务",care="preserve"}}),0);
+        check(resource.GetProperty("reserve_stamina").GetInt32()==0&&DecisionReviewPolicy.Resource(resource,47,0,0)==null,"19:20 replay: omitted reserve is resolved from actual pending care, not rejected");
+        resource=OperatingDecisionPolicy.ResourceDefaults(J(new{goal="wood",count=47,purpose="箱子缺口"}),30);
+        check(resource.GetProperty("reserve_stamina").GetInt32()==30&&DecisionReviewPolicy.Resource(resource,47,30,30)==null,"automatic resource budget protects outstanding crop care");
+        var explicitBudget=OperatingDecisionPolicy.ResourceDefaults(J(new{goal="wood",reserve_stamina=12}),30);
+        check(explicitBudget.GetProperty("reserve_stamina").GetInt32()==12&&DecisionReviewPolicy.Resource(explicitBudget,47,12,30)!=null,"an explicit conflicting allocation is rejected rather than silently overwritten");
+        var closeOptions=new[]{new ReviewOption("infrastructure:storage",0,60,"goal"),new ReviewOption("advance:quest:9",0,10,"social")};
+        check(DecisionReviewPolicy.Sleep(J(new{reason="今天种完，接受将建仓和社交推迟到明天",defer=closeOptions.Select(o=>o.id)}),146,230,closeOptions)==null,"19:40 compact sleep decision can explicitly defer real work without invented time facts");
+        check(DecisionReviewPolicy.Sleep(J(new{reason="结束今天",defer=Array.Empty<string>()}),146,230,closeOptions)!=null,"short sleep contract cannot silently ignore outstanding options");
+        check(DecisionReviewPolicy.Sleep(J(new{reason="结束今天",defer=new[]{"stale-option"}}),146,230,closeOptions)!=null,"stale acknowledgment needs fresh observed IDs");
+        check(DecisionReviewPolicy.Sleep(J(new{reason="接受自有种子晚一天播种",defer=new[]{"owned"}}),146,230,new[]{new ReviewOption("owned",null,30,"owned_seed",1)})==null,"owned seed deferral is acknowledged without inventing a repurchase cost");
+        check(ExecutionFailureWatch.CorrectableInput("parameter_service_location_mismatch")&&ExecutionFailureWatch.CorrectableInput("plan_query_requires_observation")&&!ExecutionFailureWatch.CorrectableInput("decision_receipt_failed_preserve_evidence"),"wrong service and plan arguments recover locally, lost native receipt integrity still stops");
+        var reviewCounter=new DecisionReviewAttempts();
+        check(!reviewCounter.Reject("0:12:resource:reserve")&&!reviewCounter.Reject("0:12:sleep:time")&&!reviewCounter.Reject("0:12:sleep:time"),"actual three-error sequence does not aggregate unrelated resource and sleep errors");
+        check(reviewCounter.Reject("0:12:sleep:time"),"only the third same action/root error reaches local isolation");
         var purchase=new SeedPurchaseManifest();purchase.Select(0,new(){{"(O)472",9}});purchase.Receive(0,"native-nine","(O)472",9);
         check(SeedSelectionPolicy.Validate(true,false,"done","已有24株，当前不追加采购")==null,"13:00 regression: a fresh empty selection can decline after earlier purchases");
         purchase.Select(0,new());
@@ -66,8 +90,8 @@ public static class OperatingRecoveryChecks {
         check(DecisionReviewPolicy.Sleep(Sleep(new{today="今天种可以更早成熟",defer="明日种会推迟收入",owned_seeds=10,additional_seed_cost=0}),202,600,new[]{owned})!.Contains("growth_tradeoff"),"deferred planting requires an explicit growth consequence");
         check(DecisionReviewPolicy.Sleep(Sleep(new{today="今天种可提前成熟但增加照料需求",defer="保留种子待调整灌溉规划，接受收入推迟",owned_seeds=10,additional_seed_cost=0,growth_tradeoff="推迟播种浇水会推迟生长，愿意承担此代价"}),202,600,new[]{owned})==null,"informed deferral remains a model choice without a mandatory bedtime or planting cap");
         var specs=ToolSpecs.Select(new Dictionary<string,string>{{"player.sleep",""},{"agent.pause",""}},J(new{}));
-        var fields=specs[0].Parameters.GetProperty("properties").GetProperty("alternatives").GetProperty("items").GetProperty("properties").GetProperty("value").GetProperty("properties");
-        check(fields.TryGetProperty("growth_tradeoff",out _)&&fields.TryGetProperty("additional_seed_cost",out _),"API contract exposes the same future-value facts required at execution");
+        var fields=specs[0].Parameters.GetProperty("properties");
+        check(fields.TryGetProperty("defer",out _)&&fields.TryGetProperty("reason",out _)&&!fields.TryGetProperty("alternatives",out _),"API sleep contract is short and still requires explicit postponement");
         var manifestView=JsonSerializer.Deserialize<JsonElement>(ContextBudget.Pack(new{now=new{day=0},purchase_status=new{approved=14,purchased=14,unplanted_owned=14},memory=new{large=new string('x',16000)}},2000,512).Json);
         check(manifestView.GetProperty("purchase_status").GetProperty("unplanted_owned").GetInt32()==14,"compression retains delivered-versus-unplanted distinction");
     }

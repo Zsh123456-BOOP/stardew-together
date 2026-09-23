@@ -18,14 +18,14 @@ public sealed partial class ModEntry {
     }
     private object DecisionReviewContext(IEnumerable<OperatingOpportunity> opportunities)=>new {
         sleep_alternatives=SleepAlternatives(opportunities),last_rejection=reviewFailure,
-        rule="sleep/agent.pause比较此处最多3项；energy/time须符合估算。low_value/defer须value.today和value.defer比较今日行动与推迟的未来收益/照料成本；已有种子另填owned_seeds、additional_seed_cost=0、growth_tradeoff。无即时回款不等于无价值。"
+        rule="收工只提交reason和defer（此处候选ID数组，最多3项）；明确接受推迟这些工作的后果。程序已核算时间、体力和自有种子，不再重复填写成本。无即时回款不等于无价值，推迟播种或照料可能延迟成熟。"
     };
     private void RecordDecisionReview(string action,JsonElement args,object facts,string? error) {
         Data.Autoplay.Record("decision_review",AgentJson.Encode(new{action,args,facts,error,accepted=error==null}));
         if(error==null){reviewFailure=null;reviewAttempts.Clear();return;}
-        bool stop=reviewAttempts.Reject(Data.Autoplay.RunId+":"+Game1.Date.TotalDays+":"+Data.Autoplay.VerifiedActions);
-        reviewFailure=new{action,error,facts,attempt=reviewAttempts.Count,next="按当前事实修正取舍；无需重复补读已有事实"};
-        if(stop)decisionBlockedReason="decision_review_failed_three_attempts:"+error;
+        bool stop=reviewAttempts.Reject(Data.Autoplay.RunId+":"+Game1.Date.TotalDays+":"+Data.Autoplay.VerifiedActions+":"+action+":"+error);
+        reviewFailure=new{action,error,facts,attempt=reviewAttempts.Count,next=stop?"仅此动作反复失败，停止原样重试，选择其他工作或按当前契约修正参数；全局继续。":"按当前事实修正参数；收工填reason和defer候选ID，不必编写成本论证。"};
+        if(stop)Data.Autoplay.Record("decision_review_task_isolated",AgentJson.Encode(new{action,error,attempt=reviewAttempts.Count,global_paused=false}));
         WakeAgent("decision_review_rejected");
         throw new InvalidOperationException(error);
     }

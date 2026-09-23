@@ -31,7 +31,7 @@ public sealed partial class ModEntry {
         }
         var land=ExpansionLand();bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>NativeSeedPlan.Fits(c,farm));
         var window=ServiceWindow("SeedShop");
-        if(seasonal&&land.Count>0&&SeedAllowance()>0&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))
+        if(seasonal&&land.Count>0&&SeedReviewUseful()&&!SeedQuoteReady&&!OwnedSeeds().Any()&&!InvestmentOwnsPlayer&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))
             rows.Add(new("inspect:seed-offers","可去种子店核价比较是否扩种；已有作物照料负担供决策，无固定株数上限", "player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_season={farm.GetSeason()};cash_available={SeedAllowance()};existing_crops={care};open={window.Open}-{window.Close}",0,30,new{land=new{observed_empty_diggable=land.Count,note="初步空地观察；连续田块、道路和每日劳动仍以farm.plan核验"},quotes=ObservedSeedBasis(),cost_scope="询价/采购耗时与种植劳动分开；可先买后种；未知报价不表示收益为零",next="核对报价后由模型选品；价格未知不推测"}));
         if(!Data.Autoplay.Routine.Enabled&&(Facts.DryCrops>0||Facts.RipeCrops>0||Game1.mailbox.Count>0))
             rows.Add(new("configure:routine","可建立或调整跨日照料例行，不影响直接使用工具","day.routine",new{enabled=true,assignments=new Dictionary<string,string>{{"water","player"},{"harvest","player"},{"clear_dead","player"},{"mail","player"}}},$"routine_disabled;dry={Facts.DryCrops};ripe={Facts.RipeCrops};mail={Game1.mailbox.Count}",0,1));
@@ -39,10 +39,10 @@ public sealed partial class ModEntry {
             rows.Add(new("inspect:current-shop","读取当前已经打开的商店真实报价，不能把到店当作已经购买","shop.read",new{},$"native_shop={shop.ShopId};stock_entries={shop.itemPriceAndStock.Count};cash={p.Money}",0,1));
         } else if(Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName=="SeedShop") {
             var counterWindow=ServiceWindow("SeedShop");
-            if(counterWindow.Reason=="available"&&Game1.timeOfDay>=counterWindow.Open&&Game1.timeOfDay<counterWindow.Close&&Game1.getCharacterFromName("Pierre")?.currentLocation==Game1.currentLocation)
+            if(SeedReviewUseful()&&!SeedQuoteReady&&!InvestmentOwnsPlayer&&counterWindow.Reason=="available"&&Game1.timeOfDay>=counterWindow.Open&&Game1.timeOfDay<counterWindow.Close&&Game1.getCharacterFromName("Pierre")?.currentLocation==Game1.currentLocation)
                 rows.Add(new("inspect:seed-counter","已经到店，走近真实柜台打开商店并自动读取报价；此动作不花钱","player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_location;owner_present;window={window.Open}-{window.Close};cash={p.Money}",0,5));
         }
-        if(Data.FarmInvestment.Phase is not ("planning" or "executing" or "start_planning")&&selectionDay==Game1.Date.TotalDays&&selectionEpoch==agentSaveEpoch&&!HasSeedSelection)
+        if(!InvestmentOwnsPlayer&&SeedQuoteReady&&SeedReviewUseful())
             rows.Add(new("select:seeds","根据真实报价、生长期和劳动需求选择种子与数量；不是采购完成","farm.select_seeds",new{quote_token=selectionQuote,items=Array.Empty<object>(),reason="由模型比较本轮报价后填写选品；空数组表示暂不采购"},"current_day_native_quotes;current_cash;selection_pending",0,1,new{quote_token=selectionQuote,candidates=selectionOffers,budget=SeedAllowance(),next="按真实报价用farm.select_seeds选择items和reason"}));
         // Queries only: expose unresolved dependencies without inventing their
         // acquisition requirements or duplicating the encyclopedia database.

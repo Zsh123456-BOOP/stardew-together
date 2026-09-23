@@ -43,10 +43,13 @@ public sealed partial class ModEntry {
         return false;
     }
     internal object PlanFarm(JsonElement args) {
+        string requested=AgentToolRegistry.Text(args,"seed");
+        if(requested.Length>0)requested=ItemRegistry.QualifyItemId(requested)??requested;
+        if(!OwnedSeeds().Any(i=>requested.Length==0||i.QualifiedItemId==requested))return new{status="blocked",error="farm_plan_requires_owned_seeds_select_from_quote_first",executed=false,next="没有对应的未种种子；采购扩种用farm.select_seeds，自动规划采购与播种，不要为未买种子往返生成farm.plan。",quote_available=SeedQuoteReady};
         var l=Game1.currentLocation;
         if(!l.IsGreenhouse&&(!l.IsFarm||!l.IsOutdoors))return new{status="blocked",error="plan_on_farm_or_greenhouse_first_travel_to_Farm",executed=false,prerequisites=new object[]{new{tool="player.travel",args=new{location="Farm"}},new{tool="farm.plan",args=args.Clone()}},note="先完成真实移动，再读取方案；生成plan_id后才能播种。"};
         if(playerExecutor.Busy || WorkActorBusy("player"))throw new InvalidOperationException("wait_for_player_before_layout");
-        string requested=AgentToolRegistry.Text(args,"seed");int max=Math.Clamp(AgentToolRegistry.Number(args,"count",24),1,96);
+        int max=Math.Clamp(AgentToolRegistry.Number(args,"count",24),1,96);
         string fertilizer=AgentToolRegistry.Text(args,"fertilizer");
         if(fertilizer.Length>0) {
             fertilizer=ItemRegistry.QualifyItemId(fertilizer)??throw new InvalidOperationException("invalid_fertilizer_id");

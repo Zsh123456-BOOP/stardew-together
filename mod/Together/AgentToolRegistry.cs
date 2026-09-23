@@ -46,7 +46,7 @@ public sealed class AgentToolRegistry {
         ["player.eat"]="{slot:int}: 吃真实背包的一份普通食物，原生动画/恢复/消耗核验；保留物由高层补给政策决定",
         ["player.craft"]="{recipe:原生配方名,count?:1..99}: 连续制作指定批次，自动原生菜单/材料消耗/成品入包/统计核验；只用背包原料，缺料需先取货",
         ["player.cook"]="{recipe:原生配方名,count?:1..99}: 回已升级住宅厨房烹饪，使用真实背包原料与原生烹饪统计；目前需已解锁家中厨房",
-        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购，已买过也可拒绝；追加用途统一写reason。每个quote_token仅接受一次，需再次选品时重新shop.read。不需另行启用投资政策；选择会建立采购种植意图，不直接扣钱或生成物品",
+        ["farm.select_seeds"]="{quote_token:string,items:[{item:商品QID,count:数量上限}],reason:string}: 对shop.read的真实报价与生长/劳动/预算依据作取舍；明确选种，算法可按实际产能缩减数量但不替换品种；空items表示暂不采购，已买过也可拒绝；追加用途统一写reason。每个quote_token仅接受一次，需再次选品时重新shop.read。不需另行启用投资政策；选择自动推进规划→采购→回田→播种浇水，无需再调用farm.plan、buy或travel；等待完成/受阻再决策；空items只拒绝采购，不启动其他工作，不直接扣钱或生成物品",
         ["shop.read"]="{offset?:int,limit?:1..100}: 读取当前已打开原生商店完整分页的实际货品、价格、货币、条件和库存；不远程打开商店",
         ["crab_pots.read"]="{}: 自有蟹笼、水域类型、真实产物和缺饵状态",
         ["player.crab_pots"]="{mode:place|tend,location?:地图ID,item?:目标蟹笼鱼QID,bait?:鱼饵QID,count?:0..40}: 算法选择合适海/淡水岸边放置真实蟹笼；tend收取原生产物并补饵，0处理当前地图全部。核验放置/投饵消耗与玩家捕获统计；须原生过夜生成捕获",
@@ -113,7 +113,7 @@ public sealed class AgentToolRegistry {
         ["farm.economy"]="{budget?:int,keep_gold?:int,plots?:1..96,max_daily_manual_water?:-1或0..9999,priority?:income|collection|low_labor}: 真实农场快照+今天shop.read观察报价，后台计算混合种植/采购/预留/照料负担，返回plan_id；不先花钱",
         ["farm.economy_status"]="{plan_id:string}: 查看后台经济规划及条件现金流；过日或读档必须重算",
         ["farm.execute"]="{plan_id:string}: 幂等把规划的采购/共享箱取种子/实际布局播种接入队列，真实预算/供货/占地再次核验",
-        ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:-1或0..9999,require_scarecrow?:bool,priority?:income|collection|low_labor}: 在农场/温室按已有种子和真实可达地形生成地块方案，为住宅保留门前院子、建筑缓冲和服务道路，再选紧凑田块；保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)先整块清障，再分批翻土、播种、浇水和补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
+        ["farm.plan"]="{seed?:物品ID,fertilizer?:已持有作物肥料ID,count?:1..96,max_daily_manual_water?:-1或0..9999,require_scarecrow?:bool,priority?:income|collection|low_labor}: 仅为已经持有的未种种子生成方案；尚未买种时用farm.select_seeds一次授权采购播种链，不先回田farm.plan。已有种子在农场/温室按真实可达地形生成地块方案，为住宅保留门前院子、建筑缓冲和服务道路，再选紧凑田块；保护出入口、工作站位，架子作物检查种下后可达性；返回plan_id，work.run(goal=plant,plan_id=...)先整块清障，再分批翻土、播种、浇水和补水。读取已施肥料/职业/临水水稻与跨季生长条件，返回最多3个排序方案和收获/次日现金预测；当前不采购种子、不优化机器加工，不把预测当实收。",
         ["perfection.read"]="{}: 原生完美度11类实绩、权重、关联目标、原生总分和豁免券分开读取；不是平台成就核验",
         ["progress.catalog"]="{kind?:string,view?:summary|detail,series?:string,next_only?:bool,offset?:int,limit?:1..80}: 原生目标分页，默认summary；成就用kind=achievement,next_only=true按独立系列下一档。详情view=detail或progress.dependencies id；未知不猜。",
         ["plan.read"]="{}: 持续任务队列、revision、双角色独立状态和真实回执；queued不是完成",
@@ -147,7 +147,7 @@ public sealed class AgentToolRegistry {
         ["player.interact"]="{x:int,y:int,slot?:int}: 邻格原生交互，如收获、NPC、机器、门、矿梯",
         ["player.place"]="{slot:int,x:int,y:int}: 使用真实持有的种子/可放物品，原生判定及消耗",
         ["player.ship"]="{slot:int}: 在真实农场出货箱旁，将指定槽位整叠可售物品投入出货箱；次日原生结算，不提前加钱",
-        ["player.sleep"]="{reason:string,review?:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string,value?:{today:string,defer:string,owned_seeds?:int,additional_seed_cost?:int,growth_tradeoff?:string}}]}: "+ToolSpecs.SleepDescription,
+        ["player.sleep"]="{reason:string,defer:[string]}: "+ToolSpecs.SleepDescription,
         ["menu.read"]="{}: 原生菜单文本、可选响应、组件id、token、手持物；不使用截图",
         ["menu.open"]="{page:inventory|crafting|journal}: 打开相应原生菜单",
         ["menu.choose"]="{token:string,id:string,right?:bool,goal_id?:string,purchase?:与player.buy相同的明确预算参数}: 原生菜单选择；locked不可用，制作复用player.craft/cook校验和执行，购买必须purchase与所选报价匹配并交player.buy。无效果返回menu_no_effect，同一token/id第三次执行层停机；手持物不得丢弃，业务菜单请用对应player工具。排队不代表完成",
@@ -157,7 +157,7 @@ public sealed class AgentToolRegistry {
         ["action.status"]="{id:string}: 动作真实进度和前后证据；也接受 plan 的任务 id，排队状态不是完成",
         ["action.cancel"]="{id:string}: 取消尚可取消的动作，已消耗物资不回滚",
         ["agent.wait"]="{seconds:1..60}: 等待游戏进展，期间不重复请求模型",
-        ["agent.pause"]="{reason:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string,value?:{today:string,defer:string,owned_seeds?:int,additional_seed_cost?:int,growth_tradeoff?:string}}]}: "+ToolSpecs.SleepDescription
+        ["agent.pause"]="{reason:string,defer:[string]}: "+ToolSpecs.SleepDescription
     };
     internal static string Text(JsonElement a,string k,string fallback="")=>a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??fallback:fallback;
     internal static int Number(JsonElement a,string k,int fallback=0)=>AgentNumbers.Read(a,k,fallback);

@@ -12,6 +12,9 @@ public sealed partial class ModEntry {
     private bool selectionApproved;
     private string seedSelectionIntent="",selectionDeferralBasis="";
     private string SeedDecisionBasis()=>FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,Game1.player.Money,crops=Game1.getFarm().terrainFeatures.Values.OfType<StardewValley.TerrainFeatures.HoeDirt>().Count(d=>d.crop!=null),seeds=OwnedSeeds().Sum(i=>i.Stack),tools=AvailableTools<StardewValley.Tools.Hoe>().Count()+AvailableTools<StardewValley.Tools.WateringCan>().Count(),window=ServiceWindow("SeedShop").Reason}));
+    private bool InvestmentOwnsPlayer=>OperatingDecisionPolicy.InvestmentOwnsPlayer(Data.FarmInvestment.Enabled,Data.FarmInvestment.Phase);
+    private bool SeedReviewUseful()=>OperatingDecisionPolicy.SeedReviewUseful(Game1.Date.TotalDays,SeedAllowance(),Data.FarmInvestment.SeedReviewDay,Data.FarmInvestment.SeedReviewCash,selectionDay==Game1.Date.TotalDays&&selectionEpoch==agentSaveEpoch,selectionOffers.Select(o=>(o.Price,o.Stock,o.Harvests)));
+    private bool SeedQuoteReady=>selectionDay==Game1.Date.TotalDays&&selectionEpoch==agentSaveEpoch&&selectionQuote!=consumedSelectionQuote;
     private int SeedAllowance()=>AutonomyPolicy.Cash(Game1.player.Money,Data.FarmInvestment.KeepGold,Data.FarmInvestment.BudgetPerDay,NativePurchaseSpent(),PendingPurchaseCash(),UnscheduledDevelopmentCash());
     private object EnrichSeedQuote(object native,ShopMenu menu) {
         var rows=new List<SeedOffer>();var crops=DataLoader.Crops(Game1.content);var farm=Game1.getLocationFromName(Data.FarmInvestment.CropLocation)??Game1.getFarm();int budget=SeedAllowance();
@@ -43,14 +46,18 @@ public sealed partial class ModEntry {
             if(offer==null||count<1||count>9999||offer.Harvests==0||!seen.Add(id))throw new InvalidOperationException("seed_selection_not_feasible:"+id);
             requested.Add(new(id,count,offer.Price,offer.Stock));
         }
+        // Positive unaffordable requests are errors, never silently converted to
+        // a decline. In particular "do not buy" plus count=24 cannot be accepted.
+        if(requested.Count>0&&!requested.Any(r=>r.Price<=SeedAllowance()&&r.Stock>0))throw new InvalidOperationException("seed_selection_unaffordable_use_empty_items_to_decline");
         var allocation=AutonomyPolicy.Seeds(requested,SeedAllowance());
         var chosen=allocation.Where(p=>p.Value>0).ToDictionary(p=>p.Key,p=>p.Value);
         int cost=requested.Sum(r=>allocation[r.Item]*r.Price);
         if(Game1.activeClickableMenu is ShopMenu menu){if(menu.heldItem!=null||!menu.readyToClose())throw new InvalidOperationException("receive_shop_held_item_before_selection");menu.exitThisMenu();}
-        Data.FarmInvestment.Purchase.Select(Game1.Date.TotalDays,chosen);consumedSelectionQuote=selectionQuote;selectionApproved=true;selectionDeferralBasis=SeedDecisionBasis();seedSelectionIntent=decisionIntent;Data.FarmInvestment.Enabled=true;
+        Data.FarmInvestment.SeedReviewDay=Game1.Date.TotalDays;Data.FarmInvestment.SeedReviewCash=SeedAllowance();
+        Data.FarmInvestment.Purchase.Select(Game1.Date.TotalDays,chosen);consumedSelectionQuote=selectionQuote;selectionApproved=true;selectionDeferralBasis=SeedDecisionBasis();seedSelectionIntent=decisionIntent;Data.FarmInvestment.Enabled=chosen.Count>0;
         if(Data.FarmInvestment.Day!=Game1.Date.TotalDays){Data.FarmInvestment.Day=Game1.Date.TotalDays;Data.FarmInvestment.ReservedToday=0;Data.FarmInvestment.Tasks.Clear();}
-        Data.FarmInvestment.Error="";Data.FarmInvestment.OwnedSeedsPassDone=true;Data.FarmInvestment.Phase="start_planning";Data.FarmInvestment.OwnedSeedsOnly=chosen.Count==0;
-        var result=new{status="selection_approved_not_purchased",quote_token=selectionQuote,candidates=selectionOffers,requested,chosen,adjustments=requested.Where(r=>allocation[r.Item]!=r.Count).Select(r=>new{r.Item,requested=r.Count,accepted=allocation[r.Item],reason="current_cash_or_stock"}),reason,estimated_cost=cost,source="model_explicit_selection"};
+        Data.FarmInvestment.Error="";Data.FarmInvestment.OwnedSeedsPassDone=true;Data.FarmInvestment.Phase=chosen.Count>0?"start_planning":"done";Data.FarmInvestment.OwnedSeedsOnly=false;
+        var result=new{status=chosen.Count>0?"selection_approved_not_purchased":"selection_declined",quote_token=selectionQuote,candidates=selectionOffers,requested,chosen,adjustments=requested.Where(r=>allocation[r.Item]!=r.Count).Select(r=>new{r.Item,requested=r.Count,accepted=allocation[r.Item],reason="current_cash_or_stock"}),reason,estimated_cost=cost,source="model_explicit_selection"};
         Data.Autoplay.Record("seed_selection",AgentJson.Encode(result));return result;
     }
     private bool HasSeedSelection=>Data.FarmInvestment.Purchase.Day==Game1.Date.TotalDays&&(Data.FarmInvestment.Purchase.Approved.Count>0||selectionApproved&&selectionDeferralBasis==SeedDecisionBasis());

@@ -23,7 +23,10 @@ public sealed partial class ModEntry {
             ["native_zero_energy_visit_cannot_be_rejected_for_energy"]=SleepAlternatives(OperatingOpportunities()).Where(o=>o.energy==0).All(o=>DecisionReviewPolicy.Sleep(JsonSerializer.SerializeToElement(new{reason="体力不足选择收工",alternatives=new[]{new{id=o.id,because="energy",detail="认为没有体力进行该活动"}}}),Game1.player.Stamina,DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve()),new[]{o})?.StartsWith("decision_review:energy_contradiction:")==true),
             ["shop_windows_retained_before_opening"]=view.GetProperty("service_hours").EnumerateArray().Any(s=>s.GetProperty("location").GetString()=="SeedShop"&&s.TryGetProperty("recheck_at",out _)),
             ["purchase_manifest_visible"]=view.GetProperty("purchase_status").TryGetProperty("items",out _),
-            ["sleep_future_value_contract"]=specs.Single(s=>s.Name=="player.sleep").Parameters.GetProperty("properties").GetProperty("alternatives").GetProperty("items").GetProperty("properties").TryGetProperty("value",out _),
+            ["sleep_compact_acknowledgment_contract"]=specs.Single(s=>s.Name=="player.sleep").Parameters.GetProperty("properties").TryGetProperty("defer",out _),
+            ["seed_candidate_respects_known_budget"]=SeedReviewUseful()||!OperatingOpportunities().Any(o=>o.Id=="inspect:seed-offers"),
+            ["active_workflow_owns_player"]=!InvestmentOwnsPlayer||AgentPlayerCovered(),
+            ["resource_defaults_protect_native_pending_care"]=OperatingDecisionPolicy.ResourceDefaults(JsonSerializer.SerializeToElement(new{goal="wood",count=1}),PendingFarmEnergy()).GetProperty("reserve_stamina").GetInt32()==Math.Clamp(PendingFarmEnergy(),0,270),
             ["purchase_additional_reason_contract"]=new[]{"player.buy","player.procure"}.All(name=>NativeToolProtocol.LegacySpec(name,AgentToolRegistry.Catalog[name]).Parameters.GetProperty("properties").TryGetProperty("additional_reason",out _)),
             ["seed_selection_single_reason"]=!NativeToolProtocol.LegacySpec("farm.select_seeds",AgentToolRegistry.Catalog["farm.select_seeds"]).Parameters.GetProperty("properties").TryGetProperty("additional_reason",out _),
             ["work_parameters_complete"]=specs.Single(s=>s.Name=="work.run").Parameters.GetProperty("properties").TryGetProperty("stock_target",out _)

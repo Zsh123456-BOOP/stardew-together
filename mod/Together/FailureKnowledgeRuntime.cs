@@ -59,6 +59,8 @@ public sealed partial class ModEntry {
                     storage=SharedStorage().Select(c=>c.Chest.GetItemsForPlayer().Select(i=>i==null?null:new{id=i.QualifiedItemId,count=i.Stack,quality=i.Quality}).ToArray()).ToArray(),
                     reservations=AllReservations().Select(r=>new{r.Item,r.Count,r.Quality}).ToArray()}));
             }
+            if(family=="targets"&&goal=="forage")return FailureKnowledge.Hash(AgentJson.Encode(new{location=l.NameOrUniqueName,
+                targets=l.objects.Pairs.Where(o=>o.Value.isForage()&&!o.Value.bigCraftable.Value).OrderBy(o=>o.Key.X).ThenBy(o=>o.Key.Y).Select(o=>new{x=o.Key.X,y=o.Key.Y,id=o.Value.QualifiedItemId})}));
             if(family=="targets")return FailureKnowledge.Hash(AgentJson.Encode(new{location=l.NameOrUniqueName,
                 objects=l.objects.Pairs.Where(o=>goal switch{"wood"=>o.Value.IsTwig(),"stone"=>o.Value.BaseName=="Stone","fiber"=>o.Value.IsWeeds(),"forage"=>o.Value.isForage(),"resource"=>ResourceRules.Nodes.GetValueOrDefault(o.Value.ItemId)==item,_=>true})
                     .OrderBy(o=>o.Key.X).ThenBy(o=>o.Key.Y).Select(o=>new{x=o.Key.X,y=o.Key.Y,id=o.Value.QualifiedItemId}),

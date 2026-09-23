@@ -54,7 +54,7 @@ public sealed partial class ModEntry {
                     Data.Autoplay.Record("farm_purchase_partial_recovery","现场采购部分失败；保留原预算预留，按真实已到货种子重新规划。");return;
                 }
                 if(tasks.Any(t=>t==null||t.state is "failed" or "partial" or "blocked" or "cancelled" or "needs_review"))throw new InvalidOperationException("farm_investment_task_interrupted_read_plan_before_retry");
-                if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";p.Error="";Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
+                if(tasks.All(t=>t!.state=="succeeded")){p.Phase="done";p.Error="";p.SeedReviewDay=Game1.Date.TotalDays;p.SeedReviewCash=SeedAllowance();Data.Autoplay.Record("farm_investment_complete",AgentJson.Encode(new{p.Day,p.ReservedToday,p.Tasks}));WakeAgent("farm_investment_complete");}return;
             }
             if(p.Phase=="observing_shop") {
                 var task=Data.Autoplay.Schedule.Tasks.FirstOrDefault(t=>t.spec.id==p.ServiceTask);

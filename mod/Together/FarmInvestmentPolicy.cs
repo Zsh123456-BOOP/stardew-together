@@ -16,6 +16,8 @@ public sealed class FarmInvestmentPolicy {
     public string Shop {get;set;}="SeedShop";
     public string Location {get;set;}="SeedShop";
     public int Day {get;set;}=-1;
+    public int SeedReviewDay {get;set;}=-1;
+    public int SeedReviewCash {get;set;}=-1;
     public int ReviewedCash {get;set;}=-1;
     public int ReviewedCrops {get;set;}=-1;
     public int ReviewedSeeds {get;set;}=-1;

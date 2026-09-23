@@ -4,7 +4,7 @@ using StardewValley.Menus;
 namespace Together;
 public sealed partial class ModEntry {
     private DateTime automaticMenuAt;
-    private bool NeedsAgentMenuDecision=>AgentDecisionPacing.MenuNeedsReview(playerExecutor.Busy,playerExecutor.NeedsMenuChoice,Game1.activeClickableMenu!=null);
+    private bool NeedsAgentMenuDecision=>AgentDecisionPacing.MenuNeedsReview(playerExecutor.Busy,playerExecutor.NeedsMenuChoice,Game1.activeClickableMenu!=null&&!(InvestmentOwnsPlayer&&Game1.activeClickableMenu is ShopMenu {heldItem:null}));
     private void CloseShopForDeparture(ScheduledAgentTask task) {
         if(task.spec.actor!="player"||task.spec.tool!="player.travel"||playerExecutor.Busy||Game1.activeClickableMenu is not ShopMenu shop||shop.heldItem!=null||!shop.readyToClose())return;
         // A queued departure already expresses the decision to leave. Preserve all

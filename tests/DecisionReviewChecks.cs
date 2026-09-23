@@ -31,13 +31,13 @@ public static class DecisionReviewChecks {
         check(DecisionReviewPolicy.Resource(Resource(0,"defer","推迟浇水会延迟成熟，优先紧急委托"),50,0,30)==null,"explicit care tradeoff is not overridden by a hidden fixed reserve");
         check(DecisionReviewPolicy.Resource(J(new{}),0,0,30)==null,"already met material target does not demand further work or review");
         var attempts=new DecisionReviewAttempts();
-        check(!attempts.Reject("day0:progress1")&&!attempts.Reject("day0:progress1")&&attempts.Reject("day0:progress1"),"third rejected decision without native progress reaches bounded pause");
+        check(!attempts.Reject("day0:progress1")&&!attempts.Reject("day0:progress1")&&attempts.Reject("day0:progress1"),"third same-key rejection reaches local recovery threshold");
         check(!attempts.Reject("day0:progress2")&&attempts.Count==1,"native progress resets the rejection budget");
         check(!attempts.Reject("day1:progress2")&&attempts.Count==1,"new day resets the rejection budget");
         attempts.Clear();check(!attempts.Reject("day1:progress2"),"corrected accepted decision or explicit restart clears rejection budget");
         var specs=ToolSpecs.Select(new Dictionary<string,string>{{"player.sleep","legacy"},{"agent.pause","legacy"},{"work.run","legacy"}},J(new{active_actors=new[]{"player"}}));
         var sleep=specs[0].Parameters.GetProperty("properties");
-        check(sleep.GetProperty("alternatives").GetProperty("items").GetProperty("properties").GetProperty("because").GetProperty("enum").GetArrayLength()==4,"API exposes real structured decision enums");
+        check(sleep.GetProperty("defer").GetProperty("items").GetProperty("type").GetString()=="string"&&!sleep.TryGetProperty("alternatives",out _),"API exposes short acknowledgment instead of a prose cost examination");
         check(specs[0].Parameters.GetRawText()==specs[1].Parameters.GetRawText(),"agent.pause exposes the same close-day review contract");
         check(specs[2].Parameters.GetProperty("properties").GetProperty("labor_review").GetProperty("type").GetString()=="object"&&ToolSpecs.Contract().Contains("labor_review?:{purpose:string"),"work schema and discovery expose the structured resource review");
         var context=new{decision_review=new{sleep_alternatives=new[]{seed}},memory=new{verbose=new string('x',16000)},now=new{stamina=12,time=940}};

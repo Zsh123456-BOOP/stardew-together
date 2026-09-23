@@ -41,8 +41,7 @@
 
 **过程看得见。** 游戏内常驻面板展示正在做什么、原因和下一步。完整模型请求、工具回执、动作与资源变化可留存，便于复盘每一次决策。
 
-**结果靠核验。** 制作、购买、出货和过夜走原生流程。命令被接收不等于完成，物品与进度变化才是完成依据。
-
+**结果靠核验。** 制作、购买、出货和过夜走原生流程。
 ## 工作原理
 
 ```mermaid
@@ -131,7 +130,6 @@ flowchart TD
 | DeepSeek Flash 总用量（日志折算） | **1.7451 亿 token**，包含输入与输出。 |
 | 完成全部成就的 API 总费用 | **人民币 213.3 元**。 |
 
-用时与总费用来自维护者提供的 Windows 运行结果；Token 按既有运行日志折算。玩家耗时参考 [TrueAchievements](https://www.trueachievements.com/game/Stardew-Valley/completiontime)。
 
 ## 快速开始
 
@@ -185,14 +183,7 @@ API Key 只保存在本机，`.env`、存档、日志与运行产物均不进入
 
 算法检查可运行 `dotnet run --project tests/Together.DomainChecks.csproj`。原生夹具只在开启 Lab 模式、世界就绪且角色名为 `AgentLab` 时执行，不用于正常经营存档。
 
-当前重点是长期运行稳定性、生产链衔接与任务/成就覆盖；伙伴双身体协作作为后续方向推进。每项能力以真实游戏结果验收，不直接修改经验、金钱、成就或统计计数来替代行动。
-
 ## 团队
 
 [Zsh123456-BOOP](https://github.com/Zsh123456-BOOP) · [LHBVv](https://github.com/LHBVv) · [zsq040123-cloud](https://github.com/zsq040123-cloud)
 
-## 开源基础
-
-Together 复用 [The Stardew Squad](https://github.com/Isalda/the-stardew-squad) 的伙伴与导航基础，以及 [Farmtronics](https://github.com/JoeStrout/Farmtronics) 的机器人原型；同时参考 [StardewValley-MCP](https://github.com/amarisaster/StardewValley-MCP) 与 [StardewValleyAIDialogueMod](https://github.com/phenyisole/StardewValleyAIDialogueMod) 的设计。
-
-依赖版本见 [`configs/companion-upstreams.json`](configs/companion-upstreams.json) 与 Git 子模块记录。上游来源及许可证随对应代码保留。

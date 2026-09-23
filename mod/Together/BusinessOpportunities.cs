@@ -16,7 +16,7 @@ public sealed partial class ModEntry {
     private void AddBusinessOpportunities(List<OperatingOpportunity> rows) {
         var p=Game1.player;var farm=Game1.getLocationFromName(Data.FarmInvestment.CropLocation)??Game1.getFarm();
         int care=farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d=>d.crop!=null&&!d.crop.dead.Value);
-        if(Game1.activeClickableMenu==null&&!AgentActorHasWork("player"))foreach(var seed in OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Take(4)) {
+        if(Game1.activeClickableMenu==null&&!OpportunityPlayerOccupied())foreach(var seed in OwnedSeeds().GroupBy(i=>i.QualifiedItemId).Take(4)) {
             var possible=NativeSeedPlan.Options(seed.Key,farm);if(possible.Count==0||possible.Values.Any(c=>!NativeSeedPlan.Fits(c,farm)))continue;
             int count=seed.Sum(i=>i.Stack);bool atFarm=Game1.currentLocation==farm;
             var ready=farmPlantPlans.Values.LastOrDefault(plan=>plan.Epoch==agentSaveEpoch&&plan.Day==Game1.Date.TotalDays&&plan.Location==farm.NameOrUniqueName&&plan.Seed==seed.Key&&plan.Tiles.Any(t=>!farm.terrainFeatures.TryGetValue(new(t.X,t.Y),out var f)||f is HoeDirt {crop:null}));
@@ -29,7 +29,7 @@ public sealed partial class ModEntry {
         var land=ExpansionLand();bool seasonal=DataLoader.Crops(Game1.content).Values.Any(c=>NativeSeedPlan.Fits(c,farm));
         var window=ServiceWindow("SeedShop");
         if(seasonal&&land.Count>0&&SeedAllowance()>0&&Game1.activeClickableMenu==null&&Game1.currentLocation.NameOrUniqueName!="SeedShop"&&window.Reason=="available"&&Game1.timeOfDay>=window.Open&&Game1.timeOfDay<window.Close&&Data.FarmInvestment.Phase is not ("executing" or "planning" or "observing_shop"))
-            rows.Add(new("inspect:seed-offers","可去种子店核价比较是否扩种；已有作物照料负担供决策，无固定株数上限", "player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_season={farm.GetSeason()};cash_available={SeedAllowance()};existing_crops={care};open={window.Open}-{window.Close}",0,30,new{land=new{observed_empty_diggable=land.Count,note="初步空地观察；连续田块、道路和每日劳动仍以farm.plan核验"},quotes=ObservedSeedBasis(),next="核对报价后由模型选品；价格未知不推测"}));
+            rows.Add(new("inspect:seed-offers","可去种子店核价比较是否扩种；已有作物照料负担供决策，无固定株数上限", "player.service",new{location="SeedShop",shop="SeedShop",service="shop"},$"native_season={farm.GetSeason()};cash_available={SeedAllowance()};existing_crops={care};open={window.Open}-{window.Close}",0,30,new{land=new{observed_empty_diggable=land.Count,note="初步空地观察；连续田块、道路和每日劳动仍以farm.plan核验"},quotes=ObservedSeedBasis(),cost_scope="询价/采购耗时与种植劳动分开；可先买后种；未知报价不表示收益为零",next="核对报价后由模型选品；价格未知不推测"}));
         if(!Data.Autoplay.Routine.Enabled&&(Facts.DryCrops>0||Facts.RipeCrops>0||Game1.mailbox.Count>0))
             rows.Add(new("configure:routine","可建立或调整跨日照料例行，不影响直接使用工具","day.routine",new{enabled=true,assignments=new Dictionary<string,string>{{"water","player"},{"harvest","player"},{"clear_dead","player"},{"mail","player"}}},$"routine_disabled;dry={Facts.DryCrops};ripe={Facts.RipeCrops};mail={Game1.mailbox.Count}",0,1));
         if(Game1.activeClickableMenu is ShopMenu shop) {

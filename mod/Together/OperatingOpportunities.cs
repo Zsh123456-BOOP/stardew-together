@@ -26,7 +26,7 @@ public sealed partial class ModEntry {
         }
         // Optional collection is a local opportunity, never a reason to abandon
         // an approved dependency chain or travel to an arbitrary forage map.
-        bool committed=AgentActorHasWork("player")||Data.SharedGoals.Any(g=>g.AutoExecute&&g.Status=="active"&&g.AutoBlockedReason.Length==0);
+        bool committed=OpportunityPlayerOccupied()||Data.SharedGoals.Any(g=>g.AutoExecute&&g.Status=="active"&&g.AutoBlockedReason.Length==0);
         if(!committed) {
             var location=Game1.currentLocation;
             foreach(var pair in location.objects.Pairs.Where(p=>p.Value.isForage()&&!p.Value.bigCraftable.Value).Take(12)) {

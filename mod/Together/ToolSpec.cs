@@ -11,13 +11,19 @@ public static class ToolSpecs {
         ["storage"]=new[]{"store","withdraw","storage_expand"},["fish"]=new[]{"fish"},["mine"]=new[]{"mine_trip","volcano_trip"},
         ["animals"]=new[]{"milk","shear","animal_collect","pet","feed"},["production"]=new[]{"tend","collect","process"}
     };
-    public static readonly HashSet<string> WorkFields=new("actor_id goal item quality plan_id cleanup_id goal_id target_level start_level region travel_budget keep_gold include_trees required_free_slots max_food location count stock_target reserve_stamina until additional exact_quality order_id objective quest_id".Split(' '));
+    public static readonly HashSet<string> WorkFields=new("actor_id goal item quality plan_id cleanup_id goal_id target_level start_level region travel_budget keep_gold include_trees required_free_slots max_food location count stock_target reserve_stamina until additional exact_quality order_id objective quest_id labor_review".Split(' '));
     private static JsonObject Field(string type,string? description=null)=>description==null?new(){["type"]=type}:new(){["type"]=type,["description"]=description};
     private static JsonObject Enum(params string[] values)=>new(){["type"]="string",["enum"]=JsonSerializer.SerializeToNode(values)};
-    public static ToolSpec[] Select(IReadOnlyDictionary<string,string> selected,JsonElement context)=>selected.Select(p=>p.Key=="work.run"?Work(context):NativeToolProtocol.LegacySpec(p.Key,p.Value)).ToArray();
+    public static ToolSpec[] Select(IReadOnlyDictionary<string,string> selected,JsonElement context)=>selected.Select(p=>p.Key=="work.run"?Work(context):p.Key is "player.sleep" or "agent.pause"?Sleep(p.Key):NativeToolProtocol.LegacySpec(p.Key,p.Value)).ToArray();
+    public const string SleepDescription="结束今日安排，原生返家/结算/保存。按decision_review.sleep_alternatives逐项提交alternatives（最多3项）；energy/time须符合当前成本估算，low_value/defer说明取舍，未知报价不能当零收益。允许合理早睡，无固定睡觉时间。排队后状态变化需重新评估；连续3次矛盾且无实际进展则暂停保留日志。";
+    public static ToolSpec Sleep(string name) {
+        var comparison=new JsonObject{["type"]="object",["properties"]=new JsonObject{["id"]=Field("string"),["because"]=Enum("energy","time","low_value","defer"),["detail"]=Field("string")},["required"]=new JsonArray("id","because","detail")};
+        var schema=new JsonObject{["type"]="object",["properties"]=new JsonObject{["reason"]=Field("string"),["review"]=Field("string"),["alternatives"]=new JsonObject{["type"]="array",["maxItems"]=3,["items"]=comparison},["_plan"]=Field("string")},["required"]=new JsonArray("reason")};
+        return new(name,SleepDescription,NativeToolProtocol.CompactSchema(schema),Array.Empty<string>());
+    }
     public static string Contract() {
         var spec=Work(JsonSerializer.SerializeToElement(new{active_actors=new[]{"player","companion"},work_profiles=WorkProfiles.Keys}));
-        string Hint(JsonProperty p)=>p.Name=="actor_id"?"string":p.Value.TryGetProperty("enum",out var e)?string.Join("|",e.EnumerateArray().Select(v=>v.GetString())):p.Value.GetProperty("type").GetString() switch{"integer"=>"int","boolean"=>"bool",_=>"string"};
+        string Hint(JsonProperty p)=>p.Name=="labor_review"?"{purpose:string,followup:string,care:preserve|defer,tradeoff?:string}":p.Name=="actor_id"?"string":p.Value.TryGetProperty("enum",out var e)?string.Join("|",e.EnumerateArray().Select(v=>v.GetString())):p.Value.GetProperty("type").GetString() switch{"integer"=>"int","boolean"=>"bool",_=>"string"};
         return "{"+string.Join(",",spec.Parameters.GetProperty("properties").EnumerateObject().Where(p=>p.Name!="_plan").Select(p=>p.Name+(p.Name=="goal"?"":"?")+":"+Hint(p)))+"}: "+spec.Description;
     }
     public static string[] LookupProfiles(JsonElement args) {
@@ -49,7 +55,9 @@ public static class ToolSpecs {
         void Add(string name,string type,string? note=null)=>props[name]=Field(type,note);
         foreach(string profile in WorkProfiles.Keys.Where(profiles.Contains))switch(profile) {
             case "farm":Add("plan_id","string");Add("cleanup_id","string");Add("quality","integer");descriptions.Add("plant先farm.plan取得plan_id，含清障/锄地/播种/浇水；cleanup须farm.cleanup的cleanup_id，不重复派已有整理队列。玩家/伙伴cleanup仅授权范围，伙伴只清杂草/树枝/普通石。plant/refill/clear_dead限玩家；浇水自动补水；quality为最低品质。");break;
-            case "resource":Add("stock_target","integer");Add("include_trees","boolean");Add("quality","integer");descriptions.Add("木/石/纤维/硬木/矿物count为本次新增；stock_target是全队总库存目标，含货袋，不与count混用。省略或count=0补项目缺口，无缺口新增20；自主备料不需立项。resource需item，hardwood限玩家且受工具等级限制；木材默认可砍成熟无树液器普通树，include_trees=false禁整树。");break;
+            case "resource":Add("stock_target","integer");Add("include_trees","boolean");Add("quality","integer");
+                props["labor_review"]=new JsonObject{["type"]="object",["properties"]=new JsonObject{["purpose"]=Field("string","材料用途及为何需要这批数量"),["followup"]=Field("string","后续活动及所留体力的依据"),["care"]=Enum("preserve","defer"),["tradeoff"]=Field("string","defer时说明放弃今日照料的代价")},["required"]=new JsonArray("purpose","followup","care")};
+                descriptions.Add("木/石/纤维/硬木/矿物count为本次新增；stock_target是全队总库存目标，含货袋，不与count混用。省略或count=0补项目缺口，无缺口新增20。玩家自主备料须给labor_review与显式reserve_stamina（0也需明确），care=preserve不得低于labor_budget今日照料需求；defer须写tradeoff。材料已足不再劳动；额外备料说明用途。resource需item，hardwood限玩家且受工具等级限制；木材默认可砍成熟无树液器普通树，include_trees=false禁整树。");break;
             case "storage":Add("required_free_slots","integer","0..12，已满足则不移动");Add("additional","boolean");Add("exact_quality","boolean");Add("quality","integer");descriptions.Add("store保留工具/种子/补给，预留材料存共享箱仍保护用途。storage_expand先复用现有容量，明确额外扩建用additional:true；不为存货先扩建。withdraw从共享箱或空闲伙伴货袋取货，quality默认最低，exact_quality=true精确；withdraw/storage_expand限玩家。");break;
             case "fish":descriptions.Add("fish限玩家，item可选目标鱼，省略为任意鱼；count默认3按Farmer实际新增捕获核验，自动选地图/水域/力度及补给卸货，NPC货物不算玩家钓获。");break;
             case "mine":Add("start_level","integer");Add("target_level","integer");props["region"]=Enum("normal","skull");Add("travel_budget","integer");Add("keep_gold","integer");descriptions.Add("mine_trip/volcano_trip限玩家。mine自动原生入矿/电梯/挖石/战斗/补给/返程；region默认normal，target_level默认下一5层（1..120），skull默认25。start_level仅已解锁5倍数；travel_budget授权车票，keep_gold为保留金。volcano自动装水冷却熔岩/踩开关/过层，target_level默认10，1..10，10是Caldera；正常通道，体力/生命/时间不足真实返程。");break;

@@ -50,13 +50,6 @@ public static class AutoplayChecks {
         }
         check(DailyBudget.WorkMinutes(1200,90)==690 && DailyBudget.WorkMinutes(2450,45)==0,"normal-time work budget preserves return-home reserve");
         check(!DailyBudget.Fits(1200,1,45,10,2) && !DailyBudget.Fits(2450,200,45,10,0),"tasks must fit both energy and return budget");
-        check(DailyBudget.SleepBlock(900,200,false,true,false,true,"种植完成")==null,"explicit sleep is a model choice; productivity is measured rather than enforced");
-        check(DailyBudget.SleepBlock(900,10,true,true,false,true,"体力不足")==null,"optional forage cannot veto explicit sleep");
-        check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,true,"今日必要农务已完成")==null,"low-energy evening close is not vetoed by optional forage");
-        check(DailyBudget.SleepBlock(1710,23.3f,true,true,true,true,"还有干作物")==null,"unwatered crops are recorded, not a hidden sleep prohibition");
-        check(DailyBudget.SleepBlock(2030,200,true,true,false,true,"已评估非紧急工作")==null,"reviewed evening close may defer optional stock building even with energy left");
-        check(DailyBudget.SleepBlock(1710,23.3f,true,true,false,false,"没有评估")==null,"sleep tool itself records the review");
-        check(DailyBudget.SleepBlock(2100,10,false,false,true,true,"体力不足")==null && DailyBudget.SleepBlock(2230,200,false,true,true,false,"安全返家")==null,"exhaustion and late return can end work safely");
         check(DailyBudget.Fits(1000,10,45,10,0),"free forage remains feasible below the tool-energy reserve");
         var agenda=new DailyAgenda();agenda.EnterDay(1);agenda.Priorities.Add("给鸡舍留木材");agenda.CompletedBatches=3;agenda.EnterDay(2);agenda.EnterDay(2);
         check(agenda.History.Count==1 && agenda.CompletedBatches==0 && agenda.Priorities.Count==1,"daily work resets once while commitments carry forward");

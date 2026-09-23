@@ -13,7 +13,7 @@ public sealed class AgentToolRegistry {
     public void Reset()=>menus.Reset();
     public static bool IsPlayerMutation(string name)=>name.StartsWith("player.") || name.StartsWith("menu.") && name!="menu.read";
     public static readonly Dictionary<string,string> Catalog=new(){
-        ["context.read"]="{sections?:[string],section?:assets|labor_budget|planting_execution|farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|sleep_review|plan|task_card|prerequisites}: 读取会影响下一步的字段；section或sections(1..4)二选一，结果可用query.read续读。",
+        ["context.read"]="{sections?:[string],section?:assets|labor_budget|planting_execution|farm_cleanup|service_hours|inventory_plan|companions|progression|business|day|schedule|earlier_observation_summaries|recent|memory|goals|operating_candidates|decision_review|sleep_review|plan|task_card|prerequisites}: 读取会影响下一步的字段；section或sections(1..4)二选一，结果可用query.read续读。",
         ["tools.lookup"]="{names?:[string],query?:string,group?:farm|trade|storage_production|progress_social|animals|exploration|menu,work_profiles?:[farm|resource|storage|fish|mine|animals|production]}: 加载所选工具/工作能力，names最多12，query最多100字；下轮可调用，保留三轮，活动任务持续保留。无参数返回索引。",
         ["beach.read"]="{}: 海滩桥梁和老水手实际状态。",
         ["player.beach"]="{mode:bridge|pendant,budget?:int,keep_gold?:int}: 自动走到海滩修桥或购买美人鱼吊坠，原生消耗300木材或5000金；等待原生动画，核验结果。",
@@ -147,7 +147,7 @@ public sealed class AgentToolRegistry {
         ["player.interact"]="{x:int,y:int,slot?:int}: 邻格原生交互，如收获、NPC、机器、门、矿梯",
         ["player.place"]="{slot:int,x:int,y:int}: 使用真实持有的种子/可放物品，原生判定及消耗",
         ["player.ship"]="{slot:int}: 在真实农场出货箱旁，将指定槽位整叠可售物品投入出货箱；次日原生结算，不提前加钱",
-        ["player.sleep"]="{reason:string,review?:string}: 先查看day.read；必要农务优先，傍晚低体力或20点后可说明替代活动收益不值得而收工。预先排队的睡觉到执行时若状态已变，会返回sleep_reassessment_required并提供最新状态和候选，由模型再次决定是否收工；重新直接调用可确认。此动作连续负责返家、上床、结算、保存、次日，无需先单独travel回家；需选择的夜间菜单用menu工具",
+        ["player.sleep"]="{reason:string,review?:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string}]}: "+ToolSpecs.SleepDescription,
         ["menu.read"]="{}: 原生菜单文本、可选响应、组件id、token、手持物；不使用截图",
         ["menu.open"]="{page:inventory|crafting|journal}: 打开相应原生菜单",
         ["menu.choose"]="{token:string,id:string,right?:bool,goal_id?:string,purchase?:与player.buy相同的明确预算参数}: 原生菜单选择；locked不可用，制作复用player.craft/cook校验和执行，购买必须purchase与所选报价匹配并交player.buy。无效果返回menu_no_effect，同一token/id第三次执行层停机；手持物不得丢弃，业务菜单请用对应player工具。排队不代表完成",
@@ -157,7 +157,7 @@ public sealed class AgentToolRegistry {
         ["action.status"]="{id:string}: 动作真实进度和前后证据；也接受 plan 的任务 id，排队状态不是完成",
         ["action.cancel"]="{id:string}: 取消尚可取消的动作，已消耗物资不回滚",
         ["agent.wait"]="{seconds:1..60}: 等待游戏进展，期间不重复请求模型",
-        ["agent.pause"]="{reason:string}: 模型放弃今日计划，程序安全返家过夜，次日再试；真正暂停由玩家F10或界面操作"
+        ["agent.pause"]="{reason:string,alternatives?:[{id:string,because:energy|time|low_value|defer,detail:string}]}: "+ToolSpecs.SleepDescription
     };
     internal static string Text(JsonElement a,string k,string fallback="")=>a.TryGetProperty(k,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??fallback:fallback;
     internal static int Number(JsonElement a,string k,int fallback=0)=>AgentNumbers.Read(a,k,fallback);
@@ -172,7 +172,7 @@ public sealed class AgentToolRegistry {
             IEnumerable<JsonElement> targets=tool=="player.work" && args.TryGetProperty("tiles",out var tiles) && tiles.ValueKind==JsonValueKind.Array?tiles.EnumerateArray().ToArray():new[]{args};
             if(targets.Any(t=>mod.AgentTileBusy(Game1.currentLocation.NameOrUniqueName,Number(t,"x",-1),Number(t,"y",-1))))throw new InvalidOperationException("target_claimed_by_companion");
         }
-        if(tool=="player.sleep")mod.CheckAgentSleep(args);
+        if(tool is "player.sleep" or "agent.pause")mod.CheckAgentSleep(args);
         return tool switch {
             "farm.cleanup"=>mod.ConfigureCleanup(args),"farm.zones"=>mod.ConfigureFarmZones(args),"farm.maintenance"=>mod.ConfigureFarmMaintenance(args),
             "farm.production"=>mod.ProductionTool(args),

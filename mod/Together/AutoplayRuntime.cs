@@ -77,7 +77,7 @@ public sealed partial class ModEntry {
         foreach(var name in Data.People.Keys.ToArray()) {
             var p=Person(name);if(p.Job is {Status:"active" or "waiting"} j){if(j.Command!=null)api?.CancelAction(j.Command);if(j.TravelCommand!=null)api?.CancelAction(j.TravelCommand);j.Command=null;j.TravelCommand=null;j.Status="paused";}
         }
-        ResetAgentRuntime();playerExecutor.ClearStopped();dayReviewed=-1;
+        ResetAgentRuntime();playerExecutor.ClearStopped();
         if(Data.Autoplay.Goal!=goal || Data.Autoplay.RunId.Length==0)Data.Autoplay=new(){StartDay=Game1.Date.TotalDays,Memory=Data.Autoplay.Memory,Operations=Data.Autoplay.Operations,Failures=Data.Autoplay.Failures,Capacity=Data.Autoplay.Capacity,ProfessionChoices=Data.Autoplay.ProfessionChoices,Routine=Data.Autoplay.Routine,Campaign=Data.Autoplay.Campaign};
         AttachMemoryArchive();
         Data.Autoplay.RunId=Guid.NewGuid().ToString("N");Data.Autoplay.Survival.NewDay(Game1.Date.TotalDays);
@@ -101,6 +101,7 @@ public sealed partial class ModEntry {
     }
     private void ResetAgentRuntime() {
         decisionBlockedReason=null;
+        reviewAttempts.Clear();reviewFailure=null;
         queryRequestIds=Array.Empty<string>();
         CancelDecisionContinuation("runtime_reset");ResetPreparation();labEarlyStorage=false;
         maintenanceMaskKey="";maintenanceAt=DateTime.MinValue;

@@ -30,7 +30,7 @@ public sealed partial class ModEntry {
                 reservations=AllReservations().Select(r=>new{r.Item,r.Count,r.Quality})}));
             if(tool=="player.sleep"&&FailureKnowledge.Family(reason)!="access") {
                 RefreshFacts(true);
-                return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,period=Game1.timeOfDay/100,energy=(int)p.Stamina/10,Facts.DryCrops,Facts.RipeCrops,Facts.FeedNeeded,reviewed=dayReviewed==Game1.Date.TotalDays}));
+                return FailureKnowledge.Hash(AgentJson.Encode(new{day=Game1.Date.TotalDays,period=Game1.timeOfDay/100,energy=(int)p.Stamina/10,Facts.DryCrops,Facts.RipeCrops,Facts.FeedNeeded}));
             }
             if(tool=="player.social"&&reason=="social_access_unavailable")return FailureKnowledge.Hash(AgentJson.Encode(SocialAccessCondition(AgentToolRegistry.Text(args,"npc"))));
             if(reason.StartsWith("social_basis_required"))return FailureKnowledge.Hash(AgentJson.Encode(new{social=SocialObservation.Read(p),basis=SocialBasis(args),day=Game1.Date.TotalDays}));
@@ -121,7 +121,7 @@ public sealed partial class ModEntry {
         if(state=="succeeded"){Data.Autoplay.Failures.Success(key);Data.Autoplay.Failures.Success(FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location));Data.Autoplay.Failures.Success(FailureKnowledge.SelectionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location));return;}
         if(state!="failed"||string.IsNullOrEmpty(error)||error.StartsWith("known_failure_conditions_unchanged"))return;
         // Capacity constraints already have a versioned authoritative store.
-        if(CapacityState.IsConstraint(error))return;
+        if(CapacityState.IsConstraint(error)||error.StartsWith("decision_review:"))return;
         bool untilChanged=FailureKnowledge.Family(error)!="transient";
         if(untilChanged)key=FailureKnowledge.ConditionKey(task.spec.actor,task.spec.tool,task.spec.args.GetRawText(),task.spec.location);
         string conditions=FailureConditions(task.spec.actor,task.spec.tool,task.spec.args,error);if(conditions=="unavailable")return;

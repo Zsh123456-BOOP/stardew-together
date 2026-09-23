@@ -32,6 +32,7 @@ public sealed partial class ModEntry {
         var quantity=WorkQuantity.Resolve(stock,approved,count,explicitTarget,Data.Business.Enabled);
         if(quantity.Error is {} error)throw new InvalidOperationException(error);
         int target=quantity.Target,missing=quantity.Missing;
+        CheckResourceReview(args,item,stock,approved,missing);
         int actionLimit=999;
         if(actor!="player"&&missing>0) {
             RefreshFacts(true);var companion=WorkActor(actor);

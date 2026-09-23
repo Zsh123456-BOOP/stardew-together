@@ -3,7 +3,7 @@ public sealed partial class ModEntry {
     private static bool RecoverableExecutionFailure(string reason)=>FailureKnowledge.Family(reason) is "capacity" or "access" or "targets" or "material_policy"||reason.StartsWith("known_failure_conditions_unchanged:")||reason=="resource_item_has_no_known_native_node_route"||reason.StartsWith("fish_trip_invalid_")||reason.StartsWith("fish_requires_")||reason.StartsWith("fish_item_")||reason.StartsWith("target_fish_")||reason.StartsWith("fishing_stalled:")||reason.StartsWith("plan_on_farm_or_greenhouse_first_travel_to_")||reason is "path_stalled" or "no_path" or "action_timeout" or "remaining_targets_unreachable";
     private readonly ExecutionFailureWatch executionFailures=new();
     private void ObserveExecutionFailure(string attempt,string actor,string? cause,string source) {
-        if(cause==null||!AutoplayRunning)return;
+        if(cause==null||!AutoplayRunning||cause.StartsWith("decision_review:"))return;
         int count=executionFailures.Observe(Data.Autoplay.RunId,attempt,actor,cause,Data.Autoplay.Capacity.Version);
         Data.Autoplay.Record("execution_failure_count",AgentJson.Encode(new{attempt_id=attempt,actor,root_cause=cause,capacity_version=Data.Autoplay.Capacity.Version,count,source}));
         if(count<3)return;

@@ -24,9 +24,4 @@ public static class DailyBudget {
     public static int Minutes(int time)=>time/100*60+time%100;
     public static int WorkMinutes(int time,int returnReserve)=>Math.Max(0,25*60-Minutes(time)-returnReserve);
     public static bool Fits(int time,float stamina,int reserve,int duration,float energy)=>WorkMinutes(time,reserve)>=duration && (energy<=0?stamina>=0:stamina-energy>=EnergyReserve);
-    public static string? SleepBlock(int time,float stamina,bool freeWork,bool usefulWork,bool chores,bool reviewed,string reason) {
-        if(reason.Length<3)return "sleep_reason_required";
-
-        return null;
-    }
 }

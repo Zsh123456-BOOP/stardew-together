@@ -8,7 +8,6 @@ using StardewValley.Tools;
 namespace Together;
 public sealed record DayOption(string skill,int slot,int x,int y,int stand_x,int stand_y,string item,string purpose,int route_tiles,int estimated_minutes,float estimated_energy,bool useful,bool fits);
 public sealed partial class ModEntry {
-    private int dayReviewed=-1;
     private object AgentDay(bool compact=false) {
         RefreshFacts(true);Data.Autoplay.Agenda.EnterDay(Game1.Date.TotalDays);
         var options=compact?new List<DayOption>():DayOptions();
@@ -99,12 +98,14 @@ public sealed partial class ModEntry {
     }
     internal void CheckAgentSleep(JsonElement args) {
         if(!AutoplayRunning)return; // Direct lab executor tests do not pretend to be model planning.
-        RefreshFacts(true);var options=DayOptions();
-        dayReviewed=Game1.Date.TotalDays; // An explicit sleep request invokes this review; reads do not.
-        var opportunities=OperatingOpportunities();
-        var block=DailyBudget.SleepBlock(Game1.timeOfDay,Game1.player.Stamina,options.Any(o=>o.fits&&o.useful&&o.estimated_energy==0),(options.Any(o=>o.fits&&o.useful)||opportunities.Any(o=>o.Id=="fish-income"||o.Id.StartsWith("forage:"))),Facts.DryCrops+Facts.RipeCrops>0,dayReviewed==Game1.Date.TotalDays,AgentToolRegistry.Text(args,"reason"));
-        Data.Autoplay.Record("sleep_review",AgentJson.Encode(new{Game1.timeOfDay,stamina=Game1.player.Stamina,Facts.DryCrops,Facts.RipeCrops,blocking_rule=block,global_opportunities=opportunities,optional_candidates=options.Where(o=>o.fits&&o.useful).Take(6),reason=AgentToolRegistry.Text(args,"reason"),review=AgentToolRegistry.Text(args,"review")}));
-        if(block!=null)throw new InvalidOperationException(block);
-
+        RefreshFacts(true);
+        List<OperatingOpportunity> opportunities;
+        reviewingSleep=true;
+        try{opportunities=OperatingOpportunities();}finally{reviewingSleep=false;}
+        var options=SleepAlternatives(opportunities);int minutes=DailyBudget.WorkMinutes(Game1.timeOfDay,ReturnReserve());
+        var facts=new{time=Game1.timeOfDay,stamina=Game1.player.Stamina,work_minutes=minutes,Facts.DryCrops,Facts.RipeCrops,alternatives=options};
+        var block=DecisionReviewPolicy.Sleep(args,Game1.player.Stamina,minutes,options);
+        Data.Autoplay.Record("sleep_review",AgentJson.Encode(new{facts,blocking_rule=block,args}));
+        RecordDecisionReview("sleep",args,facts,block);
     }
 }

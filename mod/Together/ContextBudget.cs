@@ -6,7 +6,7 @@ public sealed record ContextBudgetResult(string Json,int EstimatedTokens,int Lim
 public static class ContextBudget {
     // Conservative, explicitly estimated. Usage telemetry calibrates this; it is not a tokenizer.
     public static int Estimate(string text)=> (int)Math.Ceiling(Encoding.UTF8.GetByteCount(text)/2.0);
-    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons","schedule","operating_candidates","farm_work","assets","labor_budget","day","service_hours","goals"},StringComparer.Ordinal);
+    private static readonly HashSet<string> Protected=new(new[]{"pending_queries","task_card","recent","goal","now","inventory","ui","night","commitments","protection_reasons","planting_execution","prerequisites","active_actors","decision_reasons","schedule","operating_candidates","decision_review","farm_work","assets","labor_budget","day","service_hours","goals"},StringComparer.Ordinal);
     public static ContextBudgetResult Pack(object input,int limit,int? preferred=null) {
         if(limit<256)throw new ArgumentOutOfRangeException(nameof(limit));
         int target=Math.Clamp(preferred??limit,256,limit);

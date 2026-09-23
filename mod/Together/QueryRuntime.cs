@@ -50,7 +50,7 @@ public sealed partial class ModEntry {
         "planting_execution"=>PlantingExecutionFacts(),"assets"=>FacilityAssets(),"labor_budget"=>FarmLaborBudget(),"farm_cleanup"=>FarmMaintenanceSummary(),"service_hours"=>KnownServiceHours(),"inventory_plan"=>InventoryPlanning(),"companions"=>AgentCompanions(),
         "progression"=>DailyProgressDigest(true),"business"=>ReadBusiness(JsonSerializer.SerializeToElement(new{})),"day"=>AgentDay(),"schedule"=>AgentPlanRead(),
         "earlier_observation_summaries" or "recent"=>RecentAgentContext(),"memory"=>AgentMemoryContext(),"goals"=>GoalContext(),"operating_candidates"=>OperatingOpportunities(),
-        "sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),"prerequisites"=>TaskPrerequisites(),_=>throw new InvalidOperationException("unknown_context_section")
+        "decision_review"=>DecisionReviewContext(OperatingOpportunities()),"sleep_review"=>sleepReview??new{},"plan"=>new{Data.Autoplay.Plan},"task_card"=>TaskCard(),"prerequisites"=>TaskPrerequisites(),_=>throw new InvalidOperationException("unknown_context_section")
         };
     }
     internal object SearchPlanningKnowledge(JsonElement args) {
